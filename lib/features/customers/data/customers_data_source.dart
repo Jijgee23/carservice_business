@@ -23,6 +23,7 @@ abstract interface class CustomersDataSource {
   Future<Object?> history(String id, Map<String, dynamic> query);
   Future<Object?> notifyCount();
   Future<Object?> notify(Map<String, dynamic> body);
+  Future<Object?> orgLookup(String regno);
 }
 
 class RemoteCustomersDataSource implements CustomersDataSource {
@@ -98,4 +99,8 @@ class RemoteCustomersDataSource implements CustomersDataSource {
   @override
   Future<Object?> notify(Map<String, dynamic> body) async =>
       (await _request('customers/notify', 'POST', body: body)).data;
+
+  @override
+  Future<Object?> orgLookup(String regno) async =>
+      (await _request('ebarimt/org', 'GET', query: {'regno': regno})).data;
 }

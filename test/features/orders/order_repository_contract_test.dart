@@ -5,6 +5,7 @@ import 'package:carservice_business/features/orders/data/orders_data_source.dart
 import 'package:carservice_business/features/orders/domain/order.dart';
 import 'package:carservice_business/features/orders/domain/orders_error_codes.dart';
 import 'package:carservice_business/features/orders/domain/orders_repository.dart';
+import 'package:carservice_business/features/orders/domain/payment_bank.dart';
 import 'package:carservice_business/core/utils/result.dart';
 import 'package:carservice_business/core/errors/app_error.dart';
 import 'package:dio/dio.dart';
@@ -90,9 +91,12 @@ class _Source implements OrdersDataSource {
   Future<Object?> reversePayment(String id, String paymentId) =>
       _record('reversePayment');
   @override
+  Future<Object?> banks() => _record('banks');
+  @override
   Future<Object?> qpay(String id) => _record('qpay');
   @override
-  Future<Object?> createQPay(String id) => _record('createQPay');
+  Future<Object?> createQPay(String id, {String? amount}) =>
+      _record('createQPay', b: amount == null ? null : {'amount': amount});
   @override
   Future<Object?> checkQPay(String id, Map<String, dynamic> b) =>
       _record('checkQPay', b: b);
@@ -332,6 +336,93 @@ void main() {
     expect(invalidResponse, isA<Err>());
   });
 
+  test('payment locked defaults to false and parses true', () async {
+    Map<String, Object?> body(Map<String, Object?> extra) => {
+      'payment': {
+        'id': 'p1',
+        'amount': '10',
+        'method': 'CASH',
+        'status': 'PAID',
+        'paidAt': '2026-10-05T00:00:00.000Z',
+        'createdAt': '2026-10-05T00:00:00.000Z',
+        ...extra,
+      },
+      'order': {
+        'totalAmount': '10',
+        'paidAmount': '10',
+        'remainingAmount': '0',
+        'paymentStatus': 'PAID',
+      },
+    };
+    final source = _Source();
+    final repository = RemoteOrdersRepository(dataSource: source);
+    Future<bool> locked(Map<String, Object?> extra) async {
+      source.response = body(extra);
+      final r = await repository.createPayment(
+        'o1',
+        method: OrderPaymentMethod.CASH,
+        amount: const Money('10'),
+      );
+      return (r as Ok<OrderPaymentResult>).value.payment.locked;
+    }
+
+    expect(await locked({}), isFalse);
+    expect(await locked({'locked': true}), isTrue);
+  });
+
+  test('payment bank is sent for CARD only and parsed (legacy reconcile fields ignored)', () async {
+    final payment = {
+      'id': 'p1',
+      'amount': '10',
+      'method': 'CARD',
+      'status': 'PAID',
+      'paidAt': '2026-10-05T00:00:00.000Z',
+      'createdAt': '2026-10-05T00:00:00.000Z',
+      'bank': 'KHAN',
+      'reconciledAt': '2026-10-05T01:00:00.000Z',
+      'reconciledBy': {'id': 'u1', 'name': 'Бат'},
+    };
+    final source = _Source()
+      ..response = {
+        'payment': payment,
+        'order': {
+          'totalAmount': '10',
+          'paidAmount': '10',
+          'remainingAmount': '0',
+          'paymentStatus': 'PAID',
+        },
+      };
+    final repository = RemoteOrdersRepository(dataSource: source);
+    final created = await repository.createPayment(
+      'o1',
+      method: OrderPaymentMethod.CARD,
+      amount: const Money('10'),
+      bank: 'KHAN',
+    );
+    expect(source.body?['bank'], 'KHAN');
+    final record = (created as Ok<OrderPaymentResult>).value.payment;
+    expect(record.bank, 'KHAN');
+
+    await repository.createPayment(
+      'o1',
+      method: OrderPaymentMethod.CASH,
+      amount: const Money('10'),
+      bank: 'KHAN',
+    );
+    expect(source.body?.containsKey('bank'), isFalse);
+
+    source.response = {
+      'banks': <Object?>[],
+      'enabledBanks': ['KHAN', 'TDB'],
+      'configured': true,
+    };
+    final banks = await repository.getBanks();
+    expect((banks as Ok<BankSettings>).value.enabled.map((b) => b.code), [
+      'KHAN',
+      'TDB',
+    ]);
+  });
+
   test('uses ledger payment route and preserves amount as a string', () async {
     final source = _Source()
       ..response = {
@@ -411,6 +502,9 @@ void main() {
       };
       final created = await repository.createQPay('o1');
       expect(created, isA<Ok>());
+      expect(source.body, isNull);
+      await repository.createQPay('o1', amount: '40');
+      expect(source.body, {'amount': '40'});
       expect((created as Ok<OrderPayment>).value.urls, hasLength(1));
       expect(created.value.urls.single.link, 'bank://pay');
     },

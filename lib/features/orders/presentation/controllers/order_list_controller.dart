@@ -121,6 +121,7 @@ class OrderListController extends ChangeNotifier {
             assignedToId: value.assignedToId,
             plate: value.plate,
             postpaid: value.postpaid,
+            internal: value.internal,
             sortBy: value.sortBy,
             sortAsc: value.sortAsc,
           );
@@ -328,6 +329,7 @@ class OrderListController extends ChangeNotifier {
       assignedToId: _filter.assignedToId,
       paymentStatus: payment,
       postpaid: _filter.postpaid,
+      internal: _filter.internal,
       dateFrom: _filter.effectiveDateFrom,
       dateTo: _filter.effectiveDateTo,
       plate: _filter.plate,
@@ -372,6 +374,7 @@ class OrderListController extends ChangeNotifier {
       assignedToId: current.assignedToId,
       plate: current.plate,
       postpaid: current.postpaid,
+      internal: current.internal,
       sortBy: current.sortBy,
       sortAsc: current.sortAsc,
     );

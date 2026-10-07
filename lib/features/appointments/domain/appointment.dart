@@ -168,6 +168,20 @@ class AppointmentAccountRef {
       (name?.isNotEmpty ?? false) ? name! : (phone ?? 'Нэргүй');
 }
 
+/// `assignedTo` — `{id, name}` of the master the appointment is assigned to.
+class AppointmentAssigneeRef {
+  final String id;
+  final String? name;
+
+  const AppointmentAssigneeRef({required this.id, this.name});
+
+  factory AppointmentAssigneeRef.fromJson(Map<String, dynamic> j) =>
+      AppointmentAssigneeRef(
+        id: _optString(j['id']) ?? '',
+        name: _optString(j['name']),
+      );
+}
+
 class AppointmentCustomerRef {
   final String? id;
   final String? fullName;
@@ -259,6 +273,12 @@ class AppointmentSummary {
   /// Staff-marked arrival time. `null` = not arrived (or an older server).
   final DateTime? arrivedAt;
 
+  /// Хариуцах мастер. `null` = мастер оноогоогүй (эсвэл хуучин сервер талбарыг
+  /// илгээгээгүй). Сервер мастерыг заавал шаарддаг тул шинэ цагт ихэвчлэн
+  /// байна; хуучин цагт `null` байж болно.
+  final String? assignedToId;
+  final AppointmentAssigneeRef? assignedTo;
+
   const AppointmentSummary({
     required this.id,
     required this.status,
@@ -274,6 +294,8 @@ class AppointmentSummary {
     this.serviceOrder,
     this.paymentStatus,
     this.arrivedAt,
+    this.assignedToId,
+    this.assignedTo,
   });
 
   factory AppointmentSummary.fromJson(Map<String, dynamic> j) {
@@ -308,7 +330,17 @@ class AppointmentSummary {
           ? null
           : AppointmentBookingPaymentStatus.fromJson(j['paymentStatus']),
       arrivedAt: _optDate(j['arrivedAt']),
+      assignedToId: _optString(j['assignedToId']),
+      assignedTo: _optMap(j['assignedTo']) != null
+          ? AppointmentAssigneeRef.fromJson(_optMap(j['assignedTo'])!)
+          : null,
     );
+  }
+
+  /// Мастерын харуулах нэр (нэр байхгүй бол `null`).
+  String? get assigneeName {
+    final name = assignedTo?.name;
+    return (name == null || name.trim().isEmpty) ? null : name.trim();
   }
 
   /// PENDING and the start time (`requestedAt`, same field the server checks)

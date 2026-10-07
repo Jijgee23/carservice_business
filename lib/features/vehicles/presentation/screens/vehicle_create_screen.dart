@@ -391,6 +391,9 @@ class _VehicleCreateScreenState extends State<VehicleCreateScreen> {
                     fullName: c.fullName,
                     phone: c.phone ?? '',
                     email: c.email,
+                    isOrganization: c.isOrganization,
+                    orgName: c.orgName,
+                    orgRegnum: c.orgRegnum,
                   ),
                 )
                 .toList(growable: false),
@@ -881,7 +884,7 @@ class _VehicleCreateScreenState extends State<VehicleCreateScreen> {
                               onChanged: _searchCustomer,
                               style: context.textStyles.body,
                               decoration: InputDecoration(
-                                hintText: 'Нэр, утсаар хайх...',
+                                hintText: 'Нэр, утас, регистрээр хайх...',
                                 prefixIcon: Icon(
                                   Icons.search,
                                   size: 18,
@@ -937,7 +940,10 @@ class _VehicleCreateScreenState extends State<VehicleCreateScreen> {
                                                         .bodyMedium,
                                                   ),
                                                   Text(
-                                                    c.phone,
+                                                    [
+                                                      ?c.orgRegnumLabel,
+                                                      c.phone,
+                                                    ].join(' · '),
                                                     style: context
                                                         .textStyles
                                                         .caption,

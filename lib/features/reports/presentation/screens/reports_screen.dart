@@ -274,6 +274,12 @@ class _ReportContent extends StatelessWidget {
               value: formatTugrik(data.avgTicket),
             ),
             ReportKpiCard(label: 'Идэвхтэй', value: '${data.activeCount}'),
+            if (data.internalCost != null)
+              ReportKpiCard(
+                key: const ValueKey('report_internal_cost'),
+                label: 'Дотоод зардал',
+                value: formatTugrik(data.internalCost!),
+              ),
           ],
         ),
         const SizedBox(height: 10),

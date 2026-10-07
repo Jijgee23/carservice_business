@@ -12,6 +12,15 @@ import 'package:carservice_business/features/vehicles/domain/vehicle.dart';
 /// impossible to construct, not a runtime 400. `limit` is the legacy alias of
 /// `pageSize` and is deliberately not exposed — sending both would be
 /// ambiguous.
+/// `?ownerKind=` values of `GET /api/v1/vehicles`.
+enum VehicleOwnerKind {
+  org('org'),
+  person('person');
+
+  const VehicleOwnerKind(this.wire);
+  final String wire;
+}
+
 class VehicleListQuery {
   /// `?q=` — matches **six** clauses, not four: vehicle `plate`, `make`,
   /// `model`, `vin` (all case-insensitive) OR owner `fullName`
@@ -32,6 +41,9 @@ class VehicleListQuery {
   /// `?postpaid=yes|no` on `TenantVehicle.isPostpaid`.
   final bool? postpaid;
 
+  /// `?ownerKind=org|person` (Phase 4). Null omits the param.
+  final VehicleOwnerKind? ownerKind;
+
   final int page;
   final int pageSize;
 
@@ -40,6 +52,7 @@ class VehicleListQuery {
     this.customerId,
     this.assigned,
     this.postpaid,
+    this.ownerKind,
     this.page = 1,
     this.pageSize = 50,
   });
@@ -139,6 +152,9 @@ abstract interface class VehiclesRepository {
 
   /// `GET /api/v1/vehicles/[id]/history`.
   Future<Result<VehicleHistory>> getHistory(String vehicleId);
+
+  /// `GET /api/v1/vehicles/[id]/vin-history` (vehicles.view).
+  Future<Result<VinHistory>> getVinHistory(String vehicleId);
 
   /// `POST /api/v1/vehicles/[id]/refresh-hur`.
   Future<Result<VehicleHurRefresh>> refreshFromHur(String vehicleId);

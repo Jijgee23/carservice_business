@@ -57,11 +57,13 @@ class VehicleListController extends ChangeNotifier {
   String? _customerId;
   bool? _assigned;
   bool? _postpaid;
+  VehicleOwnerKind? _ownerKind;
 
   String get query => _query;
   String? get customerId => _customerId;
   bool? get assigned => _assigned;
   bool? get postpaid => _postpaid;
+  VehicleOwnerKind? get ownerKind => _ownerKind;
   bool get hasNext => _hasNext;
   int get total => _total;
   int get page => _page;
@@ -69,7 +71,10 @@ class VehicleListController extends ChangeNotifier {
   /// Whether any filter beyond free-text search is active — drives the
   /// "clear filters" affordance and the empty-state copy.
   bool get hasActiveFilters =>
-      _customerId != null || _assigned != null || _postpaid != null;
+      _customerId != null ||
+      _assigned != null ||
+      _postpaid != null ||
+      _ownerKind != null;
 
   /// Compatibility getter mirroring `AppointmentListController.filtered`:
   /// the server page, unfiltered on the client.
@@ -110,9 +115,14 @@ class VehicleListController extends ChangeNotifier {
 
   /// Applies both boolean filters at once (the filter sheet's "Хэрэглэх"),
   /// so a two-field change costs one reload rather than two racing ones.
-  Future<void> setFilters({required bool? assigned, required bool? postpaid}) {
+  Future<void> setFilters({
+    required bool? assigned,
+    required bool? postpaid,
+    VehicleOwnerKind? ownerKind,
+  }) {
     _assigned = assigned;
     _postpaid = postpaid;
+    _ownerKind = ownerKind;
     return loadVehicles();
   }
 
@@ -120,6 +130,7 @@ class VehicleListController extends ChangeNotifier {
     _customerId = null;
     _assigned = null;
     _postpaid = null;
+    _ownerKind = null;
     return loadVehicles();
   }
 
@@ -191,6 +202,7 @@ class VehicleListController extends ChangeNotifier {
     customerId: _customerId,
     assigned: _assigned,
     postpaid: _postpaid,
+    ownerKind: _ownerKind,
     page: page,
     pageSize: defaultPageSize,
   );

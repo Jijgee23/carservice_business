@@ -28,14 +28,20 @@ class FakeVehicleRepository implements VehiclesRepository {
   FakeVehicleRepository({
     List<Vehicle>? seed,
     Map<String, VehicleHistory>? history,
+    Map<String, VinHistory>? vinHistory,
     this.maxVehicles = 50,
   }) : _vehicles = [
          ...(seed ?? [seedVehicle()]),
        ],
-       _history = {...?history};
+       _history = {...?history},
+       _vinHistory = {...?vinHistory};
 
   final List<Vehicle> _vehicles;
   final Map<String, VehicleHistory> _history;
+  final Map<String, VinHistory> _vinHistory;
+
+  /// Set to make [getVinHistory] fail.
+  bool vinHistoryFails = false;
 
   /// Stand-in for the tenant's `MAX_VEHICLES` plan limit.
   final int maxVehicles;
@@ -319,6 +325,15 @@ class FakeVehicleRepository implements VehiclesRepository {
   Future<Result<VehicleHistory>> getHistory(String vehicleId) async {
     if (_indexOf(vehicleId) < 0) return Err(_notFound());
     return Ok(_history[vehicleId] ?? const VehicleHistory());
+  }
+
+  @override
+  Future<Result<VinHistory>> getVinHistory(String vehicleId) async {
+    if (vinHistoryFails) {
+      return const Err(AppError(ErrorKind.unknown, 'VIN түүх алдаа.'));
+    }
+    if (_indexOf(vehicleId) < 0) return Err(_notFound());
+    return Ok(_vinHistory[vehicleId] ?? const VinHistory());
   }
 
   @override

@@ -91,6 +91,8 @@ class FakeAppointmentRepository implements AppointmentsRepository {
     accountVehicle: appt.accountVehicle,
     vehicle: appt.vehicle,
     serviceOrder: appt.serviceOrder,
+    assignedToId: appt.assignedToId,
+    assignedTo: appt.assignedTo,
   );
 
   Result<AppointmentLifecycleResult> _transition(
@@ -300,6 +302,7 @@ class FakeAppointmentRepository implements AppointmentsRepository {
     String? note,
     List<String> categoryIds = const [],
     bool confirmed = false,
+    String? assignedToId,
   }) async {
     // Mirrors `parseCreateAppointmentBody`'s past-time rejection — the same
     // 422 field-error shape the server returns.
@@ -348,6 +351,7 @@ class FakeAppointmentRepository implements AppointmentsRepository {
       category: categoryIds.isEmpty
           ? null
           : AppointmentCategoryRef(id: categoryIds.first),
+      assignedToId: assignedToId,
     );
     _appointments.add(created);
     return Ok(created);
@@ -355,8 +359,70 @@ class FakeAppointmentRepository implements AppointmentsRepository {
 
   @override
   Future<Result<AppointmentLifecycleResult>> confirm(
+    String appointmentId, {
+    String? assignedToId,
+  }) async {
+    // Lenient on purpose: the real server answers 422 ASSIGNEE_REQUIRED for a
+    // master-less appointment, but enforcing that here would break every
+    // lifecycle test that confirms the (master-less) seed. Tests that need the
+    // rule script their own repository. A supplied master is recorded.
+    final result = _transition(appointmentId, AppointmentStatus.CONFIRMED);
+    final index = _indexOf(appointmentId);
+    if (result is Ok && assignedToId != null && index >= 0) {
+      final a = _appointments[index];
+      _appointments[index] = AppointmentSummary(
+        id: a.id,
+        status: a.status,
+        requestedAt: a.requestedAt,
+        note: a.note,
+        createdAt: a.createdAt,
+        branch: a.branch,
+        category: a.category,
+        account: a.account,
+        customer: a.customer,
+        accountVehicle: a.accountVehicle,
+        vehicle: a.vehicle,
+        serviceOrder: a.serviceOrder,
+        assignedToId: assignedToId,
+        assignedTo: AppointmentAssigneeRef(id: assignedToId),
+      );
+    }
+    return result;
+  }
+
+  /// Mirrors `PATCH /appointments/[id]` `{assignedToId}`; the interface takes a
+  /// non-null id, so clearing (the server's 422) cannot be expressed.
+  @override
+  Future<Result<AppointmentSummary>> updateAssignee(
     String appointmentId,
-  ) async => _transition(appointmentId, AppointmentStatus.CONFIRMED);
+    String assignedToId,
+  ) async {
+    final index = _indexOf(appointmentId);
+    if (index < 0) {
+      return const Err(
+        AppError(ErrorKind.notFound, 'Цаг захиалга олдсонгүй', statusCode: 404),
+      );
+    }
+    final a = _appointments[index];
+    final updated = AppointmentSummary(
+      id: a.id,
+      status: a.status,
+      requestedAt: a.requestedAt,
+      note: a.note,
+      createdAt: a.createdAt,
+      branch: a.branch,
+      category: a.category,
+      account: a.account,
+      customer: a.customer,
+      accountVehicle: a.accountVehicle,
+      vehicle: a.vehicle,
+      serviceOrder: a.serviceOrder,
+      assignedToId: assignedToId,
+      assignedTo: AppointmentAssigneeRef(id: assignedToId),
+    );
+    _appointments[index] = updated;
+    return Ok(updated);
+  }
 
   @override
   Future<Result<AppointmentSummary>> getAppointment(

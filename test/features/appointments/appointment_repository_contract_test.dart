@@ -45,7 +45,11 @@ class _RecordingSource implements AppointmentsDataSource {
   Future<Object?> create(Map<String, dynamic> body) =>
       _record('create', body: body);
   @override
-  Future<Object?> confirm(String id) => _record('confirm');
+  Future<Object?> confirm(String id, {Map<String, dynamic>? body}) =>
+      _record('confirm', body: body);
+  @override
+  Future<Object?> update(String id, Map<String, dynamic> body) =>
+      _record('update', body: body);
   @override
   Future<Object?> detail(String id) => _record('detail');
   @override

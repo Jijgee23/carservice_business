@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:carservice_business/core/domain/pagination.dart';
 import 'package:carservice_business/core/utils/result.dart';
 import 'package:carservice_business/features/orders/domain/order.dart';
+import 'package:carservice_business/features/orders/domain/payment_bank.dart';
 
 class OrderListQuery {
   final OrderStatus? status;
@@ -10,6 +11,9 @@ class OrderListQuery {
   final String? assignedToId;
   final PaymentStatus? paymentStatus;
   final bool? postpaid;
+
+  /// `internal=yes|no` server filter (null = both).
+  final bool? internal;
   final DateTime? dateFrom;
   final DateTime? dateTo;
   final String? q;
@@ -27,6 +31,7 @@ class OrderListQuery {
     this.assignedToId,
     this.paymentStatus,
     this.postpaid,
+    this.internal,
     this.dateFrom,
     this.dateTo,
     this.q,
@@ -85,6 +90,8 @@ abstract interface class OrdersRepository {
     String? appointmentId,
     int? estimatedDurationMinutes,
     OrderIntakeDraft? intake,
+    bool? isPostpaid,
+    bool? isInternal,
   });
 
   /// Хүлээн авалтын зураг/гарын үсгийг түр хадгалж (`kind=intake`) серверийн
@@ -182,7 +189,9 @@ abstract interface class OrdersRepository {
     String orderId, {
     required OrderPaymentMethod method,
     required Money amount,
+    String? bank,
   });
+  Future<Result<BankSettings>> getBanks();
   Future<Result<OrderPaymentTotals>> reversePayment(
     String orderId,
     String paymentId,
@@ -191,7 +200,7 @@ abstract interface class OrdersRepository {
   Future<Result<({bool qpayEnabled, OrderPayment? pending})>> getQPay(
     String orderId,
   );
-  Future<Result<OrderPayment>> createQPay(String orderId);
+  Future<Result<OrderPayment>> createQPay(String orderId, {String? amount});
   Future<Result<({bool paid, String? message})>> checkQPay(
     String orderId,
     String paymentId,

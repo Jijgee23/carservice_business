@@ -121,6 +121,11 @@ class Vehicle {
   /// where it degrades to `false`.
   final bool isPostpaid;
 
+  /// Phase 4: derived server-side (owning customer is an organization, or an
+  /// unowned link whose `ownerRegnum` is a 7-digit org regnum). Degrades to
+  /// `false` when absent.
+  final bool ownerIsOrganization;
+
   const Vehicle({
     required this.id,
     this.plate,
@@ -138,6 +143,7 @@ class Vehicle {
     this.customerId,
     this.customer,
     this.isPostpaid = false,
+    this.ownerIsOrganization = false,
   });
 
   factory Vehicle.fromJson(Map<String, dynamic> j) {
@@ -159,6 +165,7 @@ class Vehicle {
       customerId: _optString(j['customerId']),
       customer: customer == null ? null : VehicleCustomerRef.fromJson(customer),
       isPostpaid: j['isPostpaid'] == true,
+      ownerIsOrganization: j['ownerIsOrganization'] == true,
     );
   }
 
@@ -382,6 +389,7 @@ class VehicleHurRefresh {
     customerId: base.customerId,
     customer: base.customer,
     isPostpaid: base.isPostpaid,
+    ownerIsOrganization: base.ownerIsOrganization,
   );
 }
 
@@ -421,4 +429,48 @@ DateTime? _optDate(Object? value) {
 Map<String, dynamic>? _optMap(Object? value) {
   if (value is! Map) return null;
   return Map<String, dynamic>.from(value);
+}
+
+// ─── VIN history ───────────────────────────────────────────────────────────
+
+/// One same-VIN vehicle linked to this tenant (`GET /vehicles/[id]/vin-history`).
+class VinHistoryRecord {
+  final String vehicleId;
+  final String plate;
+  final String? make;
+  final String? model;
+  final int? year;
+  final String? ownerName;
+  final int orderCount;
+  final DateTime? lastOrderAt;
+  final DateTime? createdAt;
+
+  const VinHistoryRecord({
+    required this.vehicleId,
+    required this.plate,
+    this.make,
+    this.model,
+    this.year,
+    this.ownerName,
+    this.orderCount = 0,
+    this.lastOrderAt,
+    this.createdAt,
+  });
+}
+
+/// `{vin, records, otherTenantRecords}`. [hasContent] drives whether the
+/// vehicle screen shows the section at all.
+class VinHistory {
+  final String? vin;
+  final List<VinHistoryRecord> records;
+  final int otherTenantRecords;
+
+  const VinHistory({
+    this.vin,
+    this.records = const [],
+    this.otherTenantRecords = 0,
+  });
+
+  bool get hasContent =>
+      vin != null && (records.isNotEmpty || otherTenantRecords > 0);
 }

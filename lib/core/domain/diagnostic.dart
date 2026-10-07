@@ -260,17 +260,37 @@ class CustomerSummary {
   final String phone;
   final String? email;
 
+  /// Phase 4: байгууллага харилцагч — [fullName] нь холбогдох хүн.
+  final bool isOrganization;
+  final String? orgName;
+  final String? orgRegnum;
+
   const CustomerSummary({
     required this.id,
     this.fullName,
     required this.phone,
     this.email,
+    this.isOrganization = false,
+    this.orgName,
+    this.orgRegnum,
   });
 
-  /// Name if set, otherwise falls back to phone number.
-  String get displayName {
+  /// «РД 1234567» for organization customers with a registry number, else null.
+  String? get orgRegnumLabel {
+    final r = orgRegnum?.trim() ?? '';
+    return isOrganization && r.isNotEmpty ? 'РД $r' : null;
+  }
+
+  /// Contact name if set, otherwise falls back to phone number.
+  String get contactName {
     final n = fullName?.trim() ?? '';
     return n.isNotEmpty ? n : phone;
+  }
+
+  /// Organizations show [orgName] first; others the contact name.
+  String get displayName {
+    final o = orgName?.trim() ?? '';
+    return isOrganization && o.isNotEmpty ? o : contactName;
   }
 
   factory CustomerSummary.fromJson(Map<String, dynamic> j) => CustomerSummary(
@@ -278,6 +298,9 @@ class CustomerSummary {
     fullName: j['fullName'] as String?,
     phone: j['phone'] as String,
     email: j['email'] as String?,
+    isOrganization: j['isOrganization'] == true,
+    orgName: j['orgName'] as String?,
+    orgRegnum: j['orgRegnum'] as String?,
   );
 }
 
@@ -292,6 +315,13 @@ class VehicleSummary {
   final String? customerId;
   final CustomerSummary? customer;
 
+  /// `TenantVehicle.isPostpaid` when the payload carries it; `false` when the
+  /// endpoint omits it (the vehicles list does not select it today).
+  final bool isPostpaid;
+
+  /// Phase 4: server-derived (linked customer, else ХУР regnum).
+  final bool ownerIsOrganization;
+
   const VehicleSummary({
     required this.id,
     required this.plate,
@@ -302,6 +332,8 @@ class VehicleSummary {
     this.mileage,
     this.customerId,
     this.customer,
+    this.isPostpaid = false,
+    this.ownerIsOrganization = false,
   });
 
   String get displayName => '$make $model${year != null ? ' $year' : ''}';
@@ -318,6 +350,8 @@ class VehicleSummary {
     customer: j['customer'] != null
         ? CustomerSummary.fromJson(j['customer'] as Map<String, dynamic>)
         : null,
+    isPostpaid: j['isPostpaid'] == true,
+    ownerIsOrganization: j['ownerIsOrganization'] == true,
   );
 }
 

@@ -49,8 +49,18 @@ class CustomerListController extends ChangeNotifier {
   int _total = 0;
 
   String _query = '';
+  CustomerKindFilter? _kind;
 
   String get query => _query;
+  CustomerKindFilter? get kind => _kind;
+
+  /// `?kind=org|person`; null = all. Reloads from page 1.
+  void setKind(CustomerKindFilter? value) {
+    if (value == _kind) return;
+    _kind = value;
+    unawaited(loadCustomers());
+  }
+
   bool get hasNext => _hasNext;
   int get total => _total;
   int get page => _page;
@@ -136,6 +146,7 @@ class CustomerListController extends ChangeNotifier {
 
   CustomerListQuery _queryFor(int page) => CustomerListQuery(
     q: _query.isEmpty ? null : _query,
+    kind: _kind,
     page: page,
     pageSize: defaultPageSize,
   );

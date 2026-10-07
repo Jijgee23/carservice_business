@@ -66,6 +66,10 @@ class _RecordingSource implements CustomersDataSource {
   @override
   Future<Object?> notify(Map<String, dynamic> body) =>
       _record('notify', body: body);
+
+  @override
+  Future<Object?> orgLookup(String regno) =>
+      _record('orgLookup', query: {'regno': regno});
 }
 
 Map<String, dynamic> _meta({int total = 1, int page = 1, int pageSize = 50}) =>
@@ -127,7 +131,7 @@ void main() {
       expect(claimed.value.customer.id, 'c1');
     });
 
-    test('create sends all four body fields the route reads', () async {
+    test('create sends all body fields the route reads (incl. org fields)', () async {
       source.statusCode = 201;
       source.response = {
         'customer': {'id': 'c1'},
@@ -143,6 +147,10 @@ void main() {
         'phone': '99001122',
         'email': null,
         'note': 'VIP',
+        'isOrganization': false,
+        'orgRegnum': null,
+        'orgName': null,
+        'orgEmail': null,
       });
     });
 
@@ -165,6 +173,10 @@ void main() {
         'phone': '99001122',
         'email': null,
         'note': null,
+        'isOrganization': false,
+        'orgRegnum': null,
+        'orgName': null,
+        'orgEmail': null,
       });
       // The route omits createdAt on this response; parsing must not fail.
       expect((result as Ok<Customer>).value.createdAt, isNull);

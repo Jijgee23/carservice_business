@@ -1,3 +1,4 @@
+import 'package:carservice_business/core/utils/price_input.dart';
 import 'package:carservice_business/app/shell/shell_chrome.dart';
 import 'package:carservice_business/core/utils/vehicle_plate.dart';
 import 'package:carservice_business/core/services/service_catalog_service.dart';
@@ -11,11 +12,14 @@ import 'package:carservice_business/core/domain/service_catalog.dart'
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:carservice_business/features/orders/presentation/feature_theme.dart';
+import 'package:carservice_business/features/cash/data/cash_repository.dart';
 import 'package:carservice_business/features/orders/presentation/controllers/order_detail_controller.dart';
 import 'package:carservice_business/features/orders/presentation/controllers/order_payment_controller.dart';
 import 'package:carservice_business/features/orders/presentation/controllers/order_item_controller.dart';
 import 'package:carservice_business/features/orders/presentation/widgets/detail/order_detail_widgets.dart';
 import 'package:carservice_business/features/orders/presentation/widgets/detail/order_item_widgets.dart';
+import 'package:carservice_business/features/orders/domain/postpaid_settlement.dart';
+import 'package:carservice_business/features/orders/presentation/widgets/list/order_list_widgets.dart';
 import 'package:carservice_business/features/orders/presentation/widgets/order_status_prompt.dart';
 import 'package:carservice_business/features/orders/presentation/widgets/intake/order_intake_view.dart';
 import 'package:intl/intl.dart';
@@ -261,7 +265,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
   Future<void> _delete() async {
     if (context.read<OrderDetailController>().order?.hasPaidPayment == true) {
-      messageError(paidLockHint);
+      messageError(
+        paidLockReason(context.read<OrderDetailController>().order!),
+      );
       return;
     }
     final confirm = await ConfirmSheet.show(
@@ -288,6 +294,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           repo: context.read<OrdersRepository>(),
           orderId: widget.orderId,
           user: widget.user,
+          sessionOpenLookup: RemoteCashRepository().isSessionOpen,
         ),
         child: OrderPaymentScreen(orderId: widget.orderId, user: widget.user),
       ),
@@ -324,6 +331,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         canEditFields: _canEditItem(user, order),
         canEditPrice: _canEditItem(user, order) && _canItemPrice(user),
         paidLocked: order.hasPaidPayment,
+        paidLockReason: paidLockReason(order),
       ),
     );
   }
@@ -455,7 +463,15 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
-            Text('#${o.number}', style: Theme.of(context).textTheme.bodySmall),
+            Text(
+              [
+                '#${o.number}',
+                if (formerPlate(o.plateSnapshot, o.vehicle.plate)
+                    case final old?)
+                  'хуучин: $old',
+              ].join(' · '),
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
           ],
         ),
         actions: [
@@ -518,6 +534,13 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           ),
           const SizedBox(height: 14),
 
+          if (o.isInternal) ...[
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: OrderInternalTag(),
+            ),
+            const SizedBox(height: 14),
+          ],
           // ─── Status ──────────────────────────────────────────────────
           OrderStatusField(
             current: o.status,
@@ -578,6 +601,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                               item: item,
                               locked: locked,
                               paidLocked: o.hasPaidPayment,
+                              paidLockReason: paidLockReason(o),
                               canEdit: o.status.canAddItems && itemEdit,
                               canPrice:
                                   o.status.canAddItems &&
@@ -607,6 +631,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                                   : () => AppNav.to(
                                       ReportDetailScreen(
                                         reportId: item.diagnosticReportId!,
+                                        deleteLocked: isLineCompletedLocked(
+                                          item,
+                                        ),
                                       ),
                                     ),
                             ),
@@ -632,7 +659,16 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           const SizedBox(height: 14),
 
           // ─── Payment ──────────────────────────────────────────────────
-          if (_canViewPayments(user)) ...[
+          if (_canViewPayments(user) && o.isInternal) ...[
+            AppCard(
+              key: const ValueKey('order_internal_payment_note'),
+              child: Text(
+                internalOrderPaymentNote,
+                style: context.textStyles.caption,
+              ),
+            ),
+            const SizedBox(height: 14),
+          ] else if (_canViewPayments(user)) ...[
             _PaymentTile(
               key: const ValueKey('order_payment_entry'),
               order: o,
@@ -669,7 +705,14 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             order: o,
             dateFmt: dateFmt,
             locked: locked || o.status != OrderStatus.IN_PROGRESS || !itemEdit,
-            onOpenReport: (id) => AppNav.to(ReportDetailScreen(reportId: id)),
+            onOpenReport: (id) => AppNav.to(
+              ReportDetailScreen(
+                reportId: id,
+                deleteLocked: o.items.any(
+                  (i) => i.diagnosticReportId == id && isLineCompletedLocked(i),
+                ),
+              ),
+            ),
           ),
           const SizedBox(height: 14),
 
@@ -700,7 +743,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               Padding(
                 padding: const EdgeInsets.only(top: 6),
                 child: Text(
-                  paidLockHint,
+                  paidLockReason(o),
                   textAlign: TextAlign.center,
                   style: context.textStyles.caption,
                 ),
@@ -982,6 +1025,7 @@ class ItemFormScreen extends StatefulWidget {
   /// The order has a paid payment: the server refuses price/qty/kind changes
   /// (`PAID_PAYMENT_EXISTS`), so those inputs are read-only in edit mode.
   final bool paidLocked;
+  final String paidLockReason;
   const ItemFormScreen({
     super.key,
     required this.orderId,
@@ -989,6 +1033,7 @@ class ItemFormScreen extends StatefulWidget {
     this.canEditFields = true,
     this.canEditPrice = true,
     this.paidLocked = false,
+    this.paidLockReason = paidLockHint,
     this.editItem,
   });
 
@@ -1056,7 +1101,9 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
       _kind = item.kind;
       _descCtrl.text = item.description;
       _qtyCtrl.text = item.quantityMoney?.raw ?? item.quantity.toString();
-      _priceCtrl.text = item.unitPriceMoney?.raw ?? item.unitPrice.toString();
+      _priceCtrl.text = formatPriceInput(
+        item.unitPriceMoney?.raw ?? item.unitPrice.toString(),
+      );
       _selectedServiceId = item.serviceId;
     } else {
       _loadAll();
@@ -1135,7 +1182,7 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
       _selectedTemplateId = isTemplate ? svc.id : null;
       _kind = _toItemKind(svc.type);
       _descCtrl.text = svc.name;
-      _priceCtrl.text = svc.price.toString();
+      _priceCtrl.text = formatPriceInput(svc.price.toString());
       if (_qtyCtrl.text.isEmpty) _qtyCtrl.text = '1';
       _serviceSelected = true;
     });
@@ -1581,7 +1628,10 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
                     hint: '0',
                     controller: _priceCtrl,
                     readOnly: !_effectiveCanEditPrice,
-                    keyboardType: TextInputType.number,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    inputFormatters: const [PriceInputFormatter()],
                   ),
                 ),
               ],
@@ -1589,7 +1639,7 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
             if (_moneyLocked) ...[
               const SizedBox(height: 8),
               Text(
-                'Төлбөр төлөгдсөн тул төрөл, тоо, үнийг өөрчлөх боломжгүй. $paidLockHint.',
+                'Төлбөр төлөгдсөн тул төрөл, тоо, үнийг өөрчлөх боломжгүй. ${widget.paidLockReason}',
                 style: context.textStyles.caption,
               ),
             ],

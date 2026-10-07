@@ -51,14 +51,18 @@ class _PaymentRepository extends FakeOrderRepository {
   int ledgerCalls = 0;
   int qpayCalls = 0;
   String? createdAmount;
+  String? createdBank;
   int createCalls = 0;
   int reverseCalls = 0;
   int qpayCreateCalls = 0;
+  String? qpayCreateAmount;
   int qpayCheckCalls = 0;
   int qpayCancelCalls = 0;
   ({bool paid, String? message})? qpayCheckOutcome;
   bool qpayPaidAfterCheck = false;
   AppError? qpayCheckError;
+  AppError? qpayCreateError;
+  AppError? qpayCancelError;
   final detailResponses = <Future<Result<ServiceOrderDetail>>>[];
   Completer<Result<OrderPaymentResult>>? createCompleter;
   AppError? createError;
@@ -100,12 +104,19 @@ class _PaymentRepository extends FakeOrderRepository {
     String orderId, {
     required OrderPaymentMethod method,
     required Money amount,
+    String? bank,
   }) {
     createCalls++;
     createdAmount = amount.raw;
+    createdBank = bank;
     if (createCompleter != null) return createCompleter!.future;
     if (createError != null) return Future.value(Err(createError!));
-    return super.createPayment(orderId, method: method, amount: amount);
+    return super.createPayment(
+      orderId,
+      method: method,
+      amount: amount,
+      bank: bank,
+    );
   }
 
   @override
@@ -118,9 +129,12 @@ class _PaymentRepository extends FakeOrderRepository {
   }
 
   @override
-  Future<Result<OrderPayment>> createQPay(String orderId) {
+  Future<Result<OrderPayment>> createQPay(String orderId, {String? amount}) {
     qpayCreateCalls++;
-    return super.createQPay(orderId);
+    qpayCreateAmount = amount;
+    final error = qpayCreateError;
+    if (error != null) return Future.value(Err(error));
+    return super.createQPay(orderId, amount: amount);
   }
 
   @override
@@ -142,6 +156,8 @@ class _PaymentRepository extends FakeOrderRepository {
   @override
   Future<Result<void>> cancelQPay(String orderId, String paymentId) {
     qpayCancelCalls++;
+    final error = qpayCancelError;
+    if (error != null) return Future.value(Err(error));
     return super.cancelQPay(orderId, paymentId);
   }
 }
@@ -342,6 +358,7 @@ void main() {
         await controller.createManual(
           amount: '10.25',
           method: OrderPaymentMethod.CARD,
+          bank: 'KHAN',
         ),
         isTrue,
       );
@@ -443,4 +460,109 @@ void main() {
       controller.dispose();
     },
   );
+
+  OrderPaymentController qpayController(_PaymentRepository repo) =>
+      OrderPaymentController(
+        repo: repo,
+        orderId: 'order-1',
+        user: _user(const [
+          'payments.view',
+          'payments.create',
+          'payments.edit',
+          'payments.delete',
+        ]),
+      );
+
+  test(
+    'QPAY_PREVIOUS_PAID on create shows server message and refreshes all state',
+    () async {
+      final repo = _PaymentRepository()
+        ..qpayPaidAfterCheck = true
+        ..qpayCreateError = const AppError(
+          ErrorKind.unknown,
+          'Өмнөх QPay QR төлөгдсөн байна.',
+          statusCode: 409,
+          code: 'QPAY_PREVIOUS_PAID',
+        );
+      final controller = qpayController(repo);
+      await controller.load();
+      final before = (repo.detailCalls, repo.ledgerCalls, repo.qpayCalls);
+
+      expect(await controller.createQPay(), isFalse);
+      expect(controller.lastError?.display, 'Өмнөх QPay QR төлөгдсөн байна.');
+      expect(repo.detailCalls, before.$1 + 1);
+      expect(repo.ledgerCalls, before.$2 + 1);
+      expect(repo.qpayCalls, before.$3 + 1);
+      expect(controller.order?.paymentStatus, PaymentStatus.PAID);
+      controller.dispose();
+    },
+  );
+
+  test(
+    'QPAY_INVOICE_PAID on cancel shows server message and refreshes all state',
+    () async {
+      final repo = _PaymentRepository();
+      final controller = qpayController(repo);
+      await controller.load();
+      expect(await controller.createQPay(), isTrue);
+      repo
+        ..qpayPaidAfterCheck = true
+        ..qpayCancelError = const AppError(
+          ErrorKind.unknown,
+          'Өмнөх QPay QR төлөгдсөн байна.',
+          statusCode: 409,
+          code: 'QPAY_INVOICE_PAID',
+        );
+      final before = (repo.detailCalls, repo.ledgerCalls, repo.qpayCalls);
+
+      expect(await controller.cancelQPay(), isFalse);
+      expect(controller.lastError?.code, 'QPAY_INVOICE_PAID');
+      expect(controller.lastError?.display, 'Өмнөх QPay QR төлөгдсөн байна.');
+      expect(repo.detailCalls, before.$1 + 1);
+      expect(repo.ledgerCalls, before.$2 + 1);
+      expect(repo.qpayCalls, before.$3 + 1);
+      expect(controller.order?.paymentStatus, PaymentStatus.PAID);
+      expect(controller.qpay?.pending, isNull);
+      controller.dispose();
+    },
+  );
+
+  test(
+    'QPAY_CANCEL_FAILED (502) shows server message and keeps the QR',
+    () async {
+      final repo = _PaymentRepository();
+      final controller = qpayController(repo);
+      await controller.load();
+      expect(await controller.createQPay(), isTrue);
+      repo.qpayCancelError = const AppError(
+        ErrorKind.server,
+        'QPay нэхэмжлэх цуцлахад алдаа гарлаа. Дахин оролдоно уу.',
+        statusCode: 502,
+        code: 'QPAY_CANCEL_FAILED',
+      );
+
+      expect(await controller.cancelQPay(), isFalse);
+      expect(
+        controller.lastError?.display,
+        'QPay нэхэмжлэх цуцлахад алдаа гарлаа. Дахин оролдоно уу.',
+      );
+      expect(controller.qpay?.pending, isNotNull);
+      controller.dispose();
+    },
+  );
+
+  test('other QPay errors keep the plain server message', () async {
+    final repo = _PaymentRepository()
+      ..qpayCreateError = const AppError(
+        ErrorKind.unknown,
+        'Өөр алдаа',
+        statusCode: 409,
+        code: 'SOMETHING_ELSE',
+      );
+    final controller = qpayController(repo);
+    await controller.load();
+    expect(await controller.createQPay(), isFalse);
+    expect(controller.lastError?.display, 'Өөр алдаа');
+    controller.dispose();
+  });
 }

@@ -6,6 +6,7 @@ import 'package:carservice_business/core/domain/pagination.dart';
 import 'package:carservice_business/features/orders/data/order_dto.dart';
 import 'package:carservice_business/features/orders/data/orders_data_source.dart';
 import 'package:carservice_business/features/orders/domain/orders_repository.dart';
+import 'package:carservice_business/features/orders/domain/payment_bank.dart';
 
 /// Remote adapter. JSON and Dio are deliberately kept below the repository
 /// contract; controllers can depend on [OrdersRepository] or a fake.
@@ -111,6 +112,8 @@ class RemoteOrdersRepository implements OrdersRepository {
     String? appointmentId,
     int? estimatedDurationMinutes,
     OrderIntakeDraft? intake,
+    bool? isPostpaid,
+    bool? isInternal,
   }) async {
     // Server parser (order-create-request.ts) rejects a request carrying
     // both non-null: duration is derived from the appointment when one is
@@ -136,6 +139,8 @@ class RemoteOrdersRepository implements OrdersRepository {
         if (estimatedDurationMinutes != null)
           'estimatedDurationMinutes': estimatedDurationMinutes,
         if (intake != null && !intake.isEmpty) 'intake': intake.toJson(),
+        if (isPostpaid != null) 'isPostpaid': isPostpaid,
+        if (isInternal != null) 'isInternal': isInternal,
       };
       return Ok(OrderSummaryDto.fromJson(await _dataSource.create(body)).value);
     } catch (error) {
@@ -463,12 +468,14 @@ class RemoteOrdersRepository implements OrdersRepository {
     String orderId, {
     required OrderPaymentMethod method,
     required Money amount,
+    String? bank,
   }) async {
     try {
       final json = _map(
         await _dataSource.createPayment(orderId, {
           'method': method.name,
           'amount': amount.raw,
+          if (bank != null && paymentMethodNeedsBank(method)) 'bank': bank,
         }),
       );
       return Ok(
@@ -479,6 +486,20 @@ class RemoteOrdersRepository implements OrdersRepository {
       );
     } catch (error) {
       return Err(_error(error, 'Төлбөр бүртгэж чадсангүй'));
+    }
+  }
+
+  @override
+  Future<Result<BankSettings>> getBanks() async {
+    try {
+      final json = _map(await _dataSource.banks());
+      final raw = json['enabledBanks'];
+      if (raw is! List) {
+        throw const OrderParseException('enabledBanks буруу байна.');
+      }
+      return Ok(BankSettings(raw.whereType<String>().toList(growable: false)));
+    } catch (error) {
+      return Err(_error(error, 'Банкны жагсаалт ачаалж чадсангүй'));
     }
   }
 
@@ -512,10 +533,17 @@ class RemoteOrdersRepository implements OrdersRepository {
   }
 
   @override
-  Future<Result<OrderPayment>> createQPay(String orderId) async {
+  Future<Result<OrderPayment>> createQPay(
+    String orderId, {
+    String? amount,
+  }) async {
     try {
       return Ok(
-        _qpayPayment(_map(await _dataSource.createQPay(orderId))['payment']),
+        _qpayPayment(
+          _map(
+            await _dataSource.createQPay(orderId, amount: amount),
+          )['payment'],
+        ),
       );
     } catch (error) {
       return Err(_error(error, 'QPay нэхэмжлэл үүсгэж чадсангүй'));
@@ -663,6 +691,7 @@ Map<String, dynamic> _listQuery(OrderListQuery query) => {
   if (query.assignedToId != null) 'assignedToId': query.assignedToId,
   if (query.paymentStatus != null) 'paymentStatus': query.paymentStatus!.name,
   if (query.postpaid != null) 'postpaid': query.postpaid.toString(),
+  if (query.internal != null) 'internal': query.internal! ? 'yes' : 'no',
   if (query.dateFrom != null) 'dateFrom': _dateOnly(query.dateFrom!),
   if (query.dateTo != null) 'dateTo': _dateOnly(query.dateTo!),
   if (query.q != null && query.q!.isNotEmpty) 'q': query.q,
@@ -755,6 +784,13 @@ OrderPaymentRecord _payment(Object? raw) {
     status: OrderPaymentRecordStatus.fromString(status),
     paidAt: _date(json, 'paidAt'),
     createdAt: _requiredDate(json, 'createdAt'),
+    bank: json['bank'] is String ? json['bank'] as String : null,
+    settlementId:
+        json['settlementId'] is String &&
+            (json['settlementId'] as String).isNotEmpty
+        ? json['settlementId'] as String
+        : null,
+    locked: json['locked'] == true,
   );
 }
 

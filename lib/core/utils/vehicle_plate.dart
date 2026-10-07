@@ -27,3 +27,16 @@ bool isValidVin(String v) {
   final len = t.replaceAll('-', '').length;
   return len >= 9 && len <= 14;
 }
+
+/// Харьцуулахад зориулсан дугаар: зай/зураас хасч, том үсэг болгоно.
+String comparablePlate(String? plate) =>
+    (plate ?? '').toUpperCase().replaceAll(RegExp(r'[\s\-]+'), '');
+
+/// Захиалгын дугаарын snapshot одоогийн машины дугаараас ялгаатай бол хуучин
+/// дугаарыг (trim хийсэн) буцаана; бусад үед `null`.
+String? formerPlate(String? plateSnapshot, String? currentPlate) {
+  final snap = (plateSnapshot ?? '').trim();
+  if (snap.isEmpty) return null;
+  if (comparablePlate(snap) == comparablePlate(currentPlate)) return null;
+  return snap;
+}

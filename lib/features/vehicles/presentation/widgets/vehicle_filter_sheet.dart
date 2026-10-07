@@ -2,13 +2,15 @@ import 'package:flutter/material.dart';
 
 import 'package:carservice_business/app/theme/app_theme.dart';
 import 'package:carservice_business/core/navigation/app_nav.dart';
+import 'package:carservice_business/features/vehicles/domain/vehicles_repository.dart';
 
 /// The applied `assigned`/`postpaid` pair — `null` means that filter is off.
 class VehicleFilterResult {
-  const VehicleFilterResult({this.assigned, this.postpaid});
+  const VehicleFilterResult({this.assigned, this.postpaid, this.ownerKind});
 
   final bool? assigned;
   final bool? postpaid;
+  final VehicleOwnerKind? ownerKind;
 }
 
 /// Filter sheet for the Vehicles list — the two boolean server filters the
@@ -17,18 +19,29 @@ class VehicleFilterResult {
 /// follows `AuditFilterSheet`: edits stay local until "Хэрэглэх", and
 /// dismissing the sheet leaves the list's filters untouched.
 class VehicleFilterSheet extends StatefulWidget {
-  const VehicleFilterSheet({super.key, this.assigned, this.postpaid});
+  const VehicleFilterSheet({
+    super.key,
+    this.assigned,
+    this.postpaid,
+    this.ownerKind,
+  });
 
   final bool? assigned;
   final bool? postpaid;
+  final VehicleOwnerKind? ownerKind;
 
   static Future<VehicleFilterResult?> show(
     BuildContext context, {
     bool? assigned,
     bool? postpaid,
+    VehicleOwnerKind? ownerKind,
   }) {
     return AppNav.sheet<VehicleFilterResult>(
-      VehicleFilterSheet(assigned: assigned, postpaid: postpaid),
+      VehicleFilterSheet(
+        assigned: assigned,
+        postpaid: postpaid,
+        ownerKind: ownerKind,
+      ),
       backgroundColor: Colors.transparent,
     );
   }
@@ -40,12 +53,14 @@ class VehicleFilterSheet extends StatefulWidget {
 class _VehicleFilterSheetState extends State<VehicleFilterSheet> {
   bool? _assigned;
   bool? _postpaid;
+  VehicleOwnerKind? _ownerKind;
 
   @override
   void initState() {
     super.initState();
     _assigned = widget.assigned;
     _postpaid = widget.postpaid;
+    _ownerKind = widget.ownerKind;
   }
 
   @override
@@ -82,6 +97,7 @@ class _VehicleFilterSheetState extends State<VehicleFilterSheet> {
                     onPressed: () => setState(() {
                       _assigned = null;
                       _postpaid = null;
+                      _ownerKind = null;
                     }),
                     child: const Text('Цэвэрлэх'),
                   ),
@@ -100,6 +116,29 @@ class _VehicleFilterSheetState extends State<VehicleFilterSheet> {
                         trueLabel: 'Эзэнтэй',
                         falseLabel: 'Эзэнгүй',
                         onChanged: (v) => setState(() => _assigned = v),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Эзэмшигчийн төрөл',
+                        style: context.textStyles.captionMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final (label, option) in [
+                            ('Бүгд', null),
+                            ('Байгууллага', VehicleOwnerKind.org),
+                            ('Хувь хүн', VehicleOwnerKind.person),
+                          ])
+                            ChoiceChip(
+                              label: Text(label),
+                              selected: _ownerKind == option,
+                              onSelected: (_) =>
+                                  setState(() => _ownerKind = option),
+                            ),
+                        ],
                       ),
                       const SizedBox(height: 16),
                       Text('Төлбөр', style: context.textStyles.captionMedium),
@@ -123,6 +162,7 @@ class _VehicleFilterSheetState extends State<VehicleFilterSheet> {
                     VehicleFilterResult(
                       assigned: _assigned,
                       postpaid: _postpaid,
+                      ownerKind: _ownerKind,
                     ),
                   ),
                   style: ElevatedButton.styleFrom(

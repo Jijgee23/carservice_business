@@ -11,6 +11,7 @@ import 'package:carservice_business/core/utils/async_value.dart';
 import 'package:carservice_business/core/utils/result.dart';
 import 'package:carservice_business/core/widgets/adaptive/permission_gate.dart';
 import 'package:carservice_business/core/widgets/common/common_widgets.dart';
+import 'package:carservice_business/core/widgets/org_badge.dart';
 import 'package:carservice_business/core/widgets/dialogs/confirm_sheet.dart';
 import 'package:carservice_business/core/widgets/dialogs/message.dart';
 import 'package:carservice_business/features/vehicles/domain/vehicle.dart';
@@ -362,6 +363,10 @@ class _DetailBody extends StatelessWidget {
                       style: context.textStyles.captionMedium,
                     ),
                   ),
+                  if (v.ownerIsOrganization) ...[
+                    const OrgBadge(),
+                    const SizedBox(width: 8),
+                  ],
                   if (v.customer?.phone != null)
                     Text(v.customer!.phone!, style: context.textStyles.caption),
                 ],
@@ -371,7 +376,63 @@ class _DetailBody extends StatelessWidget {
         ),
         const SizedBox(height: 20),
         _HistorySection(controller: controller, fmt: fmt),
+        if (controller.vinHistory != null)
+          _VinHistorySection(history: controller.vinHistory!, fmt: fmt),
       ],
+    );
+  }
+}
+
+/// "Ижил арлын дугаартай бүртгэл" — hidden by the controller when the VIN is
+/// absent, there is nothing to show, or the load failed.
+class _VinHistorySection extends StatelessWidget {
+  const _VinHistorySection({required this.history, required this.fmt});
+  final VinHistory history;
+  final DateFormat fmt;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Ижил арлын дугаартай бүртгэл', style: context.textStyles.h3),
+          const SizedBox(height: 8),
+          for (final r in history.records)
+            ListTile(
+              key: ValueKey('vin-record-${r.vehicleId}'),
+              contentPadding: EdgeInsets.zero,
+              title: Text(plateLabel(r.plate)),
+              subtitle: Text(
+                [
+                  [
+                    r.make,
+                    r.model,
+                    if (r.year != null) '${r.year}',
+                  ].whereType<String>().join(' '),
+                  if (r.ownerName != null) r.ownerName!,
+                  '${r.orderCount} захиалга',
+                  if (r.lastOrderAt != null)
+                    'сүүлд ${fmt.format(r.lastOrderAt!.toLocal())}',
+                ].where((e) => e.isNotEmpty).join(' · '),
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => AppNav.push('/vehicles/${r.vehicleId}'),
+            ),
+          if (history.otherTenantRecords > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                'Бусад байгууллагад ${history.otherTenantRecords} бүртгэл байна.',
+                key: const ValueKey('vin-other-tenants'),
+                style: context.textStyles.caption.copyWith(
+                  color: context.colors.textSecondary,
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

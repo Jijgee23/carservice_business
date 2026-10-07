@@ -1,4 +1,5 @@
 import 'package:carservice_business/app/shell/shell_chrome.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -10,7 +11,17 @@ import 'package:carservice_business/app/theme/app_theme.dart';
 import 'package:carservice_business/core/widgets/adaptive/breakpoints.dart';
 import 'package:carservice_business/core/widgets/common/common_widgets.dart';
 import 'package:carservice_business/core/utils/async_value.dart';
+import 'package:carservice_business/core/utils/result.dart';
+import 'package:carservice_business/core/widgets/adaptive/permission_gate.dart';
+import 'package:carservice_business/features/cash/data/cash_repository.dart';
+import 'package:carservice_business/features/cash/domain/cash_repository.dart';
+import 'package:carservice_business/features/cash/presentation/controllers/settlement_flow_controller.dart';
+import 'package:carservice_business/features/cash/presentation/screens/settlement_flow_screen.dart';
+import 'package:carservice_business/features/customers/data/customer_repository.dart';
+import 'package:carservice_business/features/customers/domain/customers_repository.dart';
+import 'package:carservice_business/features/orders/domain/postpaid_settlement.dart';
 import 'package:carservice_business/features/orders/domain/order.dart';
+import 'package:carservice_business/features/orders/domain/payment_bank.dart';
 import 'package:carservice_business/features/orders/domain/orders_repository.dart';
 import 'package:carservice_business/features/orders/presentation/controllers/postpaid_controller.dart';
 import 'package:carservice_business/features/orders/presentation/feature_theme.dart';
@@ -26,6 +37,8 @@ class PostpaidScreen extends StatelessWidget {
     this.controller,
     this.branchController,
     this.user,
+    this.cashRepository,
+    this.customersRepository,
   }) : assert(repository != null || controller != null);
 
   final OrdersRepository? repository;
@@ -33,9 +46,18 @@ class PostpaidScreen extends StatelessWidget {
   final WorkingBranchController? branchController;
   final User? user;
 
+  /// Seams for «Тооцоо нийлэх»; default to the remote repositories.
+  final CashRepository? cashRepository;
+  final CustomersRepository? customersRepository;
+
   @override
   Widget build(BuildContext context) {
-    final child = _PostpaidView(branchController: branchController, user: user);
+    final child = _PostpaidView(
+      branchController: branchController,
+      user: user,
+      cashRepository: cashRepository,
+      customersRepository: customersRepository,
+    );
     if (controller != null) {
       return ChangeNotifierProvider<PostpaidController>.value(
         value: controller!,
@@ -50,9 +72,16 @@ class PostpaidScreen extends StatelessWidget {
 }
 
 class _PostpaidView extends StatefulWidget {
-  const _PostpaidView({this.branchController, this.user});
+  const _PostpaidView({
+    this.branchController,
+    this.user,
+    this.cashRepository,
+    this.customersRepository,
+  });
   final WorkingBranchController? branchController;
   final User? user;
+  final CashRepository? cashRepository;
+  final CustomersRepository? customersRepository;
 
   @override
   State<_PostpaidView> createState() => _PostpaidViewState();
@@ -116,7 +145,16 @@ class _PostpaidViewState extends State<_PostpaidView> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Төлбөрийн үлдэгдэл'),
-        actions: const [ShellNotificationBell()],
+        actions: [
+          if (_canSettle(user))
+            TextButton.icon(
+              key: const ValueKey('postpaid_settle_button'),
+              onPressed: _settle,
+              icon: const Icon(Icons.account_balance_wallet_outlined),
+              label: const Text('Тооцоо нийлэх'),
+            ),
+          const ShellNotificationBell(),
+        ],
       ),
       body: _canView(user)
           ? _PostpaidStateBody(controller: controller)
@@ -130,6 +168,55 @@ class _PostpaidViewState extends State<_PostpaidView> {
       return Authenticator.user;
     } catch (_) {
       return null;
+    }
+  }
+
+  /// Both permissions are required (server: POSTPAID_SETTLEMENT_FORBIDDEN /
+  /// CASH_MANAGE_FORBIDDEN); owner implicit.
+  bool _canSettle(User? user) =>
+      userCanSettlePostpaid(user) && canSeeView(user, 'cash.manage');
+
+  Future<void> _settle() async {
+    final cash = widget.cashRepository ?? RemoteCashRepository();
+    final customers = widget.customersRepository ?? RemoteCustomersRepository();
+    var branchId = _branchController?.selectedBranchId;
+    var options = const <CashBranchOption>[];
+    final bc = _branchController;
+    if (bc != null) {
+      branchId ??= bc.options.lockedBranchId;
+      options = [
+        for (final b in bc.options.branches) CashBranchOption(b.id, b.name),
+      ];
+      if (branchId == null && options.length == 1) branchId = options.first.id;
+    }
+    branchId ??= _safeUser(widget.user)?.branchId;
+    final banks = await cash.getBanks();
+    if (!mounted) return;
+    if (banks is Err<BankSettings>) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(banks.error.display),
+          action: SnackBarAction(label: 'Дахин оролдох', onPressed: _settle),
+        ),
+      );
+      return;
+    }
+    final flow = SettlementFlowController(
+      repo: cash,
+      enabledBanks: banks is Ok<BankSettings> ? banks.value.enabled : const [],
+      branchId: branchId,
+    );
+    final saved = await SettlementFlowScreen.show(
+      context,
+      controller: flow,
+      customers: customers,
+      branches: options,
+    );
+    flow.dispose();
+    if (saved != null && mounted) {
+      unawaited(_controller?.refresh());
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Тооцоо бүртгэгдлээ')));
     }
   }
 

@@ -9,6 +9,8 @@ import 'package:carservice_business/core/services/auth_storage.dart';
 import 'package:carservice_business/core/utils/async_value.dart';
 import 'package:carservice_business/core/widgets/adaptive/adaptive.dart';
 import 'package:carservice_business/core/widgets/common/common_widgets.dart';
+import 'package:carservice_business/core/widgets/filter_pill.dart';
+import 'package:carservice_business/features/customers/domain/customers_repository.dart';
 import 'package:carservice_business/features/customers/domain/customer.dart';
 import 'package:carservice_business/features/customers/presentation/controllers/customer_list_controller.dart';
 import 'package:carservice_business/features/customers/presentation/screens/customer_broadcast_screen.dart';
@@ -104,7 +106,7 @@ class _CustomerSearchTabState extends State<CustomerSearchTab> {
                         controller: _ctrl,
                         onChanged: ctrl.setQuery,
                         decoration: InputDecoration(
-                          hintText: 'Нэр эсвэл утасны дугаараар хайх...',
+                          hintText: 'Нэр, утас эсвэл регистрээр хайх...',
                           prefixIcon: Icon(
                             Icons.search,
                             color: context.colors.textHint,
@@ -146,6 +148,31 @@ class _CustomerSearchTabState extends State<CustomerSearchTab> {
                         onPressed: () =>
                             AppNav.to(const CustomerBroadcastScreen()),
                       ),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppDimens.paddingMD,
+                ),
+                child: Wrap(
+                  spacing: 8,
+                  children: [
+                    FilterPill(
+                      label: 'Бүгд',
+                      selected: ctrl.kind == null,
+                      onTap: () => ctrl.setKind(null),
+                    ),
+                    FilterPill(
+                      label: 'Байгууллага',
+                      selected: ctrl.kind == CustomerKindFilter.org,
+                      onTap: () => ctrl.setKind(CustomerKindFilter.org),
+                    ),
+                    FilterPill(
+                      label: 'Хувь хүн',
+                      selected: ctrl.kind == CustomerKindFilter.person,
+                      onTap: () => ctrl.setKind(CustomerKindFilter.person),
                     ),
                   ],
                 ),

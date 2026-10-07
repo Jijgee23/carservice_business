@@ -6,6 +6,7 @@ import 'package:carservice_business/core/errors/app_error.dart';
 import 'package:carservice_business/core/utils/result.dart';
 import 'package:carservice_business/features/orders/domain/order.dart';
 import 'package:carservice_business/features/orders/domain/orders_repository.dart';
+import 'package:carservice_business/features/orders/domain/payment_bank.dart';
 
 /// Hand-written fake for [OrdersRepository].
 ///
@@ -23,6 +24,15 @@ class FakeOrderRepository implements OrdersRepository {
   final Map<String, List<ServiceItem>> _itemHistory = {};
   final Map<String, List<OrderPaymentRecord>> _payments = {};
   final Map<String, OrderPayment> _qpayPending = {};
+
+  /// Tests flip this to simulate a tenant without QPay configured.
+  bool qpayEnabled = true;
+
+  /// Tests set this to make getQPay fail (status load error).
+  bool qpayLoadFails = false;
+
+  /// Amount of the last createQPay call (null = none / omitted).
+  String? lastQPayAmount;
   final Set<String> _qpayPaid = {};
   int _paymentSequence = 0;
 
@@ -31,6 +41,7 @@ class FakeOrderRepository implements OrdersRepository {
     OrderStatus status = OrderStatus.SCHEDULED,
     PaymentStatus paymentStatus = PaymentStatus.UNPAID,
     bool isPostpaid = false,
+    bool isInternal = false,
   }) {
     return ServiceOrderDetail(
       id: id,
@@ -38,6 +49,7 @@ class FakeOrderRepository implements OrdersRepository {
       status: status,
       paymentStatus: paymentStatus,
       isPostpaid: isPostpaid,
+      isInternal: isInternal,
       scheduledAt: DateTime(2026, 1, 10),
       createdAt: DateTime(2026, 1, 9),
       customer: const CustomerSummary(
@@ -89,6 +101,7 @@ class FakeOrderRepository implements OrdersRepository {
           page: page,
           pageSize: pageSize,
         );
+    lastListQuery = effective;
     if (effective.page < 1 || effective.pageSize < 1) {
       return const Err(AppError(ErrorKind.unknown, 'Хуудаслалт буруу байна'));
     }
@@ -115,6 +128,9 @@ class FakeOrderRepository implements OrdersRepository {
         return false;
       }
       if (effective.postpaid != null && o.isPostpaid != effective.postpaid) {
+        return false;
+      }
+      if (effective.internal != null && o.isInternal != effective.internal) {
         return false;
       }
       final date = o.scheduledAt;
@@ -180,6 +196,15 @@ class FakeOrderRepository implements OrdersRepository {
     return Ok(found);
   }
 
+  /// Last `isPostpaid` passed to [createOrder] (null when omitted).
+  bool? lastIsPostpaid;
+
+  /// Last `isInternal` passed to [createOrder] (null when omitted).
+  bool? lastIsInternal;
+
+  /// Last query passed to [getOrders] (to assert the server filter).
+  OrderListQuery? lastListQuery;
+
   /// Last `intake` passed to [createOrder] (null when none).
   OrderIntakeDraft? lastIntake;
 
@@ -211,8 +236,12 @@ class FakeOrderRepository implements OrdersRepository {
     String? appointmentId,
     int? estimatedDurationMinutes,
     OrderIntakeDraft? intake,
+    bool? isPostpaid,
+    bool? isInternal,
   }) async {
+    lastIsInternal = isInternal;
     lastIntake = intake;
+    lastIsPostpaid = isPostpaid;
     // Mirrors the server parser (order-create-request.ts): mutually
     // exclusive, so the fake cannot accept a payload the real API rejects.
     if (appointmentId != null && estimatedDurationMinutes != null) {
@@ -243,6 +272,7 @@ class FakeOrderRepository implements OrdersRepository {
               lastName: 'User',
             ),
       setAssignedTo: true,
+      isInternal: isInternal,
     );
     _orders.add(created);
     return Ok(created);
@@ -463,14 +493,21 @@ class FakeOrderRepository implements OrdersRepository {
     if (!_orders.any((order) => order.id == orderId)) {
       return const Err(AppError(ErrorKind.notFound, 'Захиалга олдсонгүй'));
     }
-    return Ok((qpayEnabled: true, pending: _qpayPending[orderId]));
+    if (qpayLoadFails) {
+      return const Err(AppError(ErrorKind.unknown, 'QPay алдаа'));
+    }
+    return Ok((qpayEnabled: qpayEnabled, pending: _qpayPending[orderId]));
   }
 
   @override
-  Future<Result<OrderPayment>> createQPay(String orderId) async {
+  Future<Result<OrderPayment>> createQPay(
+    String orderId, {
+    String? amount,
+  }) async {
     if (!_orders.any((order) => order.id == orderId)) {
       return const Err(AppError(ErrorKind.notFound, 'Захиалга олдсонгүй'));
     }
+    lastQPayAmount = amount;
     final payment = OrderPayment(
       id: 'qpay-$orderId',
       amount: _paymentTotals(orderId).remainingAmount,
@@ -677,6 +714,7 @@ class FakeOrderRepository implements OrdersRepository {
     String orderId, {
     required OrderPaymentMethod method,
     required Money amount,
+    String? bank,
   }) async {
     if (!_orders.any((order) => order.id == orderId)) {
       return const Err(AppError(ErrorKind.notFound, 'Захиалга олдсонгүй'));
@@ -688,6 +726,7 @@ class FakeOrderRepository implements OrdersRepository {
       status: OrderPaymentRecordStatus.PAID,
       paidAt: DateTime(2026),
       createdAt: DateTime(2026),
+      bank: paymentMethodNeedsBank(method) ? bank : null,
     );
     (_payments[orderId] ??= <OrderPaymentRecord>[]).add(payment);
     final totals = _paymentTotals(orderId);
@@ -699,6 +738,15 @@ class FakeOrderRepository implements OrdersRepository {
     );
     return Ok(OrderPaymentResult(payment: payment, totals: totals));
   }
+
+  /// Banks the fake offers; tests may narrow it.
+  List<String> enabledBankCodes = kPaymentBanks
+      .map((bank) => bank.code)
+      .toList(growable: false);
+
+  @override
+  Future<Result<BankSettings>> getBanks() async =>
+      Ok(BankSettings(enabledBankCodes));
 
   @override
   Future<Result<OrderPaymentTotals>> reversePayment(
@@ -722,6 +770,7 @@ class FakeOrderRepository implements OrdersRepository {
         status: OrderPaymentRecordStatus.CANCELLED,
         paidAt: current.paidAt,
         createdAt: current.createdAt,
+        bank: current.bank,
       );
     }
     final totals = _paymentTotals(orderId);
@@ -939,6 +988,7 @@ class FakeOrderRepository implements OrdersRepository {
     CustomerSummary? customer,
     VehicleSummary? vehicle,
     bool? isPostpaid,
+    bool? isInternal,
   }) {
     return ServiceOrderDetail(
       id: o.id,
@@ -959,6 +1009,8 @@ class FakeOrderRepository implements OrdersRepository {
       branch: branch ?? o.branch,
       assignedTo: setAssignedTo ? assignedTo : o.assignedTo,
       isPostpaid: isPostpaid ?? o.isPostpaid,
+      hasLockedPayment: o.hasLockedPayment,
+      isInternal: isInternal ?? o.isInternal,
       items: items ?? o.items,
       reports: o.reports,
       paidAt: o.paidAt,

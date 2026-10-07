@@ -178,6 +178,7 @@ class OrderPhoneCard extends StatelessWidget {
                           OrderStatusChip(status: order.status),
                           OrderPaymentChip(status: order.paymentStatus),
                           if (order.isPostpaid) const _PostpaidTag(),
+                          if (order.isInternal) const OrderInternalTag(),
                         ],
                       ),
                       if (order.servicePreview.isNotEmpty) ...[
@@ -263,6 +264,16 @@ class OrderPhoneCard extends StatelessWidget {
             ),
           ),
         ),
+        if (formerPlate(order.plateSnapshot, order.vehicle.plate)
+            case final old?)
+          Text(
+            'хуучин: $old',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: context.textStyles.caption.copyWith(
+              color: context.colors.textSecondary,
+            ),
+          ),
         const SizedBox(height: 2),
         Row(
           children: [
@@ -339,6 +350,30 @@ class _Meta extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Neutral "Дотоод" badge for internal repairs (list row + detail).
+class OrderInternalTag extends StatelessWidget {
+  const OrderInternalTag({super.key});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const ValueKey('order_internal_tag'),
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    decoration: BoxDecoration(
+      color: context.opsCardBg,
+      borderRadius: BorderRadius.circular(AppDimens.radiusFull),
+      border: Border.all(color: context.opsDivider),
+    ),
+    child: Text(
+      'Дотоод',
+      style: TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w600,
+        color: context.opsTextSecondary,
+      ),
+    ),
+  );
 }
 
 class _PostpaidTag extends StatelessWidget {

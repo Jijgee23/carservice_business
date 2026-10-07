@@ -31,7 +31,8 @@ import 'package:carservice_business/features/profile/presentation/screens/profil
 import 'package:carservice_business/features/profile/presentation/screens/sessions_screen.dart';
 import 'package:carservice_business/features/reports/presentation/screens/reports_screen.dart';
 import 'package:carservice_business/features/audit/presentation/screens/audit_list_screen.dart';
-import 'package:carservice_business/features/feedback/domain/feedback.dart' as feedback_domain;
+import 'package:carservice_business/features/feedback/domain/feedback.dart'
+    as feedback_domain;
 import 'package:carservice_business/features/feedback/presentation/screens/feedback_create_screen.dart';
 import 'package:carservice_business/features/feedback/presentation/screens/feedback_detail_screen.dart';
 import 'package:carservice_business/features/feedback/presentation/screens/feedback_list_screen.dart';
@@ -150,13 +151,22 @@ GoRouter buildRouter(AuthController authController) {
     navigatorKey: GlobalKeys.navigator,
     initialLocation: AppRoutes.splash,
     // Consent too: accepting the terms moves the user on.
-    refreshListenable: Listenable.merge([authController, LegalConsentStore.instance]),
+    refreshListenable: Listenable.merge([
+      authController,
+      LegalConsentStore.instance,
+    ]),
     redirect: (context, state) => _redirect(context, state, authController),
     routes: [
       GoRoute(path: AppRoutes.splash, builder: (_, _) => const _SplashScreen()),
       GoRoute(path: AppRoutes.login, builder: (_, _) => const LoginScreen()),
-      GoRoute(path: AppRoutes.locked, builder: (_, _) => const SubscriptionLockedScreen()),
-      GoRoute(path: AppRoutes.consent, builder: (_, _) => const TermsConsentScreen()),
+      GoRoute(
+        path: AppRoutes.locked,
+        builder: (_, _) => const SubscriptionLockedScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.consent,
+        builder: (_, _) => const TermsConsentScreen(),
+      ),
 
       // ── Customers / Vehicles — first real GoRoutes, P3-F6 ──────────────
       //
@@ -190,10 +200,7 @@ GoRouter buildRouter(AuthController authController) {
         builder: (_, _) => const _VehicleListRoute(),
         routes: [
           // Literal before `:id` so `/vehicles/new` is not read as an id.
-          GoRoute(
-            path: 'new',
-            builder: (_, _) => const VehicleCreateScreen(),
-          ),
+          GoRoute(path: 'new', builder: (_, _) => const VehicleCreateScreen()),
           GoRoute(
             path: ':id',
             builder: (context, state) {
@@ -230,14 +237,17 @@ GoRouter buildRouter(AuthController authController) {
       GoRoute(
         path: AppRoutes.services,
         builder: (context, state) => _ServiceListRoute(
-          initialType: _parseServiceKindParam(state.uri.queryParameters['type']),
+          initialType: _parseServiceKindParam(
+            state.uri.queryParameters['type'],
+          ),
         ),
         routes: [
           GoRoute(
             path: 'new',
             builder: (context, state) => CreateServiceScreen(
               initialType:
-                  _parseServiceKindParam(state.uri.queryParameters['type']) ?? ServiceKind.labor,
+                  _parseServiceKindParam(state.uri.queryParameters['type']) ??
+                  ServiceKind.labor,
             ),
           ),
           GoRoute(
@@ -259,7 +269,10 @@ GoRouter buildRouter(AuthController authController) {
         path: '${AppRoutes.diagnosticsReports}/new',
         builder: (_, _) => const NewInspectionScreen(),
       ),
-      GoRoute(path: AppRoutes.diagnosticsReports, builder: (_, _) => const ReportListScreen()),
+      GoRoute(
+        path: AppRoutes.diagnosticsReports,
+        builder: (_, _) => const ReportListScreen(),
+      ),
       GoRoute(
         path: '${AppRoutes.diagnosticsReports}/:id',
         builder: (context, state) {
@@ -273,7 +286,10 @@ GoRouter buildRouter(AuthController authController) {
         path: '${AppRoutes.diagnosticsTemplates}/new',
         builder: (_, _) => const CreateTemplateScreen(),
       ),
-      GoRoute(path: AppRoutes.diagnosticsTemplates, builder: (_, _) => const TemplateListScreen()),
+      GoRoute(
+        path: AppRoutes.diagnosticsTemplates,
+        builder: (_, _) => const TemplateListScreen(),
+      ),
       GoRoute(
         path: '${AppRoutes.diagnosticsTemplates}/:id',
         builder: (context, state) {
@@ -311,9 +327,13 @@ GoRouter buildRouter(AuthController authController) {
         routes: [
           GoRoute(
             path: 'new',
-            builder: (context, state) => EmployeeFormScreen(onSaved: (_) => AppNav.back()),
+            builder: (context, state) =>
+                EmployeeFormScreen(onSaved: (_) => AppNav.back()),
           ),
-          GoRoute(path: 'bulk', builder: (context, state) => const EmployeeBulkScreen()),
+          GoRoute(
+            path: 'bulk',
+            builder: (context, state) => const EmployeeBulkScreen(),
+          ),
           GoRoute(
             path: ':id',
             builder: (context, state) {
@@ -323,7 +343,8 @@ GoRouter buildRouter(AuthController authController) {
               }
               return EmployeeDetailScreen(
                 employeeId: id,
-                onEdit: (employeeId) => AppNav.push('${AppRoutes.employees}/$employeeId/edit'),
+                onEdit: (employeeId) =>
+                    AppNav.push('${AppRoutes.employees}/$employeeId/edit'),
               );
             },
             routes: [
@@ -347,7 +368,8 @@ GoRouter buildRouter(AuthController authController) {
         routes: [
           GoRoute(
             path: 'new',
-            builder: (context, state) => RoleFormScreen(onSaved: () => AppNav.back()),
+            builder: (context, state) =>
+                RoleFormScreen(onSaved: () => AppNav.back()),
           ),
           GoRoute(
             // Bare `/roles/:id` has no screen of its own — roles have no
@@ -355,7 +377,8 @@ GoRouter buildRouter(AuthController authController) {
             // this redirects straight to `edit` rather than needing a
             // `builder` for a location nothing links to directly.
             path: ':id',
-            redirect: (context, state) => '${AppRoutes.roles}/${state.pathParameters['id']}/edit',
+            redirect: (context, state) =>
+                '${AppRoutes.roles}/${state.pathParameters['id']}/edit',
             routes: [
               GoRoute(
                 path: 'edit',
@@ -371,8 +394,14 @@ GoRouter buildRouter(AuthController authController) {
           ),
         ],
       ),
-      GoRoute(path: AppRoutes.schedules, builder: (_, _) => const ScheduleGridScreen()),
-      GoRoute(path: AppRoutes.mySchedule, builder: (_, _) => const MyScheduleScreen()),
+      GoRoute(
+        path: AppRoutes.schedules,
+        builder: (_, _) => const ScheduleGridScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.mySchedule,
+        builder: (_, _) => const MyScheduleScreen(),
+      ),
 
       // ── Удирдлага (Reports/Audit/Feedback) — P7-F4 ──────────────────────
       //
@@ -383,15 +412,22 @@ GoRouter buildRouter(AuthController authController) {
       // `ReportsScreen` already owns its `share_plus` export fallback.
       // Feedback's create/detail hooks are wired the same way
       // `_EmployeeListRoute` wires `EmployeeListScreen`'s.
-      GoRoute(path: AppRoutes.reports, builder: (_, _) => const ReportsScreen()),
-      GoRoute(path: AppRoutes.audit, builder: (_, _) => const AuditListScreen()),
+      GoRoute(
+        path: AppRoutes.reports,
+        builder: (_, _) => const ReportsScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.audit,
+        builder: (_, _) => const AuditListScreen(),
+      ),
       GoRoute(
         path: AppRoutes.feedback,
         builder: (context, state) => _FeedbackListRoute(),
         routes: [
           GoRoute(
             path: 'new',
-            builder: (context, state) => FeedbackCreateScreen(onCreated: (_) => AppNav.back(true)),
+            builder: (context, state) =>
+                FeedbackCreateScreen(onCreated: (_) => AppNav.back(true)),
           ),
           GoRoute(
             path: ':id',
@@ -419,13 +455,18 @@ GoRouter buildRouter(AuthController authController) {
       // repository call) the next time it rebuilds.
       GoRoute(
         path: AppRoutes.profileEdit,
-        builder: (context, _) => EditProfileScreen(onSaved: (_) => AppNav.back()),
+        builder: (context, _) =>
+            EditProfileScreen(onSaved: (_) => AppNav.back()),
       ),
       GoRoute(
         path: AppRoutes.profilePassword,
-        builder: (context, _) => ChangePasswordScreen(onChanged: () => AppNav.back()),
+        builder: (context, _) =>
+            ChangePasswordScreen(onChanged: () => AppNav.back()),
       ),
-      GoRoute(path: AppRoutes.profileSessions, builder: (_, _) => const SessionsScreen()),
+      GoRoute(
+        path: AppRoutes.profileSessions,
+        builder: (_, _) => const SessionsScreen(),
+      ),
       GoRoute(
         path: AppRoutes.profileClosure,
         builder: (_, _) => const AccountClosureScreen(),
@@ -436,7 +477,8 @@ GoRouter buildRouter(AuthController authController) {
       GoRoute(path: AppRoutes.search, builder: (_, _) => const SearchScreen()),
 
       StatefulShellRoute.indexedStack(
-        builder: (context, state, navigationShell) => AppShell(navigationShell: navigationShell),
+        builder: (context, state, navigationShell) =>
+            AppShell(navigationShell: navigationShell),
         branches: [
           StatefulShellBranch(
             navigatorKey: AppNav.tabKey(0),
@@ -460,7 +502,10 @@ GoRouter buildRouter(AuthController authController) {
                 path: AppRoutes.orders,
                 builder: (_, _) => const OrderListScreen(),
                 routes: [
-                  GoRoute(path: 'in-progress', builder: (_, _) => const _InProgressRoute()),
+                  GoRoute(
+                    path: 'in-progress',
+                    builder: (_, _) => const _InProgressRoute(),
+                  ),
                   GoRoute(
                     path: 'postpaid',
                     builder: (context, _) => PostpaidScreen(
@@ -503,7 +548,12 @@ GoRouter buildRouter(AuthController authController) {
           StatefulShellBranch(
             navigatorKey: AppNav.tabKey(3),
             observers: [ShellDepthTracker.instance.observerFor(3)],
-            routes: [GoRoute(path: AppRoutes.more, builder: (_, _) => const MoreScreen())],
+            routes: [
+              GoRoute(
+                path: AppRoutes.more,
+                builder: (_, _) => const MoreScreen(),
+              ),
+            ],
           ),
         ],
       ),
@@ -564,10 +614,11 @@ class _InProgressRouteState extends State<_InProgressRoute> {
   }
 
   @override
-  Widget build(BuildContext context) => ChangeNotifierProvider<OrderController>.value(
-    value: _controller!,
-    child: const InProgressScreen(),
-  );
+  Widget build(BuildContext context) =>
+      ChangeNotifierProvider<OrderController>.value(
+        value: _controller!,
+        child: const InProgressScreen(),
+      );
 }
 
 /// The order detail page — `/orders/:id` inside the Orders tab, and
@@ -614,7 +665,10 @@ Future<String?> _redirect(
     if (atLogin) return null;
     final intended = state.uri.toString();
     if (intended == AppRoutes.splash) return AppRoutes.login;
-    return Uri(path: AppRoutes.login, queryParameters: {'from': intended}).toString();
+    return Uri(
+      path: AppRoutes.login,
+      queryParameters: {'from': intended},
+    ).toString();
   }
 
   // The terms come first — before any page and the subscription lock —
@@ -623,11 +677,16 @@ Future<String?> _redirect(
   final userId = Authenticator.user?.id;
   if (userId != null && !LegalConsentStore.instance.hasAccepted(userId)) {
     if (atConsent) return null;
-    final from = atLogin || atSplash ? state.uri.queryParameters['from'] : state.uri.toString();
+    final from = atLogin || atSplash
+        ? state.uri.queryParameters['from']
+        : state.uri.toString();
     return Uri(
       path: AppRoutes.consent,
       queryParameters: {
-        if (from != null && from.isNotEmpty && from != AppRoutes.login && from != AppRoutes.splash)
+        if (from != null &&
+            from.isNotEmpty &&
+            from != AppRoutes.login &&
+            from != AppRoutes.splash)
           'from': from,
       },
     ).toString();
@@ -685,8 +744,9 @@ class _MissingCustomerRoute extends StatelessWidget {
   const _MissingCustomerRoute();
 
   @override
-  Widget build(BuildContext context) =>
-      const Scaffold(body: Center(child: Text('Үйлчлүүлэгчийн дугаар буруу байна')));
+  Widget build(BuildContext context) => const Scaffold(
+    body: Center(child: Text('Үйлчлүүлэгчийн дугаар буруу байна')),
+  );
 }
 
 /// `/vehicles` — the standalone `VehicleListScreen` (P3-F3), which already
@@ -700,9 +760,11 @@ class _VehicleListRoute extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => VehicleListScreen(
-    onSelectVehicle: (Vehicle vehicle) => AppNav.push('${AppRoutes.vehicles}/${vehicle.id}'),
+    onSelectVehicle: (Vehicle vehicle) =>
+        AppNav.push('${AppRoutes.vehicles}/${vehicle.id}'),
     onCreateVehicle: () async =>
-        await AppNav.push<NewVehicleResult>('${AppRoutes.vehicles}/new') != null,
+        await AppNav.push<NewVehicleResult>('${AppRoutes.vehicles}/new') !=
+        null,
   );
 }
 
@@ -733,7 +795,8 @@ class _ServiceListRoute extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ServiceListScreen(
     initialType: initialType,
-    onSelectService: (Service service) => AppNav.push('${AppRoutes.services}/${service.id}'),
+    onSelectService: (Service service) =>
+        AppNav.push('${AppRoutes.services}/${service.id}'),
     onCreateService: (ServiceKind kind) => AppNav.push(
       Uri(
         path: '${AppRoutes.services}/new',
@@ -747,15 +810,17 @@ class _MissingServiceRoute extends StatelessWidget {
   const _MissingServiceRoute();
 
   @override
-  Widget build(BuildContext context) =>
-      const Scaffold(body: Center(child: Text('Үйлчилгээний дугаар буруу байна')));
+  Widget build(BuildContext context) => const Scaffold(
+    body: Center(child: Text('Үйлчилгээний дугаар буруу байна')),
+  );
 }
 
 class _MissingDiagnosticRoute extends StatelessWidget {
   const _MissingDiagnosticRoute();
   @override
-  Widget build(BuildContext context) =>
-      const Scaffold(body: Center(child: Text('Оношилгооны дугаар буруу байна')));
+  Widget build(BuildContext context) => const Scaffold(
+    body: Center(child: Text('Оношилгооны дугаар буруу байна')),
+  );
 }
 
 /// Route-local `?type=` encoding for [ServiceKind] — deliberately not
@@ -787,7 +852,8 @@ class _EmployeeListRoute extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => EmployeeListScreen(
-    onTapRow: (employee) => AppNav.push('${AppRoutes.employees}/${employee.id}'),
+    onTapRow: (employee) =>
+        AppNav.push('${AppRoutes.employees}/${employee.id}'),
     onCreate: () => AppNav.push('${AppRoutes.employees}/new'),
     onBulkEdit: () => AppNav.push('${AppRoutes.employees}/bulk'),
   );
@@ -816,7 +882,9 @@ class _EmployeeEditRoute extends StatefulWidget {
 
 class _EmployeeEditRouteState extends State<_EmployeeEditRoute> {
   final EmployeesRepository _repo = RemoteEmployeesRepository();
-  late final Future<Result<Employee>> _future = _repo.getEmployee(widget.employeeId);
+  late final Future<Result<Employee>> _future = _repo.getEmployee(
+    widget.employeeId,
+  );
 
   @override
   Widget build(BuildContext context) => FutureBuilder<Result<Employee>>(
@@ -829,7 +897,11 @@ class _EmployeeEditRouteState extends State<_EmployeeEditRoute> {
       if (result is! Ok<Employee>) {
         return const _MissingEmployeeRoute();
       }
-      return EmployeeFormScreen(employee: result.value, repo: _repo, onSaved: (_) => AppNav.back());
+      return EmployeeFormScreen(
+        employee: result.value,
+        repo: _repo,
+        onSaved: (_) => AppNav.back(),
+      );
     },
   );
 }
@@ -886,8 +958,9 @@ class _MissingFeedbackRoute extends StatelessWidget {
   const _MissingFeedbackRoute();
 
   @override
-  Widget build(BuildContext context) =>
-      const Scaffold(body: Center(child: Text('Санал хүсэлтийн дугаар буруу байна')));
+  Widget build(BuildContext context) => const Scaffold(
+    body: Center(child: Text('Санал хүсэлтийн дугаар буруу байна')),
+  );
 }
 
 /// `/roles/:id/edit` — fetches the [Role] by id before handing it to

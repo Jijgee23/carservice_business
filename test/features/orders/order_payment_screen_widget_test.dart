@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:carservice_business/app/theme/app_theme.dart';
 import 'package:carservice_business/core/domain/diagnostic.dart';
 import 'package:carservice_business/core/domain/user.dart';
+import 'package:carservice_business/core/errors/app_error.dart';
 import 'package:carservice_business/core/utils/result.dart';
 import 'package:carservice_business/features/orders/domain/order.dart';
 import 'package:carservice_business/features/orders/presentation/controllers/order_payment_controller.dart';
@@ -48,10 +49,12 @@ class _WidgetPaymentRepository extends FakeOrderRepository {
   _WidgetPaymentRepository({
     this.malformedQPay = false,
     this.seedPaidLedger = false,
+    this.lockedLedger = false,
     this.qpayCheckOutcome,
   }) : super(seedOrders: [_order()]);
   final bool malformedQPay;
   final bool seedPaidLedger;
+  final bool lockedLedger;
   final ({bool paid, String? message})? qpayCheckOutcome;
   bool qpayPaidAfterCheck = false;
   bool reversed = false;
@@ -85,6 +88,7 @@ class _WidgetPaymentRepository extends FakeOrderRepository {
         status: reversed ? OrderPaymentRecordStatus.CANCELLED : _paid.status,
         paidAt: _paid.paidAt,
         createdAt: _paid.createdAt,
+        locked: lockedLedger,
       ),
     ]);
   }
@@ -157,9 +161,10 @@ Future<void> _pumpPayment(
   required User user,
   required ThemeData theme,
   double width = 375,
+  double height = 800,
   _WidgetPaymentRepository? repository,
 }) async {
-  tester.binding.window.physicalSizeTestValue = Size(width, 800);
+  tester.binding.window.physicalSizeTestValue = Size(width, height);
   tester.binding.window.devicePixelRatioTestValue = 1;
   final repo = repository ?? _WidgetPaymentRepository();
   await tester.pumpWidget(
@@ -174,6 +179,15 @@ Future<void> _pumpPayment(
   );
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 20));
+}
+
+Future<void> _openOption(WidgetTester tester, String optionKey) async {
+  final open = find.byKey(const ValueKey('open_payment_sheet'));
+  await tester.ensureVisible(open);
+  await tester.tap(open);
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(ValueKey('pay_opt_$optionKey')));
+  await tester.pumpAndSettle();
 }
 
 void main() {
@@ -216,6 +230,8 @@ void main() {
       theme: AppTheme.light,
     );
     expect(find.byKey(const ValueKey('payment_amount_input')), findsNothing);
+    await _openOption(tester, 'QPAY');
+    expect(find.byKey(const ValueKey('pay_opt_CASH')), findsNothing);
     expect(find.byKey(const ValueKey('create_qpay')), findsNothing);
     expect(find.text('QPay нэхэмжлэл үүсгэх эрхгүй байна.'), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
@@ -225,9 +241,88 @@ void main() {
       user: _user(const ['payments.view', 'payments.create']),
       theme: AppTheme.light,
     );
+    await _openOption(tester, 'CASH');
     expect(find.byKey(const ValueKey('payment_amount_input')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('pay_sheet_back')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('pay_opt_QPAY')));
+    await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('create_qpay')), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets(
+    'not-configured QPay shows the row with a message, no QR button',
+    (tester) async {
+      final repo = _WidgetPaymentRepository()..qpayEnabled = false;
+      await _pumpPayment(
+        tester,
+        user: _user(const ['payments.view', 'payments.create']),
+        theme: AppTheme.light,
+        repository: repo,
+      );
+      await _openOption(tester, 'QPAY');
+      expect(find.text(qpayNotConfiguredMessage), findsOneWidget);
+      expect(find.byKey(const ValueKey('create_qpay')), findsNothing);
+      expect(find.byKey(const ValueKey('qpay_amount_input')), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'failed QPay status load shows retry, not the not-configured text',
+    (tester) async {
+      final repo = _WidgetPaymentRepository()..qpayLoadFails = true;
+      await _pumpPayment(
+        tester,
+        user: _user(const ['payments.view', 'payments.create']),
+        theme: AppTheme.light,
+        repository: repo,
+      );
+      await _openOption(tester, 'QPAY');
+      expect(find.text(qpayLoadFailedMessage), findsOneWidget);
+      expect(find.text(qpayNotConfiguredMessage), findsNothing);
+      repo.qpayLoadFails = false;
+      await tester.tap(find.byKey(const ValueKey('qpay_retry')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('qpay_amount_input')), findsOneWidget);
+    },
+  );
+
+  testWidgets('QPay amount defaults to remaining, validates, and is sent', (
+    tester,
+  ) async {
+    final repo = _WidgetPaymentRepository();
+    await _pumpPayment(
+      tester,
+      user: _user(const ['payments.view', 'payments.create']),
+      theme: AppTheme.light,
+      height: 1100,
+      repository: repo,
+    );
+    await _openOption(tester, 'QPAY');
+    final input = find.byKey(const ValueKey('qpay_amount_input'));
+    expect(tester.widget<TextField>(input).controller!.text, '100.50');
+
+    await tester.enterText(input, '0');
+    await tester.tap(find.byKey(const ValueKey('create_qpay')));
+    await tester.pump();
+    expect(find.text(qpayAmountRequiredMessage), findsOneWidget);
+    expect(repo.lastQPayAmount, isNull);
+
+    await tester.enterText(input, '100.51');
+    await tester.tap(find.byKey(const ValueKey('create_qpay')));
+    await tester.pump();
+    expect(find.text(qpayAmountExceedsMessage), findsOneWidget);
+    expect(repo.lastQPayAmount, isNull);
+
+    await tester.enterText(input, '4000');
+    expect(tester.widget<TextField>(input).controller!.text, '4,000');
+
+    await tester.enterText(input, '40');
+    await tester.tap(find.byKey(const ValueKey('create_qpay')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 20));
+    expect(repo.lastQPayAmount, '40');
   });
 
   testWidgets('malformed QR and unsafe bank links render a safe fallback', (
@@ -239,10 +334,32 @@ void main() {
       theme: AppTheme.dark,
       repository: _WidgetPaymentRepository(malformedQPay: true),
     );
+    await _openOption(tester, 'QPAY');
     expect(find.textContaining('QR зураг боломжгүй байна'), findsOneWidget);
     expect(find.text('Unsafe'), findsNothing);
     expect(find.text('Missing'), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('reverse is disabled with reason when payment is locked', (
+    tester,
+  ) async {
+    final repo = _WidgetPaymentRepository(
+      seedPaidLedger: true,
+      lockedLedger: true,
+    );
+    await _pumpPayment(
+      tester,
+      user: _user(const ['payments.view', 'payments.delete']),
+      theme: AppTheme.light,
+      repository: repo,
+    );
+    final reverse = tester.widget<IconButton>(
+      find.byKey(const ValueKey('reverse_payment_payment-1')),
+    );
+    expect(reverse.onPressed, isNull);
+    expect(reverse.tooltip, CashSessionEntryLockedError.message);
+    expect(repo.reversed, isFalse);
   });
 
   testWidgets('paid ledger rows expose reversal only with delete permission', (
@@ -289,6 +406,7 @@ void main() {
       );
 
       await pumpWith(const ['payments.view']);
+      await _openOption(tester, 'QPAY');
       expect(
         (tester.widget<OutlinedButton>(
           find.byKey(const ValueKey('check_qpay')),
@@ -303,6 +421,7 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
 
       await pumpWith(const ['payments.view', 'payments.edit']);
+      await _openOption(tester, 'QPAY');
       expect(
         (tester.widget<OutlinedButton>(
           find.byKey(const ValueKey('check_qpay')),
@@ -317,6 +436,7 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
 
       await pumpWith(const ['payments.view', 'payments.delete']);
+      await _openOption(tester, 'QPAY');
       expect(
         (tester.widget<OutlinedButton>(
           find.byKey(const ValueKey('check_qpay')),
@@ -345,9 +465,12 @@ void main() {
           'payments.edit',
         ]),
         theme: AppTheme.light,
+        // Taller: the fixed bank-picker slot pushes the QPay card down.
+        height: 1100,
         repository: repo,
       );
 
+      await _openOption(tester, 'QPAY');
       await tester.tap(find.byKey(const ValueKey('create_qpay')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 20));
@@ -357,6 +480,7 @@ void main() {
       checkButton.onPressed!();
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 20));
+      await tester.pumpAndSettle(); // sheet closes once the order is paid
 
       expect(find.byKey(const ValueKey('qpay_check_feedback')), findsOneWidget);
       expect(find.text('QPay төлбөр амжилттай баталгаажлаа.'), findsOneWidget);

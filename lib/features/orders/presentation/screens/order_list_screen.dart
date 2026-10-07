@@ -319,7 +319,7 @@ class _OrderListScreenState extends State<OrderListScreen> {
     return [
       ListSearchBar(
         controller: _searchController,
-        hintText: 'Дугаар, машин, үйлчлүүлэгч...',
+        hintText: 'Дугаар, улсын/арлын дугаар, үйлчлүүлэгч...',
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
         activeFilters: activeFilters,
         onChanged: controller.setQuery,
@@ -753,6 +753,7 @@ class _QuickFilterChips extends StatelessWidget {
         assignedToId: filter.assignedToId,
         plate: filter.plate,
         postpaid: filter.postpaid,
+        internal: filter.internal,
       ),
       _QuickFilter.open => OrderFilter(
         statuses: active ? const {} : _openStatuses,
@@ -763,6 +764,7 @@ class _QuickFilterChips extends StatelessWidget {
         dateTo: filter.dateTo,
         plate: filter.plate,
         postpaid: filter.postpaid,
+        internal: filter.internal,
       ),
       _QuickFilter.unpaid => OrderFilter(
         statuses: filter.statuses,
@@ -773,6 +775,7 @@ class _QuickFilterChips extends StatelessWidget {
         dateTo: filter.dateTo,
         plate: filter.plate,
         postpaid: filter.postpaid,
+        internal: filter.internal,
       ),
       _QuickFilter.mine => OrderFilter(
         statuses: filter.statuses,
@@ -783,6 +786,7 @@ class _QuickFilterChips extends StatelessWidget {
         dateTo: filter.dateTo,
         plate: filter.plate,
         postpaid: filter.postpaid,
+        internal: filter.internal,
       ),
     };
     onChanged(next);

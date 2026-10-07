@@ -251,6 +251,17 @@ class OrderPaymentRecord {
   final DateTime? paidAt;
   final DateTime createdAt;
 
+  /// Receiving bank code (BANK_TRANSFER / CARD only); null otherwise.
+  final String? bank;
+
+  /// Set when the payment belongs to a postpaid lump-sum settlement
+  /// («Нэгдсэн тооцоо»); such rows are reversed via the settlement.
+  final String? settlementId;
+
+  /// True when the payment's ledger row sits in a closed cash shift; the
+  /// server then refuses to reverse it (CASH_SESSION_ENTRY_LOCKED).
+  final bool locked;
+
   const OrderPaymentRecord({
     required this.id,
     required this.amountMoney,
@@ -258,8 +269,12 @@ class OrderPaymentRecord {
     required this.status,
     required this.paidAt,
     required this.createdAt,
+    this.bank,
+    this.settlementId,
+    this.locked = false,
   });
 
+  bool get isSettlement => settlementId != null;
   double get amount => amountMoney.asDouble;
 }
 
@@ -674,6 +689,16 @@ class ServiceOrderSummary {
   final BranchSummary branch;
   final UserSummary? assignedTo;
   final bool isPostpaid;
+
+  /// A paid payment sits in a closed cash shift (server flag; false when an
+  /// older server omits it). Cancel/edit are then refused (PAID_PAYMENT_LOCKED).
+  final bool hasLockedPayment;
+
+  /// Internal repair ("Дотоод засвар"): no payment, booked as internal cost.
+  final bool isInternal;
+  final bool paidInFullBeforeCompletion;
+  final String? plateSnapshot;
+  final String? vinSnapshot;
   final Money? totalAmountMoney;
   final Money? paidAmountMoney;
   final DateTime? expectedFinishAt;
@@ -698,6 +723,11 @@ class ServiceOrderSummary {
     required this.branch,
     this.assignedTo,
     this.isPostpaid = false,
+    this.hasLockedPayment = false,
+    this.isInternal = false,
+    this.paidInFullBeforeCompletion = false,
+    this.plateSnapshot,
+    this.vinSnapshot,
     this.totalAmountMoney,
     this.paidAmountMoney,
     this.expectedFinishAt,
@@ -731,15 +761,26 @@ class ServiceOrderSummary {
 
   /// Why "Дуусгах" would be rejected (`ITEMS_NOT_COMPLETED` /
   /// `PAYMENT_INCOMPLETE`), or `null` when nothing is known to block it.
-  String? get completionBlocker {
+  ///
+  /// A postpaid order with a balance may be closed only by a user holding
+  /// `orders.closeUnpaidPostpaid` (owner implicit): [canCloseUnpaidPostpaid].
+  String? completionBlocker({bool canCloseUnpaidPostpaid = false}) {
     final reasons = <String>[];
     final unfinished = unfinishedWorkCount;
     if (unfinished != null && unfinished > 0) {
       reasons.add('$unfinished ажил дуусаагүй');
     }
     final balance = unpaidBalance;
-    if (!isPostpaid && balance != null && balance > 0.004) {
+    if (!isPostpaid && !isInternal && balance != null && balance > 0.004) {
       reasons.add('${_groupThousands(balance)}₮ төлөгдөөгүй');
+    }
+    if (isPostpaid &&
+        !canCloseUnpaidPostpaid &&
+        balance != null &&
+        balance > 0.004) {
+      reasons.add(
+        'Дараа тооцоот: төлбөр дутуу — зөвхөн эрхтэй хэрэглэгч хаана',
+      );
     }
     return reasons.isEmpty ? null : reasons.join(', ');
   }
@@ -777,6 +818,15 @@ class ServiceOrderSummary {
           : (j['isPostpaid'] is bool
                 ? j['isPostpaid'] as bool
                 : (throw const OrderParseException('isPostpaid буруу байна.'))),
+      hasLockedPayment: j['hasLockedPayment'] == true,
+      isInternal: j['isInternal'] == true,
+      paidInFullBeforeCompletion: j['paidInFullBeforeCompletion'] == true,
+      plateSnapshot: j['plateSnapshot'] is String
+          ? j['plateSnapshot'] as String
+          : null,
+      vinSnapshot: j['vinSnapshot'] is String
+          ? j['vinSnapshot'] as String
+          : null,
       totalAmountMoney: total == null ? null : Money(total),
       paidAmountMoney: paid == null ? null : Money(paid),
       progress: _legacyProgress(j),
@@ -825,6 +875,11 @@ class ServiceOrderDetail extends ServiceOrderSummary {
     required super.branch,
     super.assignedTo,
     super.isPostpaid,
+    super.hasLockedPayment,
+    super.isInternal,
+    super.paidInFullBeforeCompletion,
+    super.plateSnapshot,
+    super.vinSnapshot,
     super.totalAmountMoney,
     super.paidAmountMoney,
     super.expectedFinishAt,
@@ -886,6 +941,7 @@ class ServiceOrderDetail extends ServiceOrderSummary {
       vehicle: base.vehicle,
       branch: base.branch,
       assignedTo: base.assignedTo,
+      hasLockedPayment: base.hasLockedPayment,
       items: _legacyList(j, 'items')
           .map((e) {
             if (e is! Map) {

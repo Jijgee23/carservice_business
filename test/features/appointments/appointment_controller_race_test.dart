@@ -67,11 +67,20 @@ class _QueuedAppointmentsRepository implements AppointmentsRepository {
     String? note,
     List<String> categoryIds = const [],
     bool confirmed = false,
+    String? assignedToId,
   }) => throw UnimplementedError();
 
   @override
-  Future<Result<AppointmentLifecycleResult>> confirm(String appointmentId) =>
-      throw UnimplementedError();
+  Future<Result<AppointmentLifecycleResult>> confirm(
+    String appointmentId, {
+    String? assignedToId,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<Result<AppointmentSummary>> updateAssignee(
+    String appointmentId,
+    String assignedToId,
+  ) => throw UnimplementedError();
 
   @override
   Future<Result<AppointmentSummary>> getAppointment(String appointmentId) =>
@@ -99,6 +108,7 @@ class _QueuedAppointmentsRepository implements AppointmentsRepository {
     String appointmentId,
     DateTime requestedAt, {
     bool confirmed = false,
+    String? assignedToId,
   }) => throw UnimplementedError();
 
   @override

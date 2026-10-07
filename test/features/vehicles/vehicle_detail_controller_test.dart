@@ -354,6 +354,10 @@ class _QueuedVehicleRepository implements VehiclesRepository {
       const Ok(VehicleHistory());
 
   @override
+  Future<Result<VinHistory>> getVinHistory(String vehicleId) async =>
+      const Ok(VinHistory());
+
+  @override
   Future<Result<PagedResult<Vehicle>>> getVehicles({
     VehicleListQuery? query,
   }) async => Ok(

@@ -55,12 +55,15 @@ class AppShell extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider<OrderController>(
-          create: (context) => OrderController(repo: context.read<OrdersRepository>()),
+          create: (context) =>
+              OrderController(repo: context.read<OrdersRepository>()),
         ),
         // Detail routes receive the same list instance so successful detail
         // mutations can reload the active server query instead of creating a
         // second list with different filters or pagination.
-        Provider<OrderListController>(create: (context) => context.read<OrderController>()),
+        Provider<OrderListController>(
+          create: (context) => context.read<OrderController>(),
+        ),
         ChangeNotifierProvider(create: (_) => AppointmentController()),
         ChangeNotifierProvider(
           create: (context) {
@@ -71,7 +74,10 @@ class AppShell extends StatelessWidget {
               // These controllers' setBranch methods reload immediately. Once
               // the validated X-Working-Branch header is active, retaining a
               // stale ?branchId= would make the API reject the request (422).
-              await Future.wait([orders.setBranch(null), appointments.setBranch(null)]);
+              await Future.wait([
+                orders.setBranch(null),
+                appointments.setBranch(null),
+              ]);
             }
 
             return WorkingBranchController(
@@ -82,7 +88,9 @@ class AppShell extends StatelessWidget {
           },
         ),
         ChangeNotifierProvider(create: (_) => NotificationController()..load()),
-        ChangeNotifierProvider<ShellDepthTracker>.value(value: ShellDepthTracker.instance),
+        ChangeNotifierProvider<ShellDepthTracker>.value(
+          value: ShellDepthTracker.instance,
+        ),
       ],
       child: Builder(
         builder: (shellContext) {
@@ -104,7 +112,8 @@ class AppShell extends StatelessWidget {
             _destinations[2],
             _destinations[3],
           ];
-          final canSearch = canSeeView(user, 'customers') || canSeeView(user, 'vehicles');
+          final canSearch =
+              canSeeView(user, 'customers') || canSeeView(user, 'vehicles');
           return AdaptiveScaffold(
             scaffoldKey: bottomNav.scaffoldKey,
             body: navigationShell,
@@ -125,9 +134,13 @@ class AppShell extends StatelessWidget {
             title: _ShellGreeting(name: user?.firstName),
             // Pushed screens own a single app bar with the bell (D: shell
             // header only on top-level tabs; no branch switch mid-flow).
-            showHeader: !ShellDepthTracker.instance.isSubPage(navigationShell.currentIndex),
+            showHeader: !ShellDepthTracker.instance.isSubPage(
+              navigationShell.currentIndex,
+            ),
             notificationAction: _NotificationAction(
-              unreadCount: shellContext.watch<NotificationController>().unreadCount,
+              unreadCount: shellContext
+                  .watch<NotificationController>()
+                  .unreadCount,
               onPressed: () => _openNotifications(shellContext),
             ),
           );
@@ -144,13 +157,14 @@ class AppShell extends StatelessWidget {
 }
 
 extension on AdaptiveNavigationDestination {
-  AdaptiveNavigationDestination copyWith({bool? enabled}) => AdaptiveNavigationDestination(
-    label: label,
-    icon: icon,
-    selectedIcon: selectedIcon,
-    enabled: enabled ?? this.enabled,
-    tooltip: tooltip,
-  );
+  AdaptiveNavigationDestination copyWith({bool? enabled}) =>
+      AdaptiveNavigationDestination(
+        label: label,
+        icon: icon,
+        selectedIcon: selectedIcon,
+        enabled: enabled ?? this.enabled,
+        tooltip: tooltip,
+      );
 }
 
 class _ShellGreeting extends StatelessWidget {
@@ -174,7 +188,10 @@ class _ShellGreeting extends StatelessWidget {
 }
 
 class _NotificationAction extends StatelessWidget {
-  const _NotificationAction({required this.unreadCount, required this.onPressed});
+  const _NotificationAction({
+    required this.unreadCount,
+    required this.onPressed,
+  });
   final int unreadCount;
   final VoidCallback onPressed;
 
@@ -251,7 +268,12 @@ class MoreScreen extends StatelessWidget {
     // route's registration in `lib/app/router.dart` and the screens'
     // "Not wired to a route" doc comments this slice resolves.
     _NavigationGroup('Ажилын хувиар', [
-      _NavigationEntry('Ажилтнууд', Icons.badge_outlined, 'employees', route: AppRoutes.employees),
+      _NavigationEntry(
+        'Ажилтнууд',
+        Icons.badge_outlined,
+        'employees',
+        route: AppRoutes.employees,
+      ),
       _NavigationEntry(
         'Эрхүүд',
         Icons.admin_panel_settings_outlined,
@@ -276,8 +298,18 @@ class MoreScreen extends StatelessWidget {
     // the web's `requireUser()`-only gate); Аудит stays gated on
     // `audit.view` via `canSeeView`'s existing 'audit' special-case.
     _NavigationGroup('Удирдлага', [
-      _NavigationEntry('Тайлан', Icons.bar_chart_outlined, null, route: AppRoutes.reports),
-      _NavigationEntry('Аудит', Icons.fact_check_outlined, 'audit', route: AppRoutes.audit),
+      _NavigationEntry(
+        'Тайлан',
+        Icons.bar_chart_outlined,
+        null,
+        route: AppRoutes.reports,
+      ),
+      _NavigationEntry(
+        'Аудит',
+        Icons.fact_check_outlined,
+        'audit',
+        route: AppRoutes.audit,
+      ),
     ]),
     // Салбарууд / Тохиргоо had no mobile screen (placeholder snackbar only)
     // and were removed with the duplicate Каталог → Оношилгоо row, which
@@ -290,7 +322,11 @@ class MoreScreen extends StatelessWidget {
     final unreadCount = context.watch<NotificationController>().unreadCount;
     // Work groups cycle through the theme's accent tones; the general app
     // rows stay neutral so the two kinds read apart at a glance.
-    final tones = [context.colors.accent, context.colors.good, context.colors.warning];
+    final tones = [
+      context.colors.accent,
+      context.colors.good,
+      context.colors.warning,
+    ];
     final neutral = context.colors.textSecondary;
 
     // Full-screen, above the bottom navigation — like the group rows'
@@ -303,13 +339,21 @@ class MoreScreen extends StatelessWidget {
         builder: (context, constraints) {
           // Keep rows at a readable width on tablets instead of stretching
           // them across the whole content pane.
-          final gutter = ((constraints.maxWidth - 640) / 2).clamp(16.0, double.infinity);
+          final gutter = ((constraints.maxWidth - 640) / 2).clamp(
+            16.0,
+            double.infinity,
+          );
           return ListView(
             padding: EdgeInsets.fromLTRB(gutter, 12, gutter, 32),
             children: [
-              if (user != null) _ProfileCard(user: user, onTap: () => open(AppPages.profile)),
+              if (user != null)
+                _ProfileCard(user: user, onTap: () => open(AppPages.profile)),
               for (final (i, group) in groups.indexed)
-                _NavigationGroupView(group: group, user: user, tone: tones[i % tones.length]),
+                _NavigationGroupView(
+                  group: group,
+                  user: user,
+                  tone: tones[i % tones.length],
+                ),
               _MoreSection(
                 label: 'Ерөнхий',
                 tiles: [
@@ -318,12 +362,18 @@ class MoreScreen extends StatelessWidget {
                     label: 'Мэдэгдэл',
                     tone: neutral,
                     trailing: unreadCount > 0
-                        ? Badge(label: Text(unreadCount > 99 ? '99+' : '$unreadCount'))
+                        ? Badge(
+                            label: Text(
+                              unreadCount > 99 ? '99+' : '$unreadCount',
+                            ),
+                          )
                         : null,
                     // Back from the list, the badge above shows what is left.
-                    onTap: () => AppNav.toNamed<void>(AppPages.notifications).then((_) {
-                      if (context.mounted) context.read<NotificationController>().load();
-                    }),
+                    onTap: () =>
+                        AppNav.toNamed<void>(AppPages.notifications).then((_) {
+                          if (context.mounted)
+                            context.read<NotificationController>().load();
+                        }),
                   ),
                   _MoreTile(
                     icon: Icons.feedback_outlined,
@@ -388,14 +438,20 @@ class MoreScreen extends StatelessWidget {
 }
 
 class _NavigationGroupView extends StatelessWidget {
-  const _NavigationGroupView({required this.group, required this.user, required this.tone});
+  const _NavigationGroupView({
+    required this.group,
+    required this.user,
+    required this.tone,
+  });
   final _NavigationGroup group;
   final User? user;
   final Color tone;
 
   @override
   Widget build(BuildContext context) {
-    final visible = group.entries.where((entry) => canSeeView(user, entry.permission)).toList();
+    final visible = group.entries
+        .where((entry) => canSeeView(user, entry.permission))
+        .toList();
     if (visible.isEmpty) return const SizedBox.shrink();
     return _MoreSection(
       label: group.label,
@@ -419,7 +475,8 @@ class _NavigationGroupView extends StatelessWidget {
   }
 
   void _showUnavailable(BuildContext context, _NavigationEntry entry) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${entry.label}: удахгүй')));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text('${entry.label}: удахгүй')));
   }
 }
 
@@ -499,7 +556,10 @@ class _ProfileCard extends StatelessWidget {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          [role, user.tenant.name].where((s) => s.isNotEmpty).join(' · '),
+                          [
+                            role,
+                            user.tenant.name,
+                          ].where((s) => s.isNotEmpty).join(' · '),
                           style: context.textStyles.caption,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -507,7 +567,10 @@ class _ProfileCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  Icon(Icons.chevron_right_rounded, color: context.colors.textHint),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: context.colors.textHint,
+                  ),
                 ],
               ),
             ),
@@ -519,12 +582,21 @@ class _ProfileCard extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(16, 6, 12, 6),
               child: Row(
                 children: [
-                  Icon(Icons.storefront_outlined, size: 20, color: context.colors.textSecondary),
+                  Icon(
+                    Icons.storefront_outlined,
+                    size: 20,
+                    color: context.colors.textSecondary,
+                  ),
                   const SizedBox(width: 10),
                   Text('Салбар', style: context.textStyles.bodyMedium),
                   const SizedBox(width: 12),
                   // Right-aligned; long branch names ellipsize inside.
-                  Expanded(child: WorkingBranchSwitcher(controller: branch, expanded: true)),
+                  Expanded(
+                    child: WorkingBranchSwitcher(
+                      controller: branch,
+                      expanded: true,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -555,7 +627,8 @@ class _MoreSection extends StatelessWidget {
           child: Column(
             children: [
               for (final (i, tile) in tiles.indexed) ...[
-                if (i > 0) Divider(height: 1, indent: 66, color: context.colors.divider),
+                if (i > 0)
+                  Divider(height: 1, indent: 66, color: context.colors.divider),
                 tile,
               ],
             ],
@@ -613,7 +686,11 @@ class _MoreTile extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (trailing != null) ...[trailing!, const SizedBox(width: 6)],
-                Icon(Icons.chevron_right_rounded, size: 20, color: context.colors.textHint),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 20,
+                  color: context.colors.textHint,
+                ),
               ],
             ),
     );
@@ -654,7 +731,11 @@ class SubscriptionLockedScreen extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.lock_outline_rounded, size: 56, color: context.colors.danger),
+                Icon(
+                  Icons.lock_outline_rounded,
+                  size: 56,
+                  color: context.colors.danger,
+                ),
                 const SizedBox(height: 16),
                 Text(
                   'Захиалга идэвхгүй байна',
@@ -668,7 +749,11 @@ class SubscriptionLockedScreen extends StatelessWidget {
                 const SizedBox(height: 8),
                 Text(
                   'Байгууллагын захиалга дуусгавар болсон тул үргэлжлүүлэхийн тулд админтайгаа холбогдоно уу.',
-                  style: TextStyle(fontSize: 13, color: context.colors.textSecondary, height: 1.5),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: context.colors.textSecondary,
+                    height: 1.5,
+                  ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 24),

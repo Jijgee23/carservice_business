@@ -164,6 +164,13 @@ class Customer {
   final String? email;
   final String? note;
 
+  /// Phase 4: organization customer. `fullName`/`phone`/`email` remain the
+  /// contact person; the org fields are null when [isOrganization] is false.
+  final bool isOrganization;
+  final String? orgRegnum;
+  final String? orgName;
+  final String? orgEmail;
+
   /// Absent on the PATCH response — see the class doc.
   final DateTime? createdAt;
 
@@ -173,6 +180,10 @@ class Customer {
     this.phone,
     this.email,
     this.note,
+    this.isOrganization = false,
+    this.orgRegnum,
+    this.orgName,
+    this.orgEmail,
     this.createdAt,
   });
 
@@ -182,12 +193,49 @@ class Customer {
     phone: _optString(j['phone']),
     email: _optString(j['email']),
     note: _optString(j['note']),
+    isOrganization: j['isOrganization'] == true,
+    orgRegnum: _optString(j['orgRegnum']),
+    orgName: _optString(j['orgName']),
+    orgEmail: _optString(j['orgEmail']),
     createdAt: _optDate(j['createdAt']),
   );
 
-  /// Never empty — falls back to the phone, then to a placeholder, so a
+  /// The contact person (or phone) label, ignoring the organization.
+  String get contactName => fullName ?? phone ?? 'Нэргүй';
+
+  /// «РД 1234567» for organization customers with a registry number, else null.
+  String? get orgRegnumLabel {
+    final r = orgRegnum?.trim() ?? '';
+    return isOrganization && r.isNotEmpty ? 'РД $r' : null;
+  }
+
+  /// Never empty. Organizations show [orgName] as the primary label; others
+  /// fall back to the name, then the phone, then a placeholder, so a
   /// phone-only walk-in customer still renders a label.
-  String get displayName => fullName ?? phone ?? 'Нэргүй';
+  String get displayName =>
+      (isOrganization && orgName != null) ? orgName! : contactName;
+}
+
+/// `GET /api/v1/ebarimt/org?regno=` — flat `{regno, name}`.
+class OrgLookupResult {
+  const OrgLookupResult({required this.regno, required this.name});
+  final String regno;
+  final String name;
+
+  /// Null when `name` is missing/blank (unusable result).
+  static OrgLookupResult? tryParse(Object? raw) {
+    if (raw is! Map) return null;
+    final name = _optString(raw['name']);
+    if (name == null) return null;
+    return OrgLookupResult(regno: _optString(raw['regno']) ?? '', name: name);
+  }
+}
+
+/// Machine codes of `GET /ebarimt/org`.
+abstract final class OrgLookupErrorCode {
+  static const notFound = 'ORG_NOT_FOUND';
+  static const regnoInvalid = 'ORG_REGNO_INVALID';
+  static const lookupFailed = 'ORG_LOOKUP_FAILED';
 }
 
 /// The `vehicle` sub-object of `GET /customers/[id]`'s `vehicles[]`.

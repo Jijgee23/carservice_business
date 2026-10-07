@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:carservice_business/core/services/auth_storage.dart';
 
 import 'package:carservice_business/core/widgets/dialogs/confirm_sheet.dart';
 import 'package:carservice_business/features/orders/domain/order.dart';
+import 'package:carservice_business/features/orders/domain/postpaid_settlement.dart';
 import 'package:carservice_business/features/orders/presentation/feature_theme.dart';
 
 /// The user's answer to [promptOrderStatusChange]. [durationMinutes] is only
@@ -16,6 +18,13 @@ const defaultStartDurationMinutes = 30;
 
 /// Shown wherever a paid payment locks a money edit, cancel or delete.
 const paidLockHint = 'Эхлээд төлбөрийг буцаана уу';
+const closedShiftLockHint =
+    'Хаагдсан ээлжид төлөгдсөн тул цуцлах/засах боломжгүй.';
+
+/// Why paid-payment edits/cancel are blocked: closed-shift wording when any
+/// paid payment is locked, otherwise the refund-first hint.
+String paidLockReason(ServiceOrderSummary order) =>
+    order.hasLockedPayment ? closedShiftLockHint : paidLockHint;
 
 /// Collects the confirmation an order status change needs before it is
 /// sent: a confirm when starting or completing, and a two-step confirm when
@@ -34,7 +43,9 @@ Future<OrderStatusDecision?> promptOrderStatusChange(
   ServiceOrderSummary? order,
 }) async {
   if (status == OrderStatus.COMPLETED && order != null) {
-    final blocker = order.completionBlocker;
+    final blocker = order.completionBlocker(
+      canCloseUnpaidPostpaid: userCanSettlePostpaid(Authenticator.user),
+    );
     if (blocker != null) {
       await ConfirmSheet.show(
         context,
@@ -53,7 +64,7 @@ Future<OrderStatusDecision?> promptOrderStatusChange(
     await ConfirmSheet.show(
       context,
       title: 'Цуцлах боломжгүй',
-      message: paidLockHint,
+      message: paidLockReason(order),
       confirmLabel: 'Ойлголоо',
       icon: Icons.info_outline_rounded,
       iconColor: context.opsWarning,

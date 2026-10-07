@@ -62,6 +62,7 @@ class _RefreshFailureRepository implements AppointmentsRepository {
     String? note,
     List<String> categoryIds = const [],
     bool confirmed = false,
+    String? assignedToId,
   }) => _inner.createAppointment(
     branchId: branchId,
     customerId: customerId,
@@ -70,11 +71,20 @@ class _RefreshFailureRepository implements AppointmentsRepository {
     note: note,
     categoryIds: categoryIds,
     confirmed: confirmed,
+    assignedToId: assignedToId,
   );
 
   @override
-  Future<Result<AppointmentLifecycleResult>> confirm(String appointmentId) =>
-      _inner.confirm(appointmentId);
+  Future<Result<AppointmentLifecycleResult>> confirm(
+    String appointmentId, {
+    String? assignedToId,
+  }) => _inner.confirm(appointmentId, assignedToId: assignedToId);
+
+  @override
+  Future<Result<AppointmentSummary>> updateAssignee(
+    String appointmentId,
+    String assignedToId,
+  ) => _inner.updateAssignee(appointmentId, assignedToId);
 
   @override
   Future<Result<AppointmentSummary>> getAppointment(String appointmentId) =>
@@ -102,6 +112,7 @@ class _RefreshFailureRepository implements AppointmentsRepository {
     String appointmentId,
     DateTime requestedAt, {
     bool confirmed = false,
+    String? assignedToId,
   }) => _inner.reschedule(appointmentId, requestedAt, confirmed: confirmed);
 
   @override
@@ -197,6 +208,21 @@ void main() {
         controller.detailState.valueOrNull?.status,
         AppointmentStatus.CONFIRMED,
       );
+    });
+  });
+
+  group('AppointmentDetailController — confirm-blocked reason', () {
+    test('refresh() clears a previously set reason', () async {
+      final seed = _pending();
+      final fake = FakeAppointmentRepository(seed: [seed]);
+      final controller = AppointmentDetailController(initial: seed, repo: fake);
+      addTearDown(controller.dispose);
+
+      controller.setConfirmBlockedReason('blocked');
+      expect(controller.confirmBlockedReason, 'blocked');
+
+      await controller.refresh();
+      expect(controller.confirmBlockedReason, isNull);
     });
   });
 

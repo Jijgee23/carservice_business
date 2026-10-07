@@ -31,6 +31,9 @@ final _plateRx = RegExp(r'^\d{4}[А-ЯЁӨҮA-Z]{3}$');
 
 final _otpRx = RegExp(r'^\d{6}$');
 
+// Байгууллагын регистр: яг 7 оронтой тоо (хувь хүний 2 үсэг + 8 тоо биш).
+final _orgRegnumRx = RegExp(r'^\d{7}$');
+
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
 
 /// Утасны дугаарыг 8 оронтой канон форматад хувиргана.
@@ -84,6 +87,21 @@ class AppValidators {
   }
 
   static bool isValidPhone(String? v) => normalizePhone(v) != null;
+
+  // ── Organization (Phase 4) ─────────────────────────────────────────────────
+
+  static const orgRegnumMessage = 'Байгууллагын регистр 7 оронтой тоо байна.';
+
+  /// Байгууллагын регистр — яг 7 оронтой тоо; хоосон ч алдаа.
+  static String? orgRegnum(String? v) =>
+      isValidOrgRegnum(v) ? null : orgRegnumMessage;
+
+  static bool isValidOrgRegnum(String? v) =>
+      _orgRegnumRx.hasMatch((v ?? '').trim());
+
+  /// Байгууллагын имэйл — заавал биш, бөглөсөн бол формат шалгана.
+  static String? optionalEmail(String? v) =>
+      (v == null || v.trim().isEmpty) ? null : email(v);
 
   // ── Password ───────────────────────────────────────────────────────────────
 

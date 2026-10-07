@@ -5,6 +5,8 @@ import 'package:carservice_business/core/utils/result.dart';
 import 'package:carservice_business/features/customers/data/customer_repository.dart';
 import 'package:carservice_business/features/customers/domain/customer.dart';
 import 'package:carservice_business/features/customers/domain/customers_repository.dart';
+import 'package:carservice_business/features/customers/presentation/controllers/customer_org_form_controller.dart';
+import 'package:carservice_business/features/customers/presentation/widgets/customer_org_section.dart';
 import 'package:flutter/material.dart';
 import 'package:carservice_business/features/orders/presentation/feature_theme.dart';
 import 'package:carservice_business/core/navigation/app_nav.dart';
@@ -52,6 +54,9 @@ class _NewCustomerSheetState extends State<_NewCustomerSheet>
   final _formKey = GlobalKey<FormState>();
   late final CustomersRepository _repo =
       widget.repository ?? RemoteCustomersRepository();
+  late final CustomerOrgFormController _org = CustomerOrgFormController(
+    repository: _repo,
+  );
   bool _saving = false;
   String? _generalError;
   Map<String, String> _fieldErrors = const {};
@@ -61,6 +66,7 @@ class _NewCustomerSheetState extends State<_NewCustomerSheet>
     _nameCtrl.dispose();
     _phoneCtrl.dispose();
     _emailCtrl.dispose();
+    _org.dispose();
     super.dispose();
   }
 
@@ -78,6 +84,10 @@ class _NewCustomerSheetState extends State<_NewCustomerSheet>
       fullName: name.isEmpty ? null : name,
       phone: phone,
       email: email.isEmpty ? null : email,
+      isOrganization: _org.isOrganization,
+      orgRegnum: _org.orgRegnum,
+      orgName: _org.orgName,
+      orgEmail: _org.orgEmail,
     );
     if (!mounted) return;
     switch (result) {
@@ -93,6 +103,8 @@ class _NewCustomerSheetState extends State<_NewCustomerSheet>
             // an empty string, matching the fast-path type's requirement.
             phone: customer.phone ?? phone,
             email: customer.email,
+            isOrganization: customer.isOrganization,
+            orgName: customer.orgName,
           ),
         );
       case Err(:final error):
@@ -174,6 +186,11 @@ class _NewCustomerSheetState extends State<_NewCustomerSheet>
                       const SizedBox(height: 12),
                     ],
 
+                    CustomerOrgSection(
+                      controller: _org,
+                      fieldErrors: _fieldErrors,
+                    ),
+                    const SizedBox(height: 4),
                     _Field(
                       label: 'Овог нэр',
                       ctrl: _nameCtrl,

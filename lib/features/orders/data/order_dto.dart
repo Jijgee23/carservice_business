@@ -231,6 +231,15 @@ ServiceOrderSummary _summary(Object? raw) {
     isPostpaid: !json.containsKey('isPostpaid')
         ? false
         : _requiredBool(json, 'isPostpaid'),
+    hasLockedPayment: json['hasLockedPayment'] == true,
+    isInternal: json['isInternal'] == true,
+    paidInFullBeforeCompletion: json['paidInFullBeforeCompletion'] == true,
+    plateSnapshot: json['plateSnapshot'] is String
+        ? json['plateSnapshot'] as String
+        : null,
+    vinSnapshot: json['vinSnapshot'] is String
+        ? json['vinSnapshot'] as String
+        : null,
   );
 }
 
@@ -302,6 +311,11 @@ class OrderDetailDto {
         branch: base.branch,
         assignedTo: base.assignedTo,
         isPostpaid: base.isPostpaid,
+        hasLockedPayment: base.hasLockedPayment,
+        isInternal: base.isInternal,
+        paidInFullBeforeCompletion: base.paidInFullBeforeCompletion,
+        plateSnapshot: base.plateSnapshot,
+        vinSnapshot: base.vinSnapshot,
         items: rawItems
             .map((item) => ServiceItemDto.fromJson(item).value)
             .toList(growable: false),

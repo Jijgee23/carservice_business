@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:carservice_business/app/theme/app_theme.dart';
 import 'package:carservice_business/core/widgets/adaptive/adaptive.dart';
 import 'package:carservice_business/core/widgets/common/common_widgets.dart';
+import 'package:carservice_business/core/widgets/org_badge.dart';
 import 'package:carservice_business/core/widgets/mixin/pagination_mixin.dart';
 import 'package:carservice_business/features/vehicles/domain/vehicle.dart';
 import 'package:carservice_business/features/vehicles/presentation/controllers/vehicle_list_controller.dart';
@@ -326,10 +327,20 @@ class VehiclePhoneCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 6),
-            Text(
-              vehicle.customer?.displayName ?? 'Эзэнгүй',
-              style: context.textStyles.caption,
-              overflow: TextOverflow.ellipsis,
+            Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    vehicle.customer?.displayName ?? 'Эзэнгүй',
+                    style: context.textStyles.caption,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (vehicle.ownerIsOrganization) ...[
+                  const SizedBox(width: 6),
+                  const OrgBadge(),
+                ],
+              ],
             ),
           ],
         ),
@@ -377,10 +388,20 @@ class VehicleTableRow extends StatelessWidget {
             ),
             Expanded(
               flex: 3,
-              child: Text(
-                vehicle.customer?.displayName ?? 'Эзэнгүй',
-                style: context.textStyles.caption,
-                overflow: TextOverflow.ellipsis,
+              child: Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      vehicle.customer?.displayName ?? 'Эзэнгүй',
+                      style: context.textStyles.caption,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (vehicle.ownerIsOrganization) ...[
+                    const SizedBox(width: 6),
+                    const OrgBadge(),
+                  ],
+                ],
               ),
             ),
             Expanded(

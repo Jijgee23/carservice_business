@@ -245,6 +245,10 @@ class ReportData {
   final List<ReportPartRow> partRows;
   final ReportIncome income;
 
+  /// Total of COMPLETED internal repairs ("Дотоод зардал"); `null` when the
+  /// server omits it - the screen then hides the figure.
+  final double? internalCost;
+
   const ReportData({
     this.totalRevenue = 0,
     this.completedCount = 0,
@@ -259,6 +263,7 @@ class ReportData {
     this.customerRows = const [],
     this.partRows = const [],
     this.income = const ReportIncome(),
+    this.internalCost,
   });
 
   factory ReportData.fromJson(Map<String, dynamic> j) => ReportData(
@@ -277,6 +282,7 @@ class ReportData {
     income: j['income'] is Map
         ? ReportIncome.fromJson(Map<String, dynamic>.from(j['income'] as Map))
         : const ReportIncome(),
+    internalCost: _optDouble(j['internalCost']),
   );
 }
 

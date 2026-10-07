@@ -71,6 +71,13 @@ class AppointmentDetailController extends ChangeNotifier {
 
   bool mutating = false;
 
+  /// Inline reason a non-assigner's confirm was refused (ASSIGNEE_REQUIRED).
+  String? confirmBlockedReason;
+  void setConfirmBlockedReason(String? reason) {
+    confirmBlockedReason = reason;
+    notifyListeners();
+  }
+
   int _generation = 0;
   bool _disposed = false;
 
@@ -82,6 +89,12 @@ class AppointmentDetailController extends ChangeNotifier {
   Future<void> refresh() async {
     final current = appointment;
     if (current == null || _disposed) return;
+    // A reload invalidates the inline confirm-blocked reason; it is re-set
+    // only by the next refused confirm. Cleared silently (listeners are
+    // notified when the refresh settles, or here if it returns early).
+    final hadBlockedReason = confirmBlockedReason != null;
+    confirmBlockedReason = null;
+    if (hadBlockedReason) notifyListeners();
     final generation = ++_generation;
     final requestedAt = current.requestedAt;
     if (requestedAt == null) {
@@ -128,8 +141,61 @@ class AppointmentDetailController extends ChangeNotifier {
 
   // ─── Lifecycle mutations ─────────────────────────────────────────────────
 
-  Future<Result<AppointmentLifecycleResult>> confirm() =>
-      _lifecycle(_repo.confirm, fallback: AppointmentStatus.CONFIRMED);
+  /// [assignee] is the master chosen in the pre-confirm prompt; it is sent as
+  /// `{assignedToId}` and applied locally on success. Omit it when the
+  /// appointment already has a master (or the user lacks `orders.assign` and
+  /// the server assigns the actor).
+  Future<Result<AppointmentLifecycleResult>> confirm({
+    AssignableUser? assignee,
+  }) => _lifecycle(
+    (id) => _repo.confirm(id, assignedToId: assignee?.id),
+    fallback: AppointmentStatus.CONFIRMED,
+    assignee: assignee,
+  );
+
+  /// Eligible masters for this appointment's branch (same list as the order
+  /// create screen).
+  Future<Result<List<AssignableUser>>> loadAssignableUsers() =>
+      _ordersRepository.getAssignableUsers(branchId: appointment?.branch?.id);
+
+  /// `PATCH /appointments/[id]` `{assignedToId}`. Takes a non-null user on
+  /// purpose - there is no way to clear the master. The chosen master is
+  /// applied locally on success (no destructive reload, see class docs).
+  Future<Result<AppointmentSummary>> changeAssignee(
+    AssignableUser assignee,
+  ) async {
+    final id = appointmentId;
+    final current = appointment;
+    if (id == null || current == null) {
+      return const Err(
+        AppError(ErrorKind.unknown, 'Цаг захиалга сонгогдоогүй байна'),
+      );
+    }
+    if (mutating) {
+      return const Err(
+        AppError(ErrorKind.unknown, 'Өөр үйлдэл боловсруулагдаж байна'),
+      );
+    }
+    final generation = _generation;
+    mutating = true;
+    notifyListeners();
+    final result = await _repo.updateAssignee(id, assignee.id);
+    if (_disposed || generation != _generation) {
+      mutating = false;
+      return result;
+    }
+    mutating = false;
+    if (result case Ok()) {
+      detailState = AsyncData(_withAssignee(current, assignee));
+      confirmBlockedReason = null; // master changed
+      refreshError = null;
+      notifyListeners();
+      unawaited(refresh());
+    } else {
+      notifyListeners();
+    }
+    return result;
+  }
 
   Future<Result<AppointmentLifecycleResult>> reject() =>
       _lifecycle(_repo.reject, fallback: AppointmentStatus.REJECTED);
@@ -385,6 +451,19 @@ class AppointmentDetailController extends ChangeNotifier {
   static bool canMarkArrived(AppointmentStatus status, bool? arrived) =>
       status == AppointmentStatus.CONFIRMED && arrived != true;
 
+  /// The master is required, so a master-less appointment must be given one
+  /// before it can be confirmed; only `orders.assign` holders get to choose
+  /// (everyone else is auto-assigned by the server).
+  static bool needsAssigneeBeforeConfirm(
+    AppointmentSummary appointment, {
+    required bool canAssign,
+  }) => canAssign && appointment.assignedToId == null;
+
+  /// Master can be changed while the appointment is still live.
+  static bool canChangeAssignee(AppointmentStatus status) =>
+      status == AppointmentStatus.PENDING ||
+      status == AppointmentStatus.CONFIRMED;
+
   static bool canReschedule(AppointmentStatus status) =>
       status == AppointmentStatus.CONFIRMED;
 
@@ -393,6 +472,7 @@ class AppointmentDetailController extends ChangeNotifier {
   Future<Result<AppointmentLifecycleResult>> _lifecycle(
     Future<Result<AppointmentLifecycleResult>> Function(String id) call, {
     required AppointmentStatus fallback,
+    AssignableUser? assignee,
   }) async {
     final id = appointmentId;
     final current = appointment;
@@ -407,7 +487,11 @@ class AppointmentDetailController extends ChangeNotifier {
     }
     mutating = false;
     if (result case Ok(:final value)) {
-      detailState = AsyncData(_withStatus(current, value.status ?? fallback));
+      final next = _withStatus(current, value.status ?? fallback);
+      detailState = AsyncData(
+        assignee == null ? next : _withAssignee(next, assignee),
+      );
+      confirmBlockedReason = null; // status/master changed
       refreshError = null;
       notifyListeners();
       unawaited(refresh());
@@ -452,6 +536,30 @@ AppointmentSummary _withStatus(
   serviceOrder: appt.serviceOrder,
   paymentStatus: appt.paymentStatus,
   arrivedAt: appt.arrivedAt,
+  assignedToId: appt.assignedToId,
+  assignedTo: appt.assignedTo,
+);
+
+AppointmentSummary _withAssignee(
+  AppointmentSummary appt,
+  AssignableUser assignee,
+) => AppointmentSummary(
+  id: appt.id,
+  status: appt.status,
+  requestedAt: appt.requestedAt,
+  note: appt.note,
+  createdAt: appt.createdAt,
+  branch: appt.branch,
+  category: appt.category,
+  account: appt.account,
+  customer: appt.customer,
+  accountVehicle: appt.accountVehicle,
+  vehicle: appt.vehicle,
+  serviceOrder: appt.serviceOrder,
+  paymentStatus: appt.paymentStatus,
+  arrivedAt: appt.arrivedAt,
+  assignedToId: assignee.id,
+  assignedTo: AppointmentAssigneeRef(id: assignee.id, name: assignee.fullName),
 );
 
 AppointmentSummary _withRequestedAt(
@@ -472,6 +580,8 @@ AppointmentSummary _withRequestedAt(
   serviceOrder: appt.serviceOrder,
   paymentStatus: appt.paymentStatus,
   arrivedAt: appt.arrivedAt,
+  assignedToId: appt.assignedToId,
+  assignedTo: appt.assignedTo,
 );
 
 AppointmentSummary _withServiceOrder(
@@ -492,4 +602,6 @@ AppointmentSummary _withServiceOrder(
   serviceOrder: serviceOrder,
   paymentStatus: appt.paymentStatus,
   arrivedAt: appt.arrivedAt,
+  assignedToId: appt.assignedToId,
+  assignedTo: appt.assignedTo,
 );

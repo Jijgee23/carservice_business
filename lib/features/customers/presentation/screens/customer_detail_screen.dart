@@ -11,6 +11,7 @@ import 'package:carservice_business/core/utils/result.dart';
 import 'package:carservice_business/core/widgets/adaptive/async_state_view.dart';
 import 'package:carservice_business/core/widgets/adaptive/permission_gate.dart';
 import 'package:carservice_business/core/widgets/common/common_widgets.dart';
+import 'package:carservice_business/core/widgets/org_badge.dart';
 import 'package:carservice_business/core/widgets/dialogs/confirm_sheet.dart';
 import 'package:carservice_business/core/widgets/dialogs/message.dart';
 import 'package:carservice_business/features/customers/domain/customer.dart';
@@ -313,6 +314,28 @@ class _CustomerHeaderCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(name, style: context.textStyles.h3),
+                if (customer.isOrganization) ...[
+                  const SizedBox(height: 4),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: OrgBadge(),
+                  ),
+                  if (customer.orgRegnum != null)
+                    _InfoRow(
+                      icon: Icons.badge_outlined,
+                      text: 'Регистр: ${customer.orgRegnum!}',
+                    ),
+                  if (customer.orgEmail != null)
+                    _InfoRow(
+                      icon: Icons.alternate_email,
+                      text: customer.orgEmail!,
+                    ),
+                  if (customer.fullName != null)
+                    _InfoRow(
+                      icon: Icons.person_outline,
+                      text: 'Холбогдох: ${customer.fullName!}',
+                    ),
+                ],
                 const SizedBox(height: 4),
                 if (customer.phone != null)
                   _InfoRow(icon: Icons.phone_outlined, text: customer.phone!),

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import 'package:carservice_business/core/domain/user.dart';
@@ -5,8 +7,12 @@ import 'package:carservice_business/core/errors/app_error.dart';
 import 'package:carservice_business/core/services/auth_storage.dart';
 import 'package:carservice_business/core/utils/async_value.dart';
 import 'package:carservice_business/core/utils/result.dart';
+import 'package:carservice_business/features/cash/domain/cash_session.dart';
 import 'package:carservice_business/features/orders/domain/order.dart';
+import 'package:carservice_business/features/orders/domain/orders_error_codes.dart';
 import 'package:carservice_business/features/orders/domain/orders_repository.dart';
+import 'package:carservice_business/features/orders/domain/payment_bank.dart';
+import 'package:carservice_business/features/orders/domain/postpaid_settlement.dart';
 
 /// Owns the payment screen's complete server-authoritative state.
 ///
@@ -19,15 +25,24 @@ class OrderPaymentController extends ChangeNotifier {
     required this.repo,
     required this.orderId,
     this._user,
+    this.sessionOpenLookup,
   });
 
   final OrdersRepository repo;
   final String orderId;
   final User? _user;
 
+  /// Reads the branch's "cash session open" flag (GET /cash/sessions/open-flag).
+  /// Null disables the warning; a failed read leaves the flag unknown.
+  final Future<Result<bool>> Function(String branchId)? sessionOpenLookup;
+
+  /// Whether the order's branch has an open drawer session; null = unknown.
+  bool? sessionOpen;
+
   AsyncValue<ServiceOrderDetail> detailState = const AsyncLoading();
   AsyncValue<List<OrderPaymentRecord>> paymentsState = const AsyncLoading();
   AsyncValue<QPayState> qpayState = const AsyncLoading();
+  AsyncValue<BankSettings> banksState = const AsyncLoading();
   AppError? lastError;
   QPayCheckResult? qpayCheckResult;
   AppError? qpayCheckError;
@@ -41,6 +56,10 @@ class OrderPaymentController extends ChangeNotifier {
   List<OrderPaymentRecord> get payments =>
       paymentsState.valueOrNull ?? const <OrderPaymentRecord>[];
   QPayState? get qpay => qpayState.valueOrNull;
+
+  /// Banks offered by the picker; empty until GET /banks resolves.
+  List<PaymentBank> get enabledBanks =>
+      banksState.valueOrNull?.enabled ?? const <PaymentBank>[];
   bool get isLoading =>
       detailState is AsyncLoading ||
       paymentsState is AsyncLoading ||
@@ -63,12 +82,93 @@ class OrderPaymentController extends ChangeNotifier {
         (user?.role?.permissions.contains(permission) ?? false);
   }
 
-  bool get canView => can('payments.view');
-  bool get canCreate => can('payments.create');
-  bool get canEdit => can('payments.edit');
-  bool get canDelete => can('payments.delete');
+  /// Owner or `orders.closeUnpaidPostpaid`.
+  bool get canSettlePostpaid => userCanSettlePostpaid(_currentUser);
 
-  Future<void> load() => refresh(initial: true);
+  /// A COMPLETED postpaid order only accepts payment writes from settlers.
+  /// Unknown order state is not blocked here; the server stays authoritative.
+  bool get settlementLocked {
+    final value = order;
+    return value != null &&
+        value.isPostpaid &&
+        value.status == OrderStatus.COMPLETED &&
+        !canSettlePostpaid;
+  }
+
+  /// Internal repairs take no payment at all (server: ORDER_INTERNAL_NO_PAYMENT).
+  bool get internalLocked => order?.isInternal == true;
+
+  bool get canView => can('payments.view');
+
+  /// True while the order's branch is known to have no open drawer session:
+  /// record / QPay-start / reverse are disabled (any payment method).
+  bool get cashSessionClosed => cashSessionBlocked(sessionOpen);
+
+  /// Per-method hook of the payment sheet; every method is blocked alike.
+  bool showNoSessionWarning(OrderPaymentMethod method) => cashSessionClosed;
+
+  /// The flag endpoint needs `payments.create` or `cash.manage`.
+  Future<void> _loadSessionFlag() async {
+    final lookup = sessionOpenLookup;
+    final branchId = order?.branch.id;
+    if (lookup == null || branchId == null) return;
+    if (!can('payments.create') && !can('cash.manage')) return;
+    final result = await lookup(branchId);
+    if (_disposed) return;
+    sessionOpen = switch (result) {
+      Ok(:final value) => value,
+      Err() => null,
+    };
+    notifyListeners();
+  }
+
+  bool get canCreate =>
+      can('payments.create') && !settlementLocked && !internalLocked;
+  bool get canEdit =>
+      can('payments.edit') && !settlementLocked && !internalLocked;
+  bool get canDelete =>
+      can('payments.delete') && !settlementLocked && !internalLocked;
+
+  Future<void> load() async {
+    // Banks are static per session; fetch once, never blocks the ledger.
+    if (banksState is! AsyncData) unawaited(_loadBanks());
+    await refresh(initial: true);
+  }
+
+  bool get banksLoading => banksState is AsyncLoading;
+  bool get banksFailed => banksState is AsyncError;
+
+  /// Reloads only the QPay status (retry after a failed load).
+  Future<void> retryQPay() async {
+    if (_disposed) return;
+    qpayState = const AsyncLoading();
+    notifyListeners();
+    final result = await repo.getQPay(orderId);
+    if (_disposed) return;
+    qpayState = switch (result) {
+      Ok(:final value) => AsyncData(
+        QPayState(qpayEnabled: value.qpayEnabled, pending: value.pending),
+      ),
+      Err(:final error) => AsyncError(error),
+    };
+    notifyListeners();
+  }
+
+  Future<void> retryBanks() async {
+    banksState = const AsyncLoading();
+    notifyListeners();
+    await _loadBanks();
+  }
+
+  Future<void> _loadBanks() async {
+    final result = await repo.getBanks();
+    if (_disposed) return;
+    banksState = switch (result) {
+      Ok(:final value) => AsyncData(value),
+      Err(:final error) => AsyncError(error),
+    };
+    notifyListeners();
+  }
 
   Future<void> refresh({bool initial = false}) async {
     if (_disposed || !canView) return;
@@ -108,6 +208,7 @@ class OrderPaymentController extends ChangeNotifier {
     };
     lastError = _firstError(detail, ledger, qpayResult);
     _notifyIfCurrent(generation);
+    unawaited(_loadSessionFlag());
   }
 
   /// Creates a paid ledger row. The server remains authoritative for the
@@ -115,8 +216,19 @@ class OrderPaymentController extends ChangeNotifier {
   Future<bool> createManual({
     required String amount,
     required OrderPaymentMethod method,
+    String? bank,
   }) async {
     if (!canCreate || method == OrderPaymentMethod.QPAY) return false;
+    if (cashSessionClosed) return _failed(_sessionClosedError);
+    if (paymentMethodNeedsBank(method) && (bank == null || bank.isEmpty)) {
+      _setError(
+        const AppError(
+          ErrorKind.unknown,
+          OrdersErrorCodes.paymentBankRequiredMessage,
+        ),
+      );
+      return false;
+    }
     final normalized = _validateAmount(amount);
     if (normalized == null) {
       _setError(
@@ -139,6 +251,7 @@ class OrderPaymentController extends ChangeNotifier {
         orderId,
         method: method,
         amount: Money(normalized),
+        bank: paymentMethodNeedsBank(method) ? bank : null,
       );
       return switch (result) {
         Ok() => true,
@@ -147,10 +260,24 @@ class OrderPaymentController extends ChangeNotifier {
     });
   }
 
+  /// Reason the reverse action is disabled for [payment], or null when allowed.
+  String? reverseBlockedReason(OrderPaymentRecord payment) =>
+      payment.isSettlement
+      ? OrdersErrorCodes.settlementPaymentLockedMessage
+      : payment.locked
+      ? OrdersErrorCodes.cashSessionEntryLockedMessage
+      : cashSessionClosed
+      ? CashSessionClosedError.message
+      : null;
+
   Future<bool> reverse(OrderPaymentRecord payment) async {
-    if (!canDelete || payment.status != OrderPaymentRecordStatus.PAID) {
+    if (!canDelete ||
+        payment.status != OrderPaymentRecordStatus.PAID ||
+        payment.locked ||
+        payment.isSettlement) {
       return false;
     }
+    if (cashSessionClosed) return _failed(_sessionClosedError);
     return _runMutation(() async {
       final result = await repo.reversePayment(orderId, payment.id);
       return switch (result) {
@@ -160,16 +287,17 @@ class OrderPaymentController extends ChangeNotifier {
     });
   }
 
-  Future<bool> createQPay() async {
+  Future<bool> createQPay({String? amount}) async {
     if (!canCreate || qpay?.qpayEnabled != true || qpay?.pending != null) {
       return false;
     }
+    if (cashSessionClosed) return _failed(_sessionClosedError);
     _clearQPayFeedback();
     return _runMutation(() async {
-      final result = await repo.createQPay(orderId);
+      final result = await repo.createQPay(orderId, amount: amount);
       return switch (result) {
         Ok() => true,
-        Err(:final error) => _failed(error),
+        Err(:final error) => _failed(_withServerQPayMessage(error)),
       };
     });
   }
@@ -195,9 +323,35 @@ class OrderPaymentController extends ChangeNotifier {
       final result = await repo.cancelQPay(orderId, pending.id);
       return switch (result) {
         Ok() => true,
-        Err(:final error) => _failed(error),
+        Err(:final error) => _failed(_withServerQPayMessage(error)),
       };
     });
+  }
+
+  /// QPAY_PREVIOUS_PAID / QPAY_INVOICE_PAID: the old invoice was already paid
+  /// and recorded server-side. The failed mutation still runs the full
+  /// order/payments/QPay refresh in [_runMutation], and the payment sheet
+  /// closes once the order reads PAID. QPAY_CANCEL_FAILED and
+  /// QPAY_INVOICE_PARTIALLY_PAID change nothing, so the QR stays visible.
+  /// All of them are shown with the server's own message; a 5xx kind would
+  /// otherwise be replaced by the generic "server error" text.
+  AppError _withServerQPayMessage(AppError error) {
+    const codes = {
+      'QPAY_PREVIOUS_PAID',
+      'QPAY_INVOICE_PAID',
+      'QPAY_CANCEL_FAILED',
+      'QPAY_INVOICE_PARTIALLY_PAID',
+    };
+    if (!codes.contains(error.code) || error.kind == ErrorKind.unknown) {
+      return error;
+    }
+    return AppError(
+      ErrorKind.unknown,
+      error.message,
+      statusCode: error.statusCode,
+      code: error.code,
+      fieldErrors: error.fieldErrors,
+    );
   }
 
   Money? get _remainingMoney {
@@ -226,7 +380,15 @@ class OrderPaymentController extends ChangeNotifier {
     return Money(sum);
   }
 
+  static const _sessionClosedError = AppError(
+    ErrorKind.unknown,
+    CashSessionClosedError.message,
+    statusCode: 409,
+    code: CashSessionClosedError.code,
+  );
+
   bool _failed(AppError error) {
+    if (error.isCashSessionClosed) sessionOpen = false;
     _setError(error);
     return false;
   }
@@ -306,7 +468,7 @@ class OrderPaymentController extends ChangeNotifier {
   }
 
   String? _validateAmount(String input) {
-    final value = input.trim();
+    final value = input.replaceAll(',', '').trim();
     if (!RegExp(r'^(?:0|[1-9]\d*)(?:\.\d{1,2})?$').hasMatch(value)) {
       return null;
     }

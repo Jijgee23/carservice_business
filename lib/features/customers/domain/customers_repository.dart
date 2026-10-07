@@ -2,6 +2,15 @@ import 'package:carservice_business/core/domain/pagination.dart';
 import 'package:carservice_business/core/utils/result.dart';
 import 'package:carservice_business/features/customers/domain/customer.dart';
 
+/// `?kind=` values of `GET /api/v1/customers`.
+enum CustomerKindFilter {
+  org('org'),
+  person('person');
+
+  const CustomerKindFilter(this.wire);
+  final String wire;
+}
+
 /// Server-side filters supported by `GET /api/v1/customers`.
 ///
 /// The route parses through `parseCustomerListQuery`
@@ -25,13 +34,21 @@ class CustomerListQuery {
   /// all-whitespace `q` is the same as none — callers still omit it rather
   /// than sending a vacuous parameter, matching `AppointmentListQuery`.
   final String? q;
+
+  /// `?kind=org|person` (Phase 4). Null omits the param.
+  final CustomerKindFilter? kind;
   final int page;
   final int pageSize;
 
   /// `MAX_PAGE_SIZE` in `lib/list-query-params.ts`.
   static const maxPageSize = 100;
 
-  const CustomerListQuery({this.q, this.page = 1, this.pageSize = 50});
+  const CustomerListQuery({
+    this.q,
+    this.kind,
+    this.page = 1,
+    this.pageSize = 50,
+  });
 }
 
 /// One frozen repository contract for the Customers feature — P3-F1.
@@ -75,6 +92,10 @@ abstract interface class CustomersRepository {
     required String phone,
     String? email,
     String? note,
+    bool isOrganization = false,
+    String? orgRegnum,
+    String? orgName,
+    String? orgEmail,
   });
 
   /// `PATCH /api/v1/customers/[id]` — permission `customers.edit` + an
@@ -93,6 +114,10 @@ abstract interface class CustomersRepository {
     required String phone,
     required String? email,
     required String? note,
+    bool isOrganization = false,
+    String? orgRegnum,
+    String? orgName,
+    String? orgEmail,
   });
 
   /// `DELETE /api/v1/customers/[id]` — permission `customers.delete` + an
@@ -128,4 +153,9 @@ abstract interface class CustomersRepository {
     required String title,
     required String body,
   });
+
+  /// `GET /api/v1/ebarimt/org?regno=` — staff-auth, rate-limited. Failures
+  /// carry `code` [OrgLookupErrorCode] (404 not found, 422 bad regno, 502
+  /// upstream). Callers must never block saving on a failure.
+  Future<Result<OrgLookupResult>> lookupOrg(String regno);
 }

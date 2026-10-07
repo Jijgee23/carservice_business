@@ -58,6 +58,10 @@ class _QueuedDetailRepository implements CustomersRepository {
     required String phone,
     String? email,
     String? note,
+    bool isOrganization = false,
+    String? orgRegnum,
+    String? orgName,
+    String? orgEmail,
   }) => throw UnimplementedError();
 
   @override
@@ -67,6 +71,10 @@ class _QueuedDetailRepository implements CustomersRepository {
     required String phone,
     required String? email,
     required String? note,
+    bool isOrganization = false,
+    String? orgRegnum,
+    String? orgName,
+    String? orgEmail,
   }) => throw UnimplementedError();
 
   @override
@@ -75,6 +83,10 @@ class _QueuedDetailRepository implements CustomersRepository {
 
   @override
   Future<Result<int>> getBroadcastRecipientCount() =>
+      throw UnimplementedError();
+
+  @override
+  Future<Result<OrgLookupResult>> lookupOrg(String regno) =>
       throw UnimplementedError();
 
   @override
@@ -288,6 +300,10 @@ class _FailingHistoryPageTwoRepository implements CustomersRepository {
     required String phone,
     String? email,
     String? note,
+    bool isOrganization = false,
+    String? orgRegnum,
+    String? orgName,
+    String? orgEmail,
   }) => throw UnimplementedError();
 
   @override
@@ -297,6 +313,10 @@ class _FailingHistoryPageTwoRepository implements CustomersRepository {
     required String phone,
     required String? email,
     required String? note,
+    bool isOrganization = false,
+    String? orgRegnum,
+    String? orgName,
+    String? orgEmail,
   }) => throw UnimplementedError();
 
   @override
@@ -305,6 +325,10 @@ class _FailingHistoryPageTwoRepository implements CustomersRepository {
 
   @override
   Future<Result<int>> getBroadcastRecipientCount() =>
+      throw UnimplementedError();
+
+  @override
+  Future<Result<OrgLookupResult>> lookupOrg(String regno) =>
       throw UnimplementedError();
 
   @override
@@ -347,6 +371,10 @@ class _RecordingUpdateRepository implements CustomersRepository {
     required String phone,
     required String? email,
     required String? note,
+    bool isOrganization = false,
+    String? orgRegnum,
+    String? orgName,
+    String? orgEmail,
   }) async {
     lastCall = {
       'fullName': fullName,
@@ -368,6 +396,10 @@ class _RecordingUpdateRepository implements CustomersRepository {
     required String phone,
     String? email,
     String? note,
+    bool isOrganization = false,
+    String? orgRegnum,
+    String? orgName,
+    String? orgEmail,
   }) => throw UnimplementedError();
 
   @override
@@ -376,6 +408,10 @@ class _RecordingUpdateRepository implements CustomersRepository {
 
   @override
   Future<Result<int>> getBroadcastRecipientCount() =>
+      throw UnimplementedError();
+
+  @override
+  Future<Result<OrgLookupResult>> lookupOrg(String regno) =>
       throw UnimplementedError();
 
   @override

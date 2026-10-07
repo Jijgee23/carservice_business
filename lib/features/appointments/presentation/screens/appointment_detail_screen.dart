@@ -18,7 +18,10 @@ import 'package:carservice_business/core/widgets/date_picker/app_date_picker.dar
 import 'package:carservice_business/features/appointments/domain/appointment.dart';
 import 'package:carservice_business/features/appointments/domain/appointments_repository.dart';
 import 'package:carservice_business/features/appointments/presentation/controllers/appointment_detail_controller.dart';
+import 'package:carservice_business/features/appointments/domain/appointment_error_codes.dart';
+import 'package:carservice_business/features/appointments/domain/assignee_access.dart';
 import 'package:carservice_business/features/appointments/presentation/widgets/appointment_payment_widgets.dart';
+import 'package:carservice_business/features/appointments/presentation/widgets/assignee_sheet.dart';
 import 'package:carservice_business/features/orders/data/order_repository.dart';
 import 'package:carservice_business/features/orders/domain/orders_repository.dart';
 import 'package:carservice_business/core/domain/diagnostic.dart';
@@ -90,6 +93,10 @@ class _AppointmentDetailScreenState extends State<AppointmentDetailScreen> {
       user?.isOwner == true ||
       user?.role?.permissions.contains('orders.create') == true;
 
+  bool _canAssign(User? user) =>
+      user?.isOwner == true ||
+      user?.role?.permissions.contains('orders.assign') == true;
+
   bool _canViewOrders(User? user) =>
       user?.isOwner == true ||
       user?.role?.permissions.contains('orders.view') == true;
@@ -109,6 +116,7 @@ class _AppointmentDetailScreenState extends State<AppointmentDetailScreen> {
         canRefund: _canRefund(_user),
         canCreateOrder: _canCreateOrder(_user),
         canViewOrders: _canViewOrders(_user),
+        canAssign: _canAssign(_user),
       ),
     );
   }
@@ -122,8 +130,11 @@ class _AppointmentDetailBody extends StatelessWidget {
     required this.canRefund,
     required this.canCreateOrder,
     required this.canViewOrders,
+    this.canAssign = false,
   });
 
+  /// `orders.assign` - may choose / change the appointment's master.
+  final bool canAssign;
   final bool canEdit;
   final bool canViewPayments;
   final bool canEditPayments;
@@ -137,7 +148,75 @@ class _AppointmentDetailBody extends StatelessWidget {
   ) async {
     final result = await action();
     if (!context.mounted) return;
-    if (result case Err(:final error)) messageError(error.display);
+    if (result case Err(:final error)) {
+      messageError(error.assigneeAwareMessage);
+    }
+  }
+
+  /// A master-less appointment cannot be confirmed (422 `ASSIGNEE_REQUIRED`),
+  /// so users with `orders.assign` pick one first and it is sent in the
+  /// confirm body. Users without it are auto-assigned by the server.
+  Future<void> _confirm(BuildContext context) async {
+    final controller = context.read<AppointmentDetailController>();
+    final appointment = controller.appointment;
+    if (appointment == null) return;
+    AssignableUser? assignee;
+    if (AppointmentDetailController.needsAssigneeBeforeConfirm(
+      appointment,
+      canAssign: canAssign,
+    )) {
+      assignee = await AssigneeSheet.show(
+        context,
+        loadUsers: controller.loadAssignableUsers,
+        title: 'Хариуцах мастер сонгох',
+        message: 'Цагийг баталгаажуулахын өмнө мастер оноох шаардлагатай.',
+        confirmLabel: 'Баталгаажуулах',
+        preselectId: currentUserIdOrNull(),
+      );
+      if (assignee == null || !context.mounted) return;
+    }
+    controller.setConfirmBlockedReason(null);
+    var result = await controller.confirm(assignee: assignee);
+    if (!context.mounted) return;
+    if (result case Err(:final error)
+        when error.code == AppointmentErrorCodes.assigneeRequired) {
+      if (canAssign) {
+        // Stored master is gone / inactive (or none): ask for one and retry.
+        final picked = await AssigneeSheet.show(
+          context,
+          loadUsers: controller.loadAssignableUsers,
+          title: 'Хариуцах мастер сонгох',
+          message: error.assigneeAwareMessage,
+          confirmLabel: 'Баталгаажуулах',
+          preselectId: currentUserIdOrNull(),
+        );
+        if (picked == null || !context.mounted) return;
+        result = await controller.confirm(assignee: picked);
+        if (!context.mounted) return;
+      } else {
+        controller.setConfirmBlockedReason(kAssigneeNoPermissionReason);
+        return;
+      }
+    }
+    if (result case Err(:final error)) {
+      messageError(error.assigneeAwareMessage);
+    }
+  }
+
+  Future<void> _changeAssignee(BuildContext context) async {
+    final controller = context.read<AppointmentDetailController>();
+    final appointment = controller.appointment;
+    if (appointment == null) return;
+    final next = await AssigneeSheet.show(
+      context,
+      loadUsers: controller.loadAssignableUsers,
+      title: 'Мастер солих',
+      confirmLabel: 'Солих',
+      preselectId: appointment.assignedToId,
+    );
+    if (next == null || !context.mounted) return;
+    if (next.id == appointment.assignedToId) return;
+    await _run(context, () => controller.changeAssignee(next));
   }
 
   Future<void> _cancel(BuildContext context) async {
@@ -323,10 +402,9 @@ class _AppointmentDetailBody extends StatelessWidget {
             canRefund: canRefund,
             canCreateOrder: canCreateOrder,
             canViewOrders: canViewOrders,
-            onConfirm: () => _run(
-              context,
-              () => context.read<AppointmentDetailController>().confirm(),
-            ),
+            onConfirm: () => _confirm(context),
+            canAssign: canAssign,
+            onChangeAssignee: () => _changeAssignee(context),
             onReject: () => _run(
               context,
               () => context.read<AppointmentDetailController>().reject(),
@@ -401,8 +479,12 @@ class _DetailContent extends StatelessWidget {
     required this.onRetryPayment,
     required this.onRefund,
     required this.onConvertToOrder,
+    required this.canAssign,
+    required this.onChangeAssignee,
   });
 
+  final bool canAssign;
+  final VoidCallback onChangeAssignee;
   final AppointmentSummary appointment;
   final AppointmentDetailController controller;
   final bool canEdit;
@@ -486,6 +568,19 @@ class _DetailContent extends StatelessWidget {
                   label: 'Тээврийн хэрэгсэл',
                   value: appointment.displayVehicle!.displayName,
                 ),
+              _AssigneeRow(
+                name:
+                    appointment.assigneeName ??
+                    (appointment.assignedToId != null ? 'Оноогдсон' : null),
+                // The master can be changed, never cleared (server 422).
+                onChange:
+                    canEdit &&
+                        canAssign &&
+                        !busy &&
+                        AppointmentDetailController.canChangeAssignee(status)
+                    ? onChangeAssignee
+                    : null,
+              ),
               if (appointment.note != null && appointment.note!.isNotEmpty)
                 _InfoRow(
                   icon: Icons.notes_outlined,
@@ -523,6 +618,16 @@ class _DetailContent extends StatelessWidget {
             onCancel: onCancel,
             onReschedule: onReschedule,
           ),
+        if (controller.confirmBlockedReason != null) ...[
+          Text(
+            controller.confirmBlockedReason!,
+            key: const ValueKey('appointment_confirm_blocked_reason'),
+            style: context.textStyles.caption.copyWith(
+              color: context.opsDanger,
+            ),
+          ),
+          const SizedBox(height: AppDimens.paddingMD),
+        ],
         if (canEdit) const SizedBox(height: AppDimens.paddingMD),
         if (canCreateOrder &&
             appointment.serviceOrder == null &&
@@ -560,6 +665,50 @@ class _DetailContent extends StatelessWidget {
             onRefund: canRefund ? onRefund : null,
           ),
       ],
+    );
+  }
+}
+
+class _AssigneeRow extends StatelessWidget {
+  const _AssigneeRow({required this.name, required this.onChange});
+
+  final String? name;
+  final VoidCallback? onChange;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: AppDimens.paddingSM),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.engineering_outlined,
+            size: AppDimens.iconSM,
+            color: context.opsTextSecondary,
+          ),
+          const SizedBox(width: AppDimens.paddingSM),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Хариуцах мастер', style: context.textStyles.caption),
+                Text(
+                  name ?? 'Оноогоогүй',
+                  key: const ValueKey('appointment_assignee_value'),
+                  style: context.textStyles.bodyMedium,
+                ),
+              ],
+            ),
+          ),
+          if (onChange != null)
+            TextButton(
+              key: const ValueKey('appointment_change_assignee_button'),
+              onPressed: onChange,
+              child: const Text('Солих'),
+            ),
+        ],
+      ),
     );
   }
 }

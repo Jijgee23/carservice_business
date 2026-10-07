@@ -5,7 +5,10 @@ import 'package:carservice_business/features/diagnostics/presentation/controller
 import 'package:flutter_test/flutter_test.dart';
 
 class _TemplateRepository implements DiagnosticTemplateRepository {
-  final template = const DiagnosticTemplateDetail(
+  _TemplateRepository({this.template = _defaultTemplate});
+  final DiagnosticTemplateDetail template;
+
+  static const _defaultTemplate = DiagnosticTemplateDetail(
     id: 'template-1',
     name: 'Inspection',
     type: DiagnosticType.INTAKE,
@@ -89,6 +92,62 @@ void main() {
         positioned.positionSet!.positions.map((position) => position.code),
         ['L', 'R'],
       );
+    },
+  );
+
+  test(
+    'markAll without scope marks every section; scoped stays scoped',
+    () async {
+      const item = TemplateItem(
+        id: 'a',
+        label: 'A',
+        type: ItemType.check,
+        required: false,
+        options: ['Хэвийн', 'Анхаарах'],
+      );
+      const item2 = TemplateItem(
+        id: 'b',
+        label: 'B',
+        type: ItemType.check,
+        required: false,
+        options: ['Хэвийн', 'Анхаарах'],
+      );
+      const item3 = TemplateItem(
+        id: 'c',
+        label: 'C',
+        type: ItemType.check,
+        required: false,
+        options: ['Yes', 'No'],
+      );
+      final controller = NewInspectionController(
+        repo: _TemplateRepository(
+          template: const DiagnosticTemplateDetail(
+            id: 'template-1',
+            name: 'Inspection',
+            type: DiagnosticType.INTAKE,
+            version: 1,
+            isActive: true,
+            isSystemDefault: false,
+            schema: TemplateSchema(
+              sections: [
+                TemplateSection(id: 's1', title: 'One', items: [item]),
+                TemplateSection(id: 's2', title: 'Two', items: [item2, item3]),
+              ],
+            ),
+          ),
+        ),
+      );
+      addTearDown(controller.dispose);
+      await controller.selectTemplate('template-1');
+
+      controller.markAll('Хэвийн', [controller.sections.first]);
+      expect(controller.getAnswer('a'), 'Хэвийн');
+      expect(controller.getAnswer('b'), isNull);
+
+      controller.markAll('Анхаарах');
+      expect(controller.getAnswer('a'), 'Анхаарах');
+      expect(controller.getAnswer('b'), 'Анхаарах');
+      expect(controller.getAnswer('c'), isNull);
     },
   );
 }

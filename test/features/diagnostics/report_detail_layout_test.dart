@@ -227,4 +227,24 @@ void main() {
       await tester.pump(const Duration(seconds: 4));
     });
   });
+
+  for (final locked in [true, false]) {
+    testWidgets('delete button is ${locked ? 'disabled' : 'enabled'} '
+        'when deleteLocked=$locked', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ReportDetailScreen(
+            reportId: 'r1',
+            repository: _Repo(),
+            deleteLocked: locked,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final button = tester.widget<IconButton>(
+        find.byKey(const ValueKey('report_delete_button')),
+      );
+      expect(button.onPressed == null, locked);
+    });
+  }
 }

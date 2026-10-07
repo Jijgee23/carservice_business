@@ -78,6 +78,9 @@ class OrderFilter {
   final String? plate;
   final bool? postpaid;
 
+  /// Internal repair filter: true -> `internal=yes`, false -> `internal=no`.
+  final bool? internal;
+
   /// Retained for source compatibility with the pre-F1 screen. The server's
   /// list contract has no ordering parameter, so this is never applied
   /// locally or counted as an active filter.
@@ -94,6 +97,7 @@ class OrderFilter {
     this.assignedToId,
     this.plate,
     this.postpaid,
+    this.internal,
     this.sortBy = OrderSortBy.createdAt,
     this.sortAsc = false,
   });
@@ -108,7 +112,7 @@ class OrderFilter {
     if (dateFrom != null || dateTo != null) n++;
     if (assignedToId != null) n++;
     if (plate != null) n++;
-    if (postpaid != null) n++;
+    if (postpaid != null || internal != null) n++;
     return n;
   }
 
@@ -156,6 +160,7 @@ class OrderFilter {
     String? assignedToId,
     String? plate,
     bool? postpaid,
+    bool? internal,
     OrderSortBy? sortBy,
     bool? sortAsc,
   }) => OrderFilter(
@@ -168,6 +173,7 @@ class OrderFilter {
     assignedToId: assignedToId ?? this.assignedToId,
     plate: plate ?? this.plate,
     postpaid: postpaid ?? this.postpaid,
+    internal: internal ?? this.internal,
     sortBy: sortBy ?? this.sortBy,
     sortAsc: sortAsc ?? this.sortAsc,
   );
@@ -198,14 +204,19 @@ OrderFilter _withFilter(
   Object? dateFrom = _unset,
   Object? dateTo = _unset,
   Object? postpaid = _unset,
+  Object? internal = _unset,
   Object? sortBy = _unset,
   Object? sortAsc = _unset,
 }) => OrderFilter(
-  statuses: identical(statuses, _unset) ? f.statuses : statuses as Set<OrderStatus>,
+  statuses: identical(statuses, _unset)
+      ? f.statuses
+      : statuses as Set<OrderStatus>,
   paymentStatuses: identical(paymentStatuses, _unset)
       ? f.paymentStatuses
       : paymentStatuses as Set<PaymentStatus>,
-  datePreset: identical(datePreset, _unset) ? f.datePreset : datePreset as DatePreset,
+  datePreset: identical(datePreset, _unset)
+      ? f.datePreset
+      : datePreset as DatePreset,
   dateFrom: identical(dateFrom, _unset) ? f.dateFrom : dateFrom as DateTime?,
   dateTo: identical(dateTo, _unset) ? f.dateTo : dateTo as DateTime?,
   branchId: f.branchId,
@@ -214,6 +225,7 @@ OrderFilter _withFilter(
       : assignedToId as String?,
   plate: identical(plate, _unset) ? f.plate : plate as String?,
   postpaid: identical(postpaid, _unset) ? f.postpaid : postpaid as bool?,
+  internal: identical(internal, _unset) ? f.internal : internal as bool?,
   sortBy: identical(sortBy, _unset) ? f.sortBy : sortBy as OrderSortBy,
   sortAsc: identical(sortAsc, _unset) ? f.sortAsc : sortAsc as bool,
 );
@@ -284,28 +296,43 @@ class OrderFilterFormBody extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 20),
+        // Нэгдсэн төлбөрийн нөхцөл: Энгийн = дараа тооцоо ч биш, дотоод ч биш.
         _Section(
-          title: 'Төлбөрийн төрөл',
+          title: 'Төлбөрийн нөхцөл',
           child: Wrap(
             spacing: 8,
             children: [
               _FilterChip(
                 label: 'Бүгд',
-                active: filter.postpaid == null,
+                active: filter.postpaid == null && filter.internal == null,
                 activeColor: context.opsAccent,
-                onTap: () => onChanged(_withFilter(filter, postpaid: null)),
-              ),
-              _FilterChip(
-                label: 'Дараа төлөх',
-                active: filter.postpaid == true,
-                activeColor: context.opsAccent,
-                onTap: () => onChanged(_withFilter(filter, postpaid: true)),
+                onTap: () => onChanged(
+                  _withFilter(filter, postpaid: null, internal: null),
+                ),
               ),
               _FilterChip(
                 label: 'Энгийн',
-                active: filter.postpaid == false,
+                active: filter.postpaid == false && filter.internal == false,
                 activeColor: context.opsAccent,
-                onTap: () => onChanged(_withFilter(filter, postpaid: false)),
+                onTap: () => onChanged(
+                  _withFilter(filter, postpaid: false, internal: false),
+                ),
+              ),
+              _FilterChip(
+                label: 'Дараа тооцоо',
+                active: filter.postpaid == true,
+                activeColor: context.opsAccent,
+                onTap: () => onChanged(
+                  _withFilter(filter, postpaid: true, internal: null),
+                ),
+              ),
+              _FilterChip(
+                label: 'Дотоод засвар',
+                active: filter.internal == true,
+                activeColor: context.opsAccent,
+                onTap: () => onChanged(
+                  _withFilter(filter, postpaid: null, internal: true),
+                ),
               ),
             ],
           ),
@@ -377,8 +404,7 @@ class OrderFilterFormBody extends StatelessWidget {
             runSpacing: 8,
             children: [
               ...DatePreset.values.map((p) {
-                final active =
-                    !filter.hasCustomRange && p == filter.datePreset;
+                final active = !filter.hasCustomRange && p == filter.datePreset;
                 return _FilterChip(
                   label: p.label,
                   active: active,
@@ -642,6 +668,7 @@ class _OrderFilterSheetState extends State<_OrderFilterSheet> {
   late bool _sortAsc;
   late String? _assignedToId;
   late bool? _postpaid;
+  late bool? _internal;
   late String? _plate;
   late DateTime? _dateFrom;
   late DateTime? _dateTo;
@@ -659,6 +686,7 @@ class _OrderFilterSheetState extends State<_OrderFilterSheet> {
     _sortAsc = widget.current.sortAsc;
     _assignedToId = widget.current.assignedToId;
     _postpaid = widget.current.postpaid;
+    _internal = widget.current.internal;
     _plate = widget.current.plate;
     _dateFrom = widget.current.dateFrom;
     _dateTo = widget.current.dateTo;
@@ -673,6 +701,7 @@ class _OrderFilterSheetState extends State<_OrderFilterSheet> {
     assignedToId: _assignedToId,
     plate: _plate,
     postpaid: _postpaid,
+    internal: _internal,
     sortBy: _sortBy,
     sortAsc: _sortAsc,
   );
@@ -685,6 +714,7 @@ class _OrderFilterSheetState extends State<_OrderFilterSheet> {
     _sortAsc = false;
     _assignedToId = null;
     _postpaid = null;
+    _internal = null;
     _plate = null;
     _dateFrom = null;
     _dateTo = null;
@@ -716,10 +746,7 @@ class _OrderFilterSheetState extends State<_OrderFilterSheet> {
 
           // Header
           Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 20,
-              vertical: 10,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             child: Row(
               children: [
                 Text('Шүүлтүүр', style: context.textStyles.h3),
@@ -762,6 +789,7 @@ class _OrderFilterSheetState extends State<_OrderFilterSheet> {
                     _datePreset = next.datePreset;
                     _assignedToId = next.assignedToId;
                     _postpaid = next.postpaid;
+                    _internal = next.internal;
                     _plate = next.plate;
                     _dateFrom = next.dateFrom;
                     _dateTo = next.dateTo;
@@ -789,9 +817,10 @@ class _OrderFilterSheetState extends State<_OrderFilterSheet> {
               width: double.infinity,
               height: 50,
               child: ElevatedButton(
-                onPressed: () => AppNav.back<OrderFilterSelection>(
-                  (filter: _built, branchId: _branchId),
-                ),
+                onPressed: () => AppNav.back<OrderFilterSelection>((
+                  filter: _built,
+                  branchId: _branchId,
+                )),
                 child: Text(
                   _activeCount > 0
                       ? 'Хэрэглэх  ·  $_activeCount шүүлт'
@@ -1016,7 +1045,9 @@ class _FilterChip extends StatelessWidget {
                     : context.opsBackground,
                 borderRadius: BorderRadius.circular(AppDimens.radiusFull),
                 border: Border.all(
-                  color: active ? activeColor.withOpacity(0.5) : context.opsDivider,
+                  color: active
+                      ? activeColor.withOpacity(0.5)
+                      : context.opsDivider,
                   width: active ? 1.5 : 1,
                 ),
               ),

@@ -278,6 +278,12 @@ class _RecordingDataSource implements VehiclesDataSource {
   }
 
   @override
+  Future<Object?> vinHistory(String id) async {
+    lastId = id;
+    return payload;
+  }
+
+  @override
   Future<Object?> refreshHur(String id) async {
     lastId = id;
     return payload;
@@ -302,6 +308,8 @@ class _ThrowingDataSource implements VehiclesDataSource {
   Future<Object?> delete(String id) async => throw error;
   @override
   Future<Object?> history(String id) async => throw error;
+  @override
+  Future<Object?> vinHistory(String id) async => throw error;
   @override
   Future<Object?> refreshHur(String id) async => throw error;
 }

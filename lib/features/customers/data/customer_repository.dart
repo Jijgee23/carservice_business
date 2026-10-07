@@ -49,6 +49,10 @@ class RemoteCustomersRepository implements CustomersRepository {
     required String phone,
     String? email,
     String? note,
+    bool isOrganization = false,
+    String? orgRegnum,
+    String? orgName,
+    String? orgEmail,
   }) async {
     try {
       final envelope = await _dataSource.create({
@@ -56,6 +60,7 @@ class RemoteCustomersRepository implements CustomersRepository {
         'phone': phone,
         'email': email,
         'note': note,
+        ...orgBody(isOrganization, orgRegnum, orgName, orgEmail),
       });
       // 201 = genuine create, 200 = account-claim or reuse. Both success.
       return Ok(
@@ -76,6 +81,10 @@ class RemoteCustomersRepository implements CustomersRepository {
     required String phone,
     required String? email,
     required String? note,
+    bool isOrganization = false,
+    String? orgRegnum,
+    String? orgName,
+    String? orgEmail,
   }) async {
     try {
       // Full-state PATCH: the route coerces every absent field, so all four
@@ -87,6 +96,7 @@ class RemoteCustomersRepository implements CustomersRepository {
             'phone': phone,
             'email': email,
             'note': note,
+            ...orgBody(isOrganization, orgRegnum, orgName, orgEmail),
           }),
         ).value,
       );
@@ -143,6 +153,27 @@ class RemoteCustomersRepository implements CustomersRepository {
   }
 
   @override
+  Future<Result<OrgLookupResult>> lookupOrg(String regno) async {
+    try {
+      final parsed = OrgLookupResult.tryParse(
+        await _dataSource.orgLookup(regno),
+      );
+      if (parsed == null) {
+        return const Err(
+          AppError(
+            ErrorKind.unknown,
+            'Байгууллагын мэдээлэл олдсонгүй.',
+            code: OrgLookupErrorCode.notFound,
+          ),
+        );
+      }
+      return Ok(parsed);
+    } catch (error) {
+      return Err(_error(error, 'Байгууллагын мэдээлэл татаж чадсангүй'));
+    }
+  }
+
+  @override
   Future<Result<CustomerBroadcastResult>> sendBroadcast({
     required String title,
     required String body,
@@ -159,12 +190,27 @@ class RemoteCustomersRepository implements CustomersRepository {
   }
 }
 
-/// Only the four allow-listed params ever go on the wire — anything else is
+/// Only the allow-listed params ever go on the wire — anything else is
 /// a 400 from `rejectUnknownParams`. `limit` is the accepted alias of
 /// `pageSize` and is never sent alongside it.
+/// Org fields are always sent explicitly; when off they are null so the
+/// server clears them (contract: "when off: org fields saved as null").
+Map<String, dynamic> orgBody(
+  bool isOrganization,
+  String? orgRegnum,
+  String? orgName,
+  String? orgEmail,
+) => {
+  'isOrganization': isOrganization,
+  'orgRegnum': isOrganization ? orgRegnum : null,
+  'orgName': isOrganization ? orgName : null,
+  'orgEmail': isOrganization ? orgEmail : null,
+};
+
 Map<String, dynamic> _listQuery(CustomerListQuery query) => {
   'page': query.page,
   'pageSize': query.pageSize,
+  if (query.kind != null) 'kind': query.kind!.wire,
   if (query.q != null && query.q!.trim().isNotEmpty) 'q': query.q!.trim(),
 };
 

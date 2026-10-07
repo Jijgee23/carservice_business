@@ -15,6 +15,7 @@ import 'package:provider/provider.dart';
 
 import '../../fakes/fake_appointment_repository.dart';
 import 'today_fixtures.dart';
+
 import 'package:get/get.dart';
 import 'package:carservice_business/core/navigation/app_nav.dart';
 
@@ -52,10 +53,13 @@ Future<TodayFakeRepository> _pump(
   await tester.pumpWidget(
     GetMaterialApp(
       theme: AppTheme.light,
-      home: TodayScreen(
-        controller: controller,
-        user: user,
-        loadSubscription: () async => null,
+      // Production mounts TodayScreen inside the app shell's Scaffold.
+      home: Scaffold(
+        body: TodayScreen(
+          controller: controller,
+          user: user,
+          loadSubscription: () async => null,
+        ),
       ),
     ),
   );
@@ -119,7 +123,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('cancelling the start confirmation sends nothing', (tester) async {
+  testWidgets('cancelling the start confirmation sends nothing', (
+    tester,
+  ) async {
     _viewport(tester, 1280, 800);
     final repo = await _pump(
       tester,
@@ -444,13 +450,15 @@ void main() {
       await tester.pumpWidget(
         GetMaterialApp(
           theme: AppTheme.light,
-          home: Provider<OrdersRepository>.value(
-            value: repo,
-            child: TodayScreen(
-              controller: controller,
-              appointmentsController: apptController,
-              user: user,
-              loadSubscription: () async => null,
+          home: Scaffold(
+            body: Provider<OrdersRepository>.value(
+              value: repo,
+              child: TodayScreen(
+                controller: controller,
+                appointmentsController: apptController,
+                user: user,
+                loadSubscription: () async => null,
+              ),
             ),
           ),
         ),
@@ -466,13 +474,21 @@ void main() {
         seed: [appt('a1')],
       );
       expect(find.text('5555УБА'), findsNothing);
-      expect(find.byKey(const ValueKey('today_section_selector')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('today_section_selector')),
+        findsNothing,
+      );
     });
 
     testWidgets('tablet landscape (>=1200) shows the timeline beside lanes', (
       tester,
     ) async {
-      await pump(tester, width: 1280, user: _user(owner: true), seed: [appt('a1')]);
+      await pump(
+        tester,
+        width: 1280,
+        user: _user(owner: true),
+        seed: [appt('a1')],
+      );
       expect(find.text('Хүлээгдэж буй'), findsOneWidget);
       expect(find.text('5555УБА'), findsOneWidget);
     });
@@ -480,18 +496,28 @@ void main() {
     testWidgets(
       'tablet portrait/medium (840-1200) shows a collapsible section',
       (tester) async {
-        await pump(tester, width: 1000, user: _user(owner: true), seed: [appt('a1')]);
+        await pump(
+          tester,
+          width: 1000,
+          user: _user(owner: true),
+          seed: [appt('a1')],
+        );
         expect(find.text('5555УБА'), findsNothing);
-        await tester.tap(find.byKey(const ValueKey('today_appointments_toggle')));
+        await tester.tap(
+          find.byKey(const ValueKey('today_appointments_toggle')),
+        );
         await tester.pumpAndSettle();
         expect(find.text('5555УБА'), findsOneWidget);
       },
     );
 
-    testWidgets('phone shows a top-level Захиалга | Цаг split', (
-      tester,
-    ) async {
-      await pump(tester, width: 375, user: _user(owner: true), seed: [appt('a1')]);
+    testWidgets('phone shows a top-level Захиалга | Цаг split', (tester) async {
+      await pump(
+        tester,
+        width: 375,
+        user: _user(owner: true),
+        seed: [appt('a1')],
+      );
       expect(
         find.byKey(const ValueKey('today_section_selector')),
         findsOneWidget,
@@ -522,9 +548,8 @@ void main() {
         GetMaterialApp(
           theme: AppTheme.light,
           builder: (context, child) => MediaQuery(
-            data: MediaQuery.of(
-              context,
-            ).copyWith(textScaler: TextScaler.linear(scale)),
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: TextScaler.linear(scale)),
             child: child!,
           ),
           home: TodayScreen(
@@ -537,9 +562,7 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('2.0x on phone width renders without overflow', (
-      tester,
-    ) async {
+    testWidgets('2.0x on phone width renders without overflow', (tester) async {
       await pumpScaled(tester, 375, 2.0);
       expect(tester.takeException(), isNull);
     });

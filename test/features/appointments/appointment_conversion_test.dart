@@ -32,6 +32,8 @@ class _RecordingOrdersRepository extends FakeOrderRepository {
     String? appointmentId,
     int? estimatedDurationMinutes,
     OrderIntakeDraft? intake,
+    bool? isPostpaid,
+    bool? isInternal,
   }) async {
     createCalls++;
     this.branchId = branchId;

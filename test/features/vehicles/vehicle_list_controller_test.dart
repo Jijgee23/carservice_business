@@ -68,6 +68,10 @@ class _QueuedVehiclesRepository implements VehiclesRepository {
       throw UnimplementedError();
 
   @override
+  Future<Result<VinHistory>> getVinHistory(String vehicleId) =>
+      throw UnimplementedError();
+
+  @override
   Future<Result<VehicleHurRefresh>> refreshFromHur(String vehicleId) =>
       throw UnimplementedError();
 }

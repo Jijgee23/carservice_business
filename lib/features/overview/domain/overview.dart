@@ -275,6 +275,10 @@ class Overview {
   final OverviewSubscription? subscription;
   final OverviewPlanLimits planLimits;
   final OverviewPostpaid postpaid;
+
+  /// Period total of COMPLETED internal repairs ("Дотоод зардал"). `null`
+  /// when the server omits it - callers hide the figure.
+  final double? internalCost;
   final List<RecentOrder> recentlyUpdatedOrders;
 
   const Overview({
@@ -285,6 +289,7 @@ class Overview {
     this.subscription,
     this.planLimits = const {},
     this.postpaid = const OverviewPostpaid(),
+    this.internalCost,
     this.recentlyUpdatedOrders = const [],
   });
 
@@ -308,6 +313,7 @@ class Overview {
           : null,
       planLimits: _planLimits(j['planLimits']),
       postpaid: OverviewPostpaid.fromJson(j['postpaid']),
+      internalCost: _optDouble(j['internalCost']),
       recentlyUpdatedOrders: rawOrders is List
           ? rawOrders
               .whereType<Map>()

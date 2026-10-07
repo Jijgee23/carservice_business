@@ -34,6 +34,7 @@ class CustomerDetailController extends ChangeNotifier {
 
   final String customerId;
   final CustomersRepository _repo;
+  CustomersRepository get repository => _repo;
 
   static const int historyPageSize = 20;
 
@@ -147,6 +148,10 @@ class CustomerDetailController extends ChangeNotifier {
     required String phone,
     required String? email,
     required String? note,
+    bool isOrganization = false,
+    String? orgRegnum,
+    String? orgName,
+    String? orgEmail,
   }) async {
     final current = customer;
     if (current == null) {
@@ -164,6 +169,10 @@ class CustomerDetailController extends ChangeNotifier {
       phone: phone,
       email: email,
       note: note,
+      isOrganization: isOrganization,
+      orgRegnum: orgRegnum,
+      orgName: orgName,
+      orgEmail: orgEmail,
     );
     if (_disposed || generation != _generation) {
       mutating = false;
@@ -196,6 +205,10 @@ class CustomerDetailController extends ChangeNotifier {
     phone: updated.phone,
     email: updated.email,
     note: updated.note,
+    isOrganization: updated.isOrganization,
+    orgRegnum: updated.orgRegnum,
+    orgName: updated.orgName,
+    orgEmail: updated.orgEmail,
     createdAt: updated.createdAt ?? previous.createdAt,
   );
 

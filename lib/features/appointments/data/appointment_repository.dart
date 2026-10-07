@@ -121,6 +121,7 @@ class RemoteAppointmentsRepository implements AppointmentsRepository {
     String? note,
     List<String> categoryIds = const [],
     bool confirmed = false,
+    String? assignedToId,
   }) async {
     try {
       final body = <String, dynamic>{
@@ -131,6 +132,7 @@ class RemoteAppointmentsRepository implements AppointmentsRepository {
         if (note != null && note.isNotEmpty) 'note': note,
         if (categoryIds.isNotEmpty) 'categoryIds': categoryIds,
         if (confirmed) 'confirmed': confirmed,
+        if (assignedToId != null) 'assignedToId': assignedToId,
       };
       return Ok(
         AppointmentSummaryDto.fromJson(
@@ -144,17 +146,41 @@ class RemoteAppointmentsRepository implements AppointmentsRepository {
 
   @override
   Future<Result<AppointmentLifecycleResult>> confirm(
-    String appointmentId,
-  ) async {
+    String appointmentId, {
+    String? assignedToId,
+  }) async {
     try {
       return Ok(
         AppointmentLifecycleResultDto.fromJson(
-          await _dataSource.confirm(appointmentId),
+          await _dataSource.confirm(
+            appointmentId,
+            body: assignedToId == null ? null : {'assignedToId': assignedToId},
+          ),
           fallbackStatus: AppointmentStatus.CONFIRMED,
         ).value,
       );
     } catch (error) {
       return Err(_error(error, 'Цаг баталгаажуулж чадсангүй'));
+    }
+  }
+
+  @override
+  Future<Result<AppointmentSummary>> updateAssignee(
+    String appointmentId,
+    String assignedToId,
+  ) async {
+    try {
+      return Ok(
+        AppointmentSummaryDto.fromJson(
+          _envelope(
+            await _dataSource.update(appointmentId, {
+              'assignedToId': assignedToId,
+            }),
+          ),
+        ).value,
+      );
+    } catch (error) {
+      return Err(_error(error, 'Мастер солиж чадсангүй'));
     }
   }
 

@@ -66,7 +66,12 @@ AppError mapDioException(DioException error) {
       // 422 binds field errors, never a blind retry.
       _ => AppError(
         ErrorKind.unknown,
-        message ?? 'Алдаа гарлаа',
+        // CASH_SESSION_CLOSED always reads the same, whatever the server text.
+        metadata.code == CashSessionClosedError.code
+            ? CashSessionClosedError.message
+            : metadata.code == CashSessionEntryLockedError.code
+            ? CashSessionEntryLockedError.message
+            : message ?? 'Алдаа гарлаа',
         statusCode: status,
         code: metadata.code,
         fieldErrors: metadata.fieldErrors,

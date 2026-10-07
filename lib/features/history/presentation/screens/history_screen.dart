@@ -27,7 +27,10 @@ class _PaginationFooter extends StatelessWidget {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 20),
         child: Center(
-          child: Text('Нийт ${prov.total} бүртгэл ачааллагдлаа', style: context.textStyles.caption),
+          child: Text(
+            'Нийт ${prov.total} бүртгэл ачааллагдлаа',
+            style: context.textStyles.caption,
+          ),
         ),
       );
     }
@@ -64,7 +67,9 @@ class _HistoryScreenState extends State<HistoryScreen> with PaginationMixin {
     super.dispose();
   }
 
-  List<DiagnosticReportSummary> _getFiltered(List<DiagnosticReportSummary> reports) {
+  List<DiagnosticReportSummary> _getFiltered(
+    List<DiagnosticReportSummary> reports,
+  ) {
     var list = reports;
 
     // Date filter
@@ -89,6 +94,7 @@ class _HistoryScreenState extends State<HistoryScreen> with PaginationMixin {
             (r) =>
                 r.vehicle.plate.toLowerCase().contains(q) ||
                 r.customer.displayName.toLowerCase().contains(q) ||
+                (r.customer.orgRegnum ?? '').contains(q) ||
                 r.template.name.toLowerCase().contains(q),
           )
           .toList();
@@ -106,7 +112,9 @@ class _HistoryScreenState extends State<HistoryScreen> with PaginationMixin {
     return Scaffold(
       appBar: AppBar(
         title: Text('Бүртгэлийн жагсаалт'),
-        actions: [IconButton(icon: Icon(Icons.refresh), onPressed: prov.loadReports)],
+        actions: [
+          IconButton(icon: Icon(Icons.refresh), onPressed: prov.loadReports),
+        ],
       ),
       body: Column(
         children: [
@@ -119,7 +127,11 @@ class _HistoryScreenState extends State<HistoryScreen> with PaginationMixin {
               onChanged: (v) => setState(() => _searchQuery = v.trim()),
               decoration: InputDecoration(
                 hintText: 'Дугаар, нэр, загвараар хайх...',
-                prefixIcon: Icon(Icons.search, color: context.colors.textHint, size: 20),
+                prefixIcon: Icon(
+                  Icons.search,
+                  color: context.colors.textHint,
+                  size: 20,
+                ),
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
                         icon: const Icon(Icons.clear, size: 18),
@@ -130,7 +142,10 @@ class _HistoryScreenState extends State<HistoryScreen> with PaginationMixin {
                       )
                     : null,
                 isDense: true,
-                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
               ),
               style: context.textStyles.body,
             ),
@@ -149,12 +164,21 @@ class _HistoryScreenState extends State<HistoryScreen> with PaginationMixin {
                     onTap: () => setState(() => _dateFilter = f),
                     child: AnimatedContainer(
                       duration: Duration(milliseconds: 150),
-                      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
-                        color: active ? context.colors.accent : Colors.transparent,
-                        borderRadius: BorderRadius.circular(AppDimens.radiusFull),
+                        color: active
+                            ? context.colors.accent
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(
+                          AppDimens.radiusFull,
+                        ),
                         border: Border.all(
-                          color: active ? context.colors.accent : context.colors.divider,
+                          color: active
+                              ? context.colors.accent
+                              : context.colors.divider,
                         ),
                       ),
                       child: Text(
@@ -215,7 +239,8 @@ class _HistoryScreenState extends State<HistoryScreen> with PaginationMixin {
                           padding: const EdgeInsets.only(bottom: 10),
                           child: ReportListCard(
                             report: r,
-                            onTap: () => AppNav.to(ReportDetailScreen(reportId: r.id)),
+                            onTap: () =>
+                                AppNav.to(ReportDetailScreen(reportId: r.id)),
                           ),
                         );
                       },

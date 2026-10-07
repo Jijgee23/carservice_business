@@ -54,6 +54,10 @@ class VehicleDetailController extends ChangeNotifier {
   AsyncValue<Vehicle> detailState = const AsyncLoading();
   AsyncValue<VehicleHistory> historyState = const AsyncLoading();
 
+  /// Same-VIN records. `null` until loaded, and stays `null` on failure or
+  /// when there is nothing to show — the section hides quietly.
+  VinHistory? vinHistory;
+
   bool saving = false;
   AppError? saveError;
 
@@ -72,12 +76,14 @@ class VehicleDetailController extends ChangeNotifier {
     final generation = ++_generation;
     detailState = const AsyncLoading();
     historyState = const AsyncLoading();
+    vinHistory = null;
     notifyListeners();
 
     // Started together, awaited separately: one slow/failing route must not
     // block the other from rendering.
     final vehicleFuture = _repo.getVehicle(vehicleId);
     final historyFuture = _repo.getHistory(vehicleId);
+    final vinFuture = _repo.getVinHistory(vehicleId);
     final vehicleResult = await vehicleFuture;
     if (_disposed || generation != _generation) return;
     switch (vehicleResult) {
@@ -97,6 +103,13 @@ class VehicleDetailController extends ChangeNotifier {
         historyState = AsyncError(error);
     }
     notifyListeners();
+
+    final vinResult = await vinFuture;
+    if (_disposed || generation != _generation) return;
+    if (vinResult case Ok(:final value) when value.hasContent) {
+      vinHistory = value;
+      notifyListeners();
+    }
   }
 
   Future<void> refresh() => load();
@@ -265,4 +278,5 @@ Vehicle _withCustomer(Vehicle v, VehicleCustomerRef? customer) => Vehicle(
   customerId: v.customerId,
   customer: customer,
   isPostpaid: v.isPostpaid,
+  ownerIsOrganization: v.ownerIsOrganization,
 );

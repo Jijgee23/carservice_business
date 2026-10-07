@@ -14,13 +14,24 @@ import 'package:carservice_business/core/domain/diagnostic.dart';
 import 'package:carservice_business/features/appointments/data/appointment_repository.dart';
 import 'package:carservice_business/features/appointments/domain/appointments_repository.dart';
 import 'package:carservice_business/core/widgets/dialogs/message.dart';
+import 'package:carservice_business/features/appointments/domain/appointment_error_codes.dart';
+import 'package:carservice_business/features/appointments/domain/assignee_access.dart';
+import 'package:carservice_business/features/orders/data/order_repository.dart';
+import 'package:carservice_business/features/orders/domain/order.dart';
+import 'package:carservice_business/features/orders/domain/orders_repository.dart';
 
 class CreateAppointmentController extends ChangeNotifier {
   CreateAppointmentController({
     AppointmentsRepository? repo,
     DateTime? initialDate,
     this.workingBranchId,
-  }) : _repo = repo ?? RemoteAppointmentsRepository() {
+    OrdersRepository? ordersRepo,
+    bool? canAssign,
+    String? currentUserId,
+  }) : _repo = repo ?? RemoteAppointmentsRepository(),
+       canAssign = canAssign ?? currentUserCanAssign(),
+       _currentUserId = currentUserId ?? currentUserIdOrNull() {
+    _ordersRepo = ordersRepo;
     if (initialDate != null) {
       selectedDate = DateTime(
         initialDate.year,
@@ -31,6 +42,26 @@ class CreateAppointmentController extends ChangeNotifier {
   }
 
   final AppointmentsRepository _repo;
+  OrdersRepository? _ordersRepo;
+  OrdersRepository get _orders => _ordersRepo ??= RemoteOrdersRepository();
+  final String? _currentUserId;
+
+  // ─── Хариуцах мастер ───────────────────────────────────────────────────────
+  // Mirrors `create_order_screen.dart`: `orders.assign` holders must pick a
+  // master (branch-scoped list, current user preselected); everyone else gets
+  // no picker and the server assigns the actor.
+
+  /// Whether the signed-in user holds `orders.assign` (or is the owner).
+  final bool canAssign;
+  List<AssignableUser> assignees = [];
+  bool loadingAssignees = false;
+  String? assigneesError;
+  AssignableUser? assignee;
+  int _assigneesSeq = 0;
+
+  /// Inline reason shown to a user without `orders.assign` whose create was
+  /// refused with `ASSIGNEE_REQUIRED` (they are not an eligible master).
+  String? assigneeBlockedReason;
 
   /// Concrete working branch from the shell (null = all branches).
   final String? workingBranchId;
@@ -118,7 +149,8 @@ class CreateAppointmentController extends ChangeNotifier {
       selectedBranch != null &&
       selectedCustomer != null &&
       selectedSlot != null &&
-      isSlotBookable(selectedSlot!);
+      isSlotBookable(selectedSlot!) &&
+      (!canAssign || assignee != null);
 
   DateTime? get requestedAt {
     final slot = selectedSlot;
@@ -148,7 +180,51 @@ class CreateAppointmentController extends ChangeNotifier {
     notifyListeners();
 
     unawaited(_loadCategories());
+    unawaited(loadAssignees());
     await _fetchSlots();
+  }
+
+  /// Loads the branch-scoped list of eligible masters (same endpoint as the
+  /// order create screen) and preselects the current user when listed.
+  Future<void> loadAssignees() async {
+    final branch = selectedBranch;
+    if (!canAssign || branch == null) return;
+    final seq = ++_assigneesSeq;
+    loadingAssignees = true;
+    assigneesError = null;
+    if (!_disposed) notifyListeners();
+    final result = await _orders.getAssignableUsers(branchId: branch.id);
+    if (_disposed || seq != _assigneesSeq) return;
+    loadingAssignees = false;
+    switch (result) {
+      case Ok(:final value):
+        assignees = value;
+        final keep = assignee;
+        if (keep != null && !value.any((u) => u.id == keep.id)) {
+          assignee = null;
+        }
+        if (assignee == null) {
+          for (final u in value) {
+            if (u.id == _currentUserId) {
+              assignee = u;
+              break;
+            }
+          }
+        }
+      case Err(:final error):
+        assignees = [];
+        assignee = null;
+        assigneesError = error.display;
+    }
+    notifyListeners();
+  }
+
+  void selectAssignee(AssignableUser user) {
+    assignee = user;
+    fieldErrors = fieldErrors == null
+        ? null
+        : (Map<String, String>.of(fieldErrors!)..remove('assignedToId'));
+    notifyListeners();
   }
 
   Future<void> _loadCategories() async {
@@ -198,6 +274,7 @@ class CreateAppointmentController extends ChangeNotifier {
     selectedSlot = null;
     fieldErrors = null;
     notifyListeners();
+    unawaited(loadAssignees());
     await _fetchSlots();
   }
 
@@ -390,6 +467,7 @@ class CreateAppointmentController extends ChangeNotifier {
     final customerId = selectedCustomer!.id;
     submitting = true;
     fieldErrors = null;
+    assigneeBlockedReason = null;
     notifyListeners();
 
     final result = await _repo.createAppointment(
@@ -399,6 +477,7 @@ class CreateAppointmentController extends ChangeNotifier {
       requestedAt: requestedAtValue,
       note: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
       categoryIds: selectedCategoryIds.toList(),
+      assignedToId: canAssign ? assignee!.id : null,
     );
 
     submitting = false;
@@ -420,6 +499,11 @@ class CreateAppointmentController extends ChangeNotifier {
             'Сонгосон цаг аль хэдийн авагдсан байна. Цагийн жагсаалтыг '
             'шинэчиллээ, шинээр сонгоно уу.',
           );
+        } else if (error.code == AppointmentErrorCodes.assigneeRequired &&
+            !canAssign) {
+          // No picker for this user: explain inline why they cannot book.
+          assigneeBlockedReason = kAssigneeNoPermissionReason;
+          notifyListeners();
         } else if (error.fieldErrors != null && error.fieldErrors!.isNotEmpty) {
           fieldErrors = error.fieldErrors;
           notifyListeners();

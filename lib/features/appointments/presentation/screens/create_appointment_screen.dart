@@ -14,6 +14,7 @@ import 'package:carservice_business/features/orders/presentation/screens/new_cus
 import 'package:carservice_business/core/widgets/dialogs/message.dart';
 import 'package:carservice_business/core/widgets/date_picker/app_date_picker.dart';
 import 'package:carservice_business/core/navigation/app_nav.dart';
+import 'package:carservice_business/features/appointments/presentation/widgets/assignee_picker_field.dart';
 
 class CreateAppointmentScreen extends StatelessWidget {
   const CreateAppointmentScreen({super.key, this.initialDate});
@@ -119,9 +120,34 @@ class _Body extends StatelessWidget {
                   _VehicleSection(ctrl: ctrl),
                   const SizedBox(height: 24),
 
-                  // ── 6. Тэмдэглэл ───────────────────────────────────────
+                  // ── 6. Хариуцах мастер (orders.assign эрхтэй хэрэглэгчид) ──
+                  if (ctrl.canAssign) ...[
+                    _SectionLabel(
+                      number: '6',
+                      title: 'Хариуцах мастер',
+                      done: ctrl.assignee != null,
+                    ),
+                    const SizedBox(height: 10),
+                    AssigneePickerField(
+                      users: ctrl.assignees,
+                      selected: ctrl.assignee,
+                      loading: ctrl.loadingAssignees,
+                      error: ctrl.assigneesError,
+                      fieldError: ctrl.fieldError('assignedToId'),
+                      onChanged: ctrl.selectAssignee,
+                      onRetry: ctrl.loadAssignees,
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+
+                  if (ctrl.assigneeBlockedReason != null) ...[
+                    _FieldErrorText(ctrl.assigneeBlockedReason!),
+                    const SizedBox(height: 24),
+                  ],
+
+                  // ── Тэмдэглэл ──────────────────────────────────────────
                   _SectionLabel(
-                    number: '6',
+                    number: ctrl.canAssign ? '7' : '6',
                     title: 'Тэмдэглэл',
                     optional: true,
                     done: false,
@@ -1410,6 +1436,8 @@ class _BottomBar extends StatelessWidget {
       hint = 'Цаг сонгоогүй байна';
     } else if (ctrl.selectedCustomer == null) {
       hint = 'Хэрэглэгч сонгоогүй байна';
+    } else if (ctrl.canAssign && ctrl.assignee == null) {
+      hint = 'Мастер сонгоогүй байна';
     }
 
     return Container(

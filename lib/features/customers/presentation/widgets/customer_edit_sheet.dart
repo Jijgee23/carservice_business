@@ -6,6 +6,8 @@ import 'package:carservice_business/core/widgets/common/common_widgets.dart';
 import 'package:carservice_business/core/utils/result.dart';
 import 'package:carservice_business/features/customers/domain/customer.dart';
 import 'package:carservice_business/features/customers/presentation/controllers/customer_detail_controller.dart';
+import 'package:carservice_business/features/customers/presentation/controllers/customer_org_form_controller.dart';
+import 'package:carservice_business/features/customers/presentation/widgets/customer_org_section.dart';
 import 'package:carservice_business/core/navigation/app_nav.dart';
 
 /// Edit form for a [Customer] — P3-F4.
@@ -58,6 +60,12 @@ class _CustomerEditSheetState extends State<CustomerEditSheet> {
   /// Name is capped at 100 only when the stored value already fits.
   late final bool _nameCapped = (widget.customer.fullName ?? '').length <= 100;
 
+  late final CustomerOrgFormController _org = CustomerOrgFormController(
+    repository: widget.controller.repository,
+    initial: widget.customer,
+  );
+  final _formKey = GlobalKey<FormState>();
+
   bool _saving = false;
   String? _generalError;
   Map<String, String> _fieldErrors = const {};
@@ -68,10 +76,12 @@ class _CustomerEditSheetState extends State<CustomerEditSheet> {
     _phoneCtrl.dispose();
     _emailCtrl.dispose();
     _noteCtrl.dispose();
+    _org.dispose();
     super.dispose();
   }
 
   Future<void> _save() async {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
     setState(() {
       _saving = true;
       _generalError = null;
@@ -83,6 +93,10 @@ class _CustomerEditSheetState extends State<CustomerEditSheet> {
       phone: _phoneCtrl.text,
       email: _emailCtrl.text,
       note: _noteCtrl.text,
+      isOrganization: _org.isOrganization,
+      orgRegnum: _org.orgRegnum,
+      orgName: _org.orgName,
+      orgEmail: _org.orgEmail,
     );
     if (!mounted) return;
     switch (result) {
@@ -125,57 +139,65 @@ class _CustomerEditSheetState extends State<CustomerEditSheet> {
             const SizedBox(height: 16),
             Flexible(
               child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (_generalError != null) ...[
-                      Text(
-                        _generalError!,
-                        style: context.textStyles.body.copyWith(
-                          color: context.colors.danger,
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (_generalError != null) ...[
+                        Text(
+                          _generalError!,
+                          style: context.textStyles.body.copyWith(
+                            color: context.colors.danger,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                      CustomerOrgSection(
+                        controller: _org,
+                        fieldErrors: _fieldErrors,
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _nameCtrl,
+                        // Server max is 100. An already-longer stored name must
+                        // not be truncated, so only cap when it fits.
+                        maxLength: _nameCapped ? 100 : null,
+                        decoration: InputDecoration(
+                          counterText: _nameCapped ? '' : null,
+                          labelText: 'Нэр',
+                          errorText: _fieldErrors['fullName'],
                         ),
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _phoneCtrl,
+                        keyboardType: TextInputType.phone,
+                        decoration: InputDecoration(
+                          labelText: 'Утас',
+                          errorText: _fieldErrors['phone'],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _emailCtrl,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: InputDecoration(
+                          labelText: 'Имэйл',
+                          errorText: _fieldErrors['email'],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _noteCtrl,
+                        maxLines: 3,
+                        decoration: InputDecoration(
+                          labelText: 'Тэмдэглэл',
+                          errorText: _fieldErrors['note'],
+                        ),
+                      ),
                     ],
-                    TextField(
-                      controller: _nameCtrl,
-                      // Server max is 100. An already-longer stored name must
-                      // not be truncated, so only cap when it fits.
-                      maxLength: _nameCapped ? 100 : null,
-                      decoration: InputDecoration(
-                        counterText: _nameCapped ? '' : null,
-                        labelText: 'Нэр',
-                        errorText: _fieldErrors['fullName'],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _phoneCtrl,
-                      keyboardType: TextInputType.phone,
-                      decoration: InputDecoration(
-                        labelText: 'Утас',
-                        errorText: _fieldErrors['phone'],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _emailCtrl,
-                      keyboardType: TextInputType.emailAddress,
-                      decoration: InputDecoration(
-                        labelText: 'Имэйл',
-                        errorText: _fieldErrors['email'],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _noteCtrl,
-                      maxLines: 3,
-                      decoration: InputDecoration(
-                        labelText: 'Тэмдэглэл',
-                        errorText: _fieldErrors['note'],
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),

@@ -32,11 +32,16 @@ class ReportDetailScreen extends StatefulWidget {
 
   /// Tests inject a fake; production uses the remote repository.
   final DiagnosticReportRepository? repository;
+
+  /// The linked service line is COMPLETED: the server refuses the delete
+  /// (`ITEM_COMPLETED_LOCKED`), so the button is shown disabled.
+  final bool deleteLocked;
   const ReportDetailScreen({
     super.key,
     required this.reportId,
     this.onPdfExport,
     this.repository,
+    this.deleteLocked = false,
   });
 
   @override
@@ -220,9 +225,12 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
                     ),
                   )
                 : IconButton(
-                    tooltip: 'Устгах',
+                    key: const ValueKey('report_delete_button'),
+                    tooltip: widget.deleteLocked
+                        ? 'Дууссан ажлыг засах боломжгүй.'
+                        : 'Устгах',
                     icon: const Icon(Icons.delete_outline_rounded, size: 22),
-                    onPressed: _confirmDelete,
+                    onPressed: widget.deleteLocked ? null : _confirmDelete,
                   ),
           const ShellNotificationBell(),
         ],

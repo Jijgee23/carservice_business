@@ -9,12 +9,15 @@ import 'package:intl/intl.dart';
 import 'package:carservice_business/core/services/auth_storage.dart';
 import 'package:carservice_business/app/theme/app_theme.dart';
 import 'package:carservice_business/core/domain/diagnostic.dart';
+import 'package:carservice_business/core/widgets/org_badge.dart';
 import 'package:carservice_business/features/orders/domain/order.dart';
 import 'package:carservice_business/features/orders/presentation/screens/new_customer_sheet.dart';
 import 'package:carservice_business/features/vehicles/presentation/screens/vehicle_create_screen.dart';
 import 'package:carservice_business/core/utils/result.dart';
 import 'package:carservice_business/core/services/diagnostic_service.dart';
 import 'package:carservice_business/features/orders/domain/orders_repository.dart';
+import 'package:carservice_business/features/orders/domain/order_payment_mode.dart';
+import 'package:carservice_business/features/orders/presentation/widgets/payment_mode_selector.dart';
 import 'package:carservice_business/core/widgets/dialogs/message.dart';
 import 'package:carservice_business/core/widgets/date_picker/app_date_picker.dart';
 import 'package:carservice_business/core/navigation/app_nav.dart';
@@ -60,6 +63,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   List<VehicleSummary> _customerVehicles = [];
   bool _loadingVehicles = false;
   VehicleSummary? _vehicle;
+  OrderPaymentMode _paymentMode = OrderPaymentMode.regular;
   int _vehiclesSeq = 0;
 
   // Branch + schedule + notes
@@ -88,6 +92,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     super.initState();
     _customer = widget.initialCustomer ?? widget.initialVehicle?.customer;
     _vehicle = widget.initialVehicle;
+    _paymentMode = OrderPaymentMode.forVehicle(_vehicle?.isPostpaid ?? false);
     if (_vehicle != null) _customerVehicles = [_vehicle!];
     if (_customer != null) _loadCustomerVehicles(_customer!.id);
     _loadBranches();
@@ -229,7 +234,10 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
           : [keep, ...list];
       _loadingVehicles = false;
       // Ганц машинтай бол шууд сонгоно.
-      if (_vehicle == null && list.length == 1) _vehicle = list.first;
+      if (_vehicle == null && list.length == 1) {
+        _vehicle = list.first;
+        _paymentMode = _paymentMode.afterVehicleChange(list.first.isPostpaid);
+      }
     });
   }
 
@@ -249,12 +257,16 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       setState(() {
         _customer = owner;
         _vehicle = result.vehicle;
+        _paymentMode = _paymentMode.afterVehicleChange(
+          result.vehicle.isPostpaid,
+        );
       });
       _loadCustomerVehicles(owner.id);
       return;
     }
     setState(() {
       _vehicle = result.vehicle;
+      _paymentMode = _paymentMode.afterVehicleChange(result.vehicle.isPostpaid);
       if (!_customerVehicles.any((v) => v.id == result.vehicle.id)) {
         _customerVehicles = [..._customerVehicles, result.vehicle];
       }
@@ -324,6 +336,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       estimatedDurationMinutes: _estimatedDurationMinutes,
       appointmentId: widget.appointmentId,
       intake: _intake.draft,
+      isPostpaid: _paymentMode.isPostpaid,
+      isInternal: _paymentMode.isInternal,
     );
     if (!mounted) return;
     setState(() => _submitting = false);
@@ -394,9 +408,33 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                     loading: _loadingVehicles,
                     vehicles: _customerVehicles,
                     selected: _vehicle,
-                    onSelect: (v) => setState(() => _vehicle = v),
+                    onSelect: (v) => setState(() {
+                      _vehicle = v;
+                      _paymentMode = _paymentMode.afterVehicleChange(
+                        v.isPostpaid,
+                      );
+                    }),
                     onNewVehicle: _openNewVehicle,
                   ),
+                  if (_vehicle != null) ...[
+                    const SizedBox(height: 14),
+                    Text(
+                      'Төлбөрийн нөхцөл',
+                      style: context.textStyles.bodyMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    PaymentModeSelector(
+                      key: const ValueKey('create-order-payment-mode'),
+                      value: _paymentMode,
+                      onChanged: (m) => setState(() => _paymentMode = m),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _paymentMode.helper,
+                      key: const ValueKey('create-order-payment-mode-helper'),
+                      style: context.textStyles.caption,
+                    ),
+                  ],
                   const SizedBox(height: 24),
 
                   // ── 3. Салбар ──────────────────────────────────────────
@@ -625,7 +663,16 @@ class _CustomerSection extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 2),
-                  Text(selected!.phone, style: context.textStyles.caption),
+                  Text(
+                    selected!.isOrganization
+                        ? '${selected!.contactName} · ${selected!.phone}'
+                        : selected!.phone,
+                    style: context.textStyles.caption,
+                  ),
+                  if (selected!.isOrganization) ...[
+                    const SizedBox(height: 4),
+                    const OrgBadge(),
+                  ],
                 ],
               ),
             ),
@@ -715,7 +762,10 @@ class _CustomerSection extends StatelessWidget {
                   _PickRow(
                     icon: Icons.person_outline,
                     title: c.displayName,
-                    subtitle: c.phone,
+                    subtitle: c.isOrganization
+                        ? '${c.contactName} · ${c.phone}'
+                        : c.phone,
+                    isOrganization: c.isOrganization,
                     divider: i < results.take(6).length - 1,
                     onTap: () => onSelect(c),
                   ),
@@ -807,6 +857,9 @@ class _CustomerVehiclesSection extends StatelessWidget {
                     icon: Icons.directions_car_outlined,
                     title: plateLabel(v.plate, v.vin),
                     subtitle: v.displayName,
+                    isOrganization:
+                        v.ownerIsOrganization ||
+                        (customer?.isOrganization ?? false),
                     selected: v.id == selected?.id,
                     divider: i < vehicles.length - 1,
                     onTap: () => onSelect(v),
@@ -827,6 +880,7 @@ class _PickRow extends StatelessWidget {
   final String subtitle;
   final bool selected;
   final bool divider;
+  final bool isOrganization;
   final VoidCallback onTap;
 
   const _PickRow({
@@ -837,6 +891,7 @@ class _PickRow extends StatelessWidget {
     required this.divider,
     required this.onTap,
     this.selected = false,
+    this.isOrganization = false,
   });
 
   @override
@@ -867,11 +922,22 @@ class _PickRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
-                    style: context.textStyles.bodyMedium.copyWith(
-                      color: selected ? context.opsAccent : null,
-                    ),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          title,
+                          overflow: TextOverflow.ellipsis,
+                          style: context.textStyles.bodyMedium.copyWith(
+                            color: selected ? context.opsAccent : null,
+                          ),
+                        ),
+                      ),
+                      if (isOrganization) ...[
+                        const SizedBox(width: 6),
+                        const OrgBadge(),
+                      ],
+                    ],
                   ),
                   if (subtitle.isNotEmpty)
                     Text(subtitle, style: context.textStyles.caption),

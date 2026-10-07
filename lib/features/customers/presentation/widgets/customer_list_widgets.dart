@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:carservice_business/app/theme/app_theme.dart';
 import 'package:carservice_business/core/widgets/common/common_widgets.dart';
+import 'package:carservice_business/core/widgets/org_badge.dart';
 import 'package:carservice_business/features/customers/domain/customer.dart';
 
 /// List row + load-more footer for the Customers list — P3-F2. Mirrors
@@ -39,6 +40,26 @@ class CustomerCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(name, style: context.textStyles.bodyMedium),
+                if (customer.isOrganization) ...[
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      const OrgBadge(),
+                      if (customer.orgRegnumLabel != null) ...[
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            customer.orgRegnumLabel!,
+                            style: context.textStyles.caption,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  if (customer.fullName != null)
+                    Text(customer.fullName!, style: context.textStyles.caption),
+                ],
                 const SizedBox(height: 2),
                 if (customer.phone != null)
                   Text(customer.phone!, style: context.textStyles.caption),

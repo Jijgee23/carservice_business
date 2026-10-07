@@ -106,11 +106,13 @@ class _BodyState extends State<_Body> {
       context,
       assigned: controller.assigned,
       postpaid: controller.postpaid,
+      ownerKind: controller.ownerKind,
     );
     if (result == null || !mounted) return;
     await controller.setFilters(
       assigned: result.assigned,
       postpaid: result.postpaid,
+      ownerKind: result.ownerKind,
     );
   }
 

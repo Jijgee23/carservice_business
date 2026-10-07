@@ -97,4 +97,6 @@ AppointmentSummary _withStatus(
   serviceOrder: appt.serviceOrder,
   paymentStatus: appt.paymentStatus,
   arrivedAt: appt.arrivedAt,
+  assignedToId: appt.assignedToId,
+  assignedTo: appt.assignedTo,
 );

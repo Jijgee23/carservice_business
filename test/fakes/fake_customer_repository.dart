@@ -18,6 +18,7 @@ class FakeCustomerRepository implements CustomersRepository {
     Map<String, List<CustomerHistoryOrder>>? history,
     Set<String>? accountLinkedPhones,
     Set<String>? customersWithOrders,
+    Map<String, OrgLookupResult>? orgDirectory,
     this.maxCustomers = 100,
     this.dailyBroadcastLimit = 5,
   }) : _customers = [
@@ -25,10 +26,21 @@ class FakeCustomerRepository implements CustomersRepository {
        ],
        _history = {...?history},
        _accountLinkedPhones = {...?accountLinkedPhones},
-       _customersWithOrders = {...?customersWithOrders};
+       _customersWithOrders = {...?customersWithOrders},
+       _orgDirectory = {...?orgDirectory};
 
   final List<Customer> _customers;
   final Map<String, List<CustomerHistoryOrder>> _history;
+
+  /// regno -> org the `GET /ebarimt/org` lookup would find.
+  final Map<String, OrgLookupResult> _orgDirectory;
+
+  /// Every regno [lookupOrg] was asked for, in order.
+  final List<String> lookupCalls = [];
+
+  /// When set, [lookupOrg] fails with this error instead of consulting the
+  /// directory.
+  AppError? lookupFailure;
 
   /// Phones that have a global `Account`. `createCustomer` with one of these
   /// exercises the claim/existing path — the 200 outcome — rather than the
@@ -156,6 +168,28 @@ class FakeCustomerRepository implements CustomersRepository {
     );
   }
 
+  /// Mirrors the Phase 4 org rules of `validateCustomerInput`.
+  static Map<String, String> _orgErrors(
+    bool isOrganization,
+    String? orgRegnum,
+    String? orgName,
+    String? orgEmail,
+  ) {
+    if (!isOrganization) return const {};
+    final errors = <String, String>{};
+    if (!RegExp(r'^\d{7}$').hasMatch((orgRegnum ?? '').trim())) {
+      errors['orgRegnum'] = 'Байгууллагын регистр 7 оронтой тоо байна.';
+    }
+    if ((orgName ?? '').trim().isEmpty) {
+      errors['orgName'] = 'Байгууллагын нэр оруулна уу.';
+    }
+    final email = (orgEmail ?? '').trim();
+    if (email.isNotEmpty && !_emailFormat.hasMatch(email)) {
+      errors['orgEmail'] = 'Имэйл хаяг буруу.';
+    }
+    return errors;
+  }
+
   static Err<T> _validationError<T>(Map<String, String> fieldErrors) => Err(
     AppError(
       ErrorKind.unknown,
@@ -197,6 +231,13 @@ class FakeCustomerRepository implements CustomersRepository {
     final q = effective.q?.trim();
     final filtered = _customers
         .where((c) => q == null || q.isEmpty || _matchesSearch(c, q))
+        .where(
+          (c) => switch (effective.kind) {
+            null => true,
+            CustomerKindFilter.org => c.isOrganization,
+            CustomerKindFilter.person => !c.isOrganization,
+          },
+        )
         .toList(growable: false);
     // `orderBy: { fullName: "asc" }` — fixed server-side on this route.
     final sorted = [...filtered]
@@ -226,6 +267,10 @@ class FakeCustomerRepository implements CustomersRepository {
     required String phone,
     String? email,
     String? note,
+    bool isOrganization = false,
+    String? orgRegnum,
+    String? orgName,
+    String? orgEmail,
   }) async {
     final input = _validate(
       fullName: fullName,
@@ -233,8 +278,9 @@ class FakeCustomerRepository implements CustomersRepository {
       email: email,
       note: note,
     );
-    if (input.fieldErrors.isNotEmpty) {
-      return _validationError(input.fieldErrors);
+    final orgErrors = _orgErrors(isOrganization, orgRegnum, orgName, orgEmail);
+    if (input.fieldErrors.isNotEmpty || orgErrors.isNotEmpty) {
+      return _validationError({...input.fieldErrors, ...orgErrors});
     }
     // MAX_CUSTOMERS is checked on every entry point (D-154), before the
     // account lookup — matching the command's ordering.
@@ -281,6 +327,12 @@ class FakeCustomerRepository implements CustomersRepository {
       phone: input.phone,
       email: input.email,
       note: input.note,
+      isOrganization: isOrganization,
+      orgRegnum: isOrganization ? orgRegnum!.trim() : null,
+      orgName: isOrganization ? orgName!.trim() : null,
+      orgEmail: isOrganization && (orgEmail ?? '').trim().isNotEmpty
+          ? orgEmail!.trim()
+          : null,
       createdAt: DateTime(2026, 9, 22, 12),
     );
     _customers.add(created);
@@ -294,6 +346,10 @@ class FakeCustomerRepository implements CustomersRepository {
     required String phone,
     required String? email,
     required String? note,
+    bool isOrganization = false,
+    String? orgRegnum,
+    String? orgName,
+    String? orgEmail,
   }) async {
     final input = _validate(
       fullName: fullName,
@@ -301,8 +357,9 @@ class FakeCustomerRepository implements CustomersRepository {
       email: email,
       note: note,
     );
-    if (input.fieldErrors.isNotEmpty) {
-      return _validationError(input.fieldErrors);
+    final orgErrors = _orgErrors(isOrganization, orgRegnum, orgName, orgEmail);
+    if (input.fieldErrors.isNotEmpty || orgErrors.isNotEmpty) {
+      return _validationError({...input.fieldErrors, ...orgErrors});
     }
     final index = _indexOf(customerId);
     if (index < 0) return _notFound();
@@ -326,6 +383,12 @@ class FakeCustomerRepository implements CustomersRepository {
       phone: input.phone,
       email: input.email,
       note: input.note,
+      isOrganization: isOrganization,
+      orgRegnum: isOrganization ? orgRegnum!.trim() : null,
+      orgName: isOrganization ? orgName!.trim() : null,
+      orgEmail: isOrganization && (orgEmail ?? '').trim().isNotEmpty
+          ? orgEmail!.trim()
+          : null,
     );
     _customers[index] = updated;
     return Ok(updated);
@@ -373,6 +436,34 @@ class FakeCustomerRepository implements CustomersRepository {
         pagination: _meta(rows.length, effectivePage, effectiveSize),
       ),
     );
+  }
+
+  @override
+  Future<Result<OrgLookupResult>> lookupOrg(String regno) async {
+    lookupCalls.add(regno);
+    if (lookupFailure != null) return Err(lookupFailure!);
+    if (!RegExp(r'^\d{7}$').hasMatch(regno)) {
+      return const Err(
+        AppError(
+          ErrorKind.unknown,
+          'Регистр буруу.',
+          statusCode: 422,
+          code: OrgLookupErrorCode.regnoInvalid,
+        ),
+      );
+    }
+    final found = _orgDirectory[regno];
+    if (found == null) {
+      return const Err(
+        AppError(
+          ErrorKind.notFound,
+          'Байгууллага олдсонгүй.',
+          statusCode: 404,
+          code: OrgLookupErrorCode.notFound,
+        ),
+      );
+    }
+    return Ok(found);
   }
 
   @override

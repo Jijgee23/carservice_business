@@ -92,10 +92,24 @@ abstract interface class AppointmentsRepository {
     String? note,
     List<String> categoryIds = const [],
     bool confirmed = false,
+    String? assignedToId,
   });
 
-  /// `POST /appointments/[id]/confirm`.
-  Future<Result<AppointmentLifecycleResult>> confirm(String appointmentId);
+  /// `POST /appointments/[id]/confirm`. [assignedToId] is sent as the optional
+  /// `{assignedToId}` body; it is required (422 `ASSIGNEE_REQUIRED`) when the
+  /// appointment has no master and the caller holds `orders.assign`.
+  Future<Result<AppointmentLifecycleResult>> confirm(
+    String appointmentId, {
+    String? assignedToId,
+  });
+
+  /// `PATCH /appointments/[id]` with `{assignedToId}` — change the master.
+  /// The id is non-nullable on purpose: the server refuses clearing (422
+  /// `ASSIGNEE_REQUIRED`), so the client has no way to ask for it.
+  Future<Result<AppointmentSummary>> updateAssignee(
+    String appointmentId,
+    String assignedToId,
+  );
 
   /// `POST /appointments/[id]/reject`.
   Future<Result<AppointmentLifecycleResult>> reject(String appointmentId);

@@ -152,6 +152,17 @@ class RemoteVehiclesRepository implements VehiclesRepository {
   }
 
   @override
+  Future<Result<VinHistory>> getVinHistory(String vehicleId) async {
+    try {
+      return Ok(
+        VinHistoryDto.fromJson(await _dataSource.vinHistory(vehicleId)).value,
+      );
+    } catch (error) {
+      return Err(_error(error, 'VIN түүх ачаалж чадсангүй'));
+    }
+  }
+
+  @override
   Future<Result<VehicleHurRefresh>> refreshFromHur(String vehicleId) async {
     try {
       return Ok(
@@ -179,6 +190,7 @@ Map<String, dynamic> _listQuery(VehicleListQuery query) => {
   if (query.customerId != null) 'customerId': query.customerId,
   if (query.assigned != null) 'assigned': query.assigned! ? 'yes' : 'no',
   if (query.postpaid != null) 'postpaid': query.postpaid! ? 'yes' : 'no',
+  if (query.ownerKind != null) 'ownerKind': query.ownerKind!.wire,
 };
 
 AppError _error(Object error, String fallback) => switch (error) {

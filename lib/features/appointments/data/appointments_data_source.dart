@@ -11,7 +11,8 @@ abstract interface class AppointmentsDataSource {
   Future<Object?> slots(Map<String, dynamic> query);
   Future<Object?> calendar(Map<String, dynamic> query);
   Future<Object?> create(Map<String, dynamic> body);
-  Future<Object?> confirm(String id);
+  Future<Object?> confirm(String id, {Map<String, dynamic>? body});
+  Future<Object?> update(String id, Map<String, dynamic> body);
   Future<Object?> reject(String id);
   Future<Object?> noShow(String id);
   Future<Object?> arrived(String id);
@@ -64,10 +65,20 @@ class RemoteAppointmentsDataSource implements AppointmentsDataSource {
       (await _request('appointments', 'POST', body: body)).data;
 
   @override
-  Future<Object?> confirm(String id) async => (await _request(
-    'appointments/${Uri.encodeComponent(id)}/confirm',
-    'POST',
-  )).data;
+  Future<Object?> confirm(String id, {Map<String, dynamic>? body}) async =>
+      (await _request(
+        'appointments/${Uri.encodeComponent(id)}/confirm',
+        'POST',
+        body: body,
+      )).data;
+
+  @override
+  Future<Object?> update(String id, Map<String, dynamic> body) async =>
+      (await _request(
+        'appointments/${Uri.encodeComponent(id)}',
+        'PATCH',
+        body: body,
+      )).data;
 
   @override
   Future<Object?> reject(String id) async => (await _request(

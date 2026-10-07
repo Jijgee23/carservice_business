@@ -36,8 +36,9 @@ abstract interface class OrdersDataSource {
   Future<Object?> payments(String id);
   Future<Object?> createPayment(String id, Map<String, dynamic> body);
   Future<Object?> reversePayment(String id, String paymentId);
+  Future<Object?> banks();
   Future<Object?> qpay(String id);
-  Future<Object?> createQPay(String id);
+  Future<Object?> createQPay(String id, {String? amount});
   Future<Object?> checkQPay(String id, Map<String, dynamic> body);
   Future<void> cancelQPay(String id, Map<String, dynamic> body);
   Future<Object?> postpaid(Map<String, dynamic> query);
@@ -214,12 +215,19 @@ class RemoteOrdersDataSource implements OrdersDataSource {
   )).data;
 
   @override
+  Future<Object?> banks() async => (await _request('banks', 'GET')).data;
+
+  @override
   Future<Object?> qpay(String id) async =>
       (await _request('orders/${Uri.encodeComponent(id)}/qpay', 'GET')).data;
 
   @override
-  Future<Object?> createQPay(String id) async =>
-      (await _request('orders/${Uri.encodeComponent(id)}/qpay', 'POST')).data;
+  Future<Object?> createQPay(String id, {String? amount}) async =>
+      (await _request(
+        'orders/${Uri.encodeComponent(id)}/qpay',
+        'POST',
+        body: amount == null ? null : {'amount': amount},
+      )).data;
 
   @override
   Future<Object?> checkQPay(String id, Map<String, dynamic> body) async =>

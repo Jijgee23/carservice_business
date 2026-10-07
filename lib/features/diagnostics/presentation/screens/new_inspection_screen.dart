@@ -1135,7 +1135,7 @@ class _ChecklistStepState extends State<_ChecklistStep> {
                       if (globalOptions.isNotEmpty) ...[
                         const SizedBox(height: 10),
                         _BulkButtons(
-                          label: 'Бүх хэсгийг:',
+                          label: 'Бүх асуултыг:',
                           options: globalOptions,
                           onMark: prov.markAll,
                         ),

@@ -238,6 +238,7 @@ class _FailingAppointmentsRepository extends FakeAppointmentRepository {
     String? note,
     List<String> categoryIds = const [],
     bool confirmed = false,
+    String? assignedToId,
   }) async => const Err(AppError(ErrorKind.unknown, 'boom'));
 }
 
@@ -272,6 +273,7 @@ class _ConflictThenOkRepository extends FakeAppointmentRepository {
     String? note,
     List<String> categoryIds = const [],
     bool confirmed = false,
+    String? assignedToId,
   }) async {
     createCallCount++;
     return const Err(
@@ -297,6 +299,7 @@ class _FieldErrorRepository extends FakeAppointmentRepository {
     String? note,
     List<String> categoryIds = const [],
     bool confirmed = false,
+    String? assignedToId,
   }) async => const Err(
     AppError(
       ErrorKind.unknown,

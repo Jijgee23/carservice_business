@@ -170,3 +170,50 @@ class VehicleHurRefreshDto {
     );
   }
 }
+
+/// `GET /api/v1/vehicles/[id]/vin-history` —
+/// `{vin, records:[...], otherTenantRecords}}` (a `data` wrapper is also tolerated).
+/// Every field degrades rather than throws; a record without a `vehicleId`
+/// is skipped because it cannot be opened.
+class VinHistoryDto {
+  const VinHistoryDto(this.value);
+  final VinHistory value;
+
+  factory VinHistoryDto.fromJson(Object? raw) {
+    var json = _map(raw, 'vin history response');
+    if (json['data'] is Map) json = _map(json['data'], 'vin history');
+    final records = json['records'];
+    DateTime? date(Object? v) => v is String ? DateTime.tryParse(v) : null;
+    String? str(Object? v) => v is String && v.trim().isNotEmpty ? v : null;
+    return VinHistoryDto(
+      VinHistory(
+        vin: str(json['vin']),
+        records: records is List
+            ? records
+                  .whereType<Map>()
+                  .map((e) => Map<String, dynamic>.from(e))
+                  .where((e) => str(e['vehicleId']) != null)
+                  .map(
+                    (e) => VinHistoryRecord(
+                      vehicleId: e['vehicleId'] as String,
+                      plate: str(e['plate']) ?? '',
+                      make: str(e['make']),
+                      model: str(e['model']),
+                      year: e['year'] is int ? e['year'] as int : null,
+                      ownerName: str(e['ownerName']),
+                      orderCount: e['orderCount'] is num
+                          ? (e['orderCount'] as num).toInt()
+                          : 0,
+                      lastOrderAt: date(e['lastOrderAt']),
+                      createdAt: date(e['createdAt']),
+                    ),
+                  )
+                  .toList(growable: false)
+            : const [],
+        otherTenantRecords: json['otherTenantRecords'] is num
+            ? (json['otherTenantRecords'] as num).toInt()
+            : 0,
+      ),
+    );
+  }
+}

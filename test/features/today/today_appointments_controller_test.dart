@@ -35,8 +35,16 @@ class _ErrorInjectingRepository implements AppointmentsRepository {
       _inner.markArrived(id);
 
   @override
-  Future<Result<AppointmentLifecycleResult>> confirm(String id) =>
-      _inner.confirm(id);
+  Future<Result<AppointmentLifecycleResult>> confirm(
+    String id, {
+    String? assignedToId,
+  }) => _inner.confirm(id, assignedToId: assignedToId);
+
+  @override
+  Future<Result<AppointmentSummary>> updateAssignee(
+    String id,
+    String assignedToId,
+  ) => _inner.updateAssignee(id, assignedToId);
 
   @override
   Future<Result<AppointmentSummary>> getAppointment(String id) =>
@@ -59,6 +67,7 @@ class _ErrorInjectingRepository implements AppointmentsRepository {
     String id,
     DateTime requestedAt, {
     bool confirmed = false,
+    String? assignedToId,
   }) => _inner.reschedule(id, requestedAt, confirmed: confirmed);
 
   @override
@@ -90,6 +99,7 @@ class _ErrorInjectingRepository implements AppointmentsRepository {
     String? note,
     List<String> categoryIds = const [],
     bool confirmed = false,
+    String? assignedToId,
   }) => _inner.createAppointment(
     branchId: branchId,
     customerId: customerId,
@@ -98,6 +108,7 @@ class _ErrorInjectingRepository implements AppointmentsRepository {
     note: note,
     categoryIds: categoryIds,
     confirmed: confirmed,
+    assignedToId: assignedToId,
   );
 
   @override
@@ -105,7 +116,8 @@ class _ErrorInjectingRepository implements AppointmentsRepository {
     String? branchId,
     required DateTime date,
     List<String> categoryIds = const [],
-  }) => _inner.getSlots(branchId: branchId, date: date, categoryIds: categoryIds);
+  }) =>
+      _inner.getSlots(branchId: branchId, date: date, categoryIds: categoryIds);
 
   @override
   Future<Result<CalendarDayModel>> getCalendarDay({
@@ -145,13 +157,12 @@ AppointmentSummary _appt(
   category: const AppointmentCategoryRef(id: 'cat-1', name: 'Засвар'),
 );
 
-TodayAppointmentsController _controller(
-  FakeAppointmentRepository repo,
-) => TodayAppointmentsController(
-  repository: repo,
-  clock: () => _now,
-  autoRefresh: null,
-);
+TodayAppointmentsController _controller(FakeAppointmentRepository repo) =>
+    TodayAppointmentsController(
+      repository: repo,
+      clock: () => _now,
+      autoRefresh: null,
+    );
 
 List<AppointmentSummary> _items(TodayAppointmentsController c) =>
     (c.state as AsyncData<List<AppointmentSummary>>).value;
@@ -171,7 +182,8 @@ void main() {
     expect(
       _items(c).map((a) => a.id),
       ['morning', 'noon'],
-      reason: 'later-day is outside today and excluded by the server-side '
+      reason:
+          'later-day is outside today and excluded by the server-side '
           'date filter; the remaining rows sort by requested time',
     );
     expect(c.lastUpdated, _now);

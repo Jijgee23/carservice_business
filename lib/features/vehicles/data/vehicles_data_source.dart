@@ -12,6 +12,7 @@ abstract interface class VehiclesDataSource {
   Future<Object?> update(String id, Map<String, dynamic> body);
   Future<Object?> delete(String id);
   Future<Object?> history(String id);
+  Future<Object?> vinHistory(String id);
   Future<Object?> refreshHur(String id);
 }
 
@@ -72,6 +73,12 @@ class RemoteVehiclesDataSource implements VehiclesDataSource {
   @override
   Future<Object?> history(String id) async => (await _request(
     'vehicles/${Uri.encodeComponent(id)}/history',
+    'GET',
+  )).data;
+
+  @override
+  Future<Object?> vinHistory(String id) async => (await _request(
+    'vehicles/${Uri.encodeComponent(id)}/vin-history',
     'GET',
   )).data;
 
