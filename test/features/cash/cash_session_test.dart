@@ -106,7 +106,7 @@ void main() {
       final repo = FakeCashRepository()..openFlagFails = true;
       final c = SettlementFlowController(
         repo: repo,
-        enabledBanks: const [],
+        accounts: const [],
         branchId: 'b-1',
       );
       await c.loadSessionFlag();
@@ -118,7 +118,7 @@ void main() {
       final repo = FakeCashRepository()..openFlag = false;
       final c = SettlementFlowController(
         repo: repo,
-        enabledBanks: const [],
+        accounts: const [],
         branchId: 'b-1',
       );
       await c.loadSessionFlag();
@@ -204,11 +204,8 @@ void main() {
 
       await tester.tap(find.byKey(const ValueKey('pay_sheet_back')));
       await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(
-        find.byKey(const ValueKey('pay_opt_OTHER')),
-        200,
-        scrollable: find.byType(Scrollable).last,
-      );
+      await tester.ensureVisible(find.byKey(const ValueKey('pay_opt_OTHER')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('pay_opt_OTHER')));
       await tester.pumpAndSettle();
       expect(_warning, findsOneWidget);

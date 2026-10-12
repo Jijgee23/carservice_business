@@ -32,7 +32,7 @@ User _user(List<String> permissions, {bool owner = false}) => User(
 SettlementFlowController _flow(FakeCashRepository repo) =>
     SettlementFlowController(
       repo: repo,
-      enabledBanks: const [],
+      accounts: const [],
       branchId: 'b-1',
       now: DateTime(2026, 10, 5, 10),
     );
@@ -82,12 +82,12 @@ void main() {
       c.toggle('o1', false);
       c.setMethod(OrderPaymentMethod.BANK_TRANSFER);
       expect(c.canSubmit, isFalse); // bank required
-      c.setBank('KHAN');
+      c.setBank('acc-khan');
       expect(await c.submit(), isNotNull);
       final d = repo.settlementDrafts.single;
       expect(d.orderIds, ['o2']);
       expect(d.expectedAmount, '200');
-      expect(d.bank, 'KHAN');
+      expect(d.bankId, 'acc-khan');
       expect(d.occurredAt, isNull); // today -> server "now"
     });
 
@@ -163,7 +163,8 @@ void main() {
       status: OrderPaymentRecordStatus.PAID,
       paidAt: DateTime(2026, 10, 3),
       createdAt: DateTime(2026, 10, 3),
-      bank: 'KHAN',
+      bankId: 'acc-khan',
+      bankLabel: 'Хаан банк',
       settlementId: 's-1',
     );
 

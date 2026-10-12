@@ -12,11 +12,13 @@ import 'package:carservice_business/features/orders/presentation/feature_theme.d
 // because it is built on the orders domain (OrderPaymentMethod, PaymentBank)
 // and the cash feature already depends on orders, not the other way round.
 
-/// A chosen method (+ receiving bank for transfer / card).
+/// A chosen method (+ receiving account id for transfer / card). [bankLabel]
+/// is display-only and never part of equality.
 class PaymentChoice {
   final OrderPaymentMethod method;
   final String? bank;
-  const PaymentChoice(this.method, [this.bank]);
+  final String? bankLabel;
+  const PaymentChoice(this.method, [this.bank, this.bankLabel]);
 
   @override
   bool operator ==(Object other) =>
@@ -34,11 +36,11 @@ String paymentChoiceLabel(PaymentChoice choice) => switch (choice.method) {
   OrderPaymentMethod.BANK_TRANSFER =>
     choice.bank == null
         ? 'Дансаар шилжүүлэх'
-        : '${paymentBankLabel(choice.bank!)} · Шилжүүлэг',
+        : '${choice.bankLabel ?? choice.bank} · Шилжүүлэг',
   OrderPaymentMethod.CARD =>
     choice.bank == null
         ? 'Карт (POS)'
-        : '${paymentBankLabel(choice.bank!)} · POS',
+        : '${choice.bankLabel ?? choice.bank} · POS',
 };
 
 IconData paymentChoiceIcon(OrderPaymentMethod method) => switch (method) {
@@ -55,7 +57,16 @@ class PaymentOption {
 
   /// Group header shown above the first row of the group; null = ungrouped.
   final String? group;
-  const PaymentOption(this.choice, {this.group});
+
+  /// Display-only POS account facts; never part of equality.
+  final bool isTest;
+  final String? terminalId;
+  const PaymentOption(
+    this.choice, {
+    this.group,
+    this.isTest = false,
+    this.terminalId,
+  });
 
   @override
   bool operator ==(Object other) =>
@@ -66,17 +77,20 @@ class PaymentOption {
 
   OrderPaymentMethod get method => choice.method;
   String? get bank => choice.bank;
+  String? get bankLabel => choice.bankLabel;
 
   String get key => '${method.name}${bank == null ? '' : '_$bank'}';
-  String get label =>
-      bank == null ? paymentChoiceLabel(choice) : paymentBankLabel(bank!);
+  String get label => bank == null
+      ? paymentChoiceLabel(choice)
+      : '${bankLabel ?? bank!}${isTest ? ' · Туршилт' : ''}';
 }
 
 const kTransferGroup = 'Дансаар шилжүүлэх';
 const kCardGroup = 'Карт (POS)';
 
 /// Ordered option list: cash, QPay (order context only), transfer per bank,
-/// card per bank, other. One enabled-bank list feeds both bank groups.
+/// card per POS account, other. One account list feeds both groups
+/// (BANK_ACCOUNT -> transfer, POS -> card).
 List<PaymentOption> buildPaymentOptions({
   required List<PaymentBank> banks,
   required bool includeQPay,
@@ -86,15 +100,17 @@ List<PaymentOption> buildPaymentOptions({
     const PaymentOption(PaymentChoice(OrderPaymentMethod.CASH)),
   if (includeQPay) const PaymentOption(PaymentChoice(OrderPaymentMethod.QPAY)),
   if (includeManual) ...[
-    for (final b in banks)
+    for (final b in banks.where((b) => !b.isPos))
       PaymentOption(
-        PaymentChoice(OrderPaymentMethod.BANK_TRANSFER, b.code),
+        PaymentChoice(OrderPaymentMethod.BANK_TRANSFER, b.id, b.label),
         group: kTransferGroup,
       ),
-    for (final b in banks)
+    for (final b in banks.where((b) => b.isPos))
       PaymentOption(
-        PaymentChoice(OrderPaymentMethod.CARD, b.code),
+        PaymentChoice(OrderPaymentMethod.CARD, b.id, b.label),
         group: kCardGroup,
+        isTest: b.isTest,
+        terminalId: b.terminalId,
       ),
     const PaymentOption(PaymentChoice(OrderPaymentMethod.OTHER)),
   ],
@@ -468,6 +484,13 @@ class _PaymentMethodSheetState extends State<PaymentMethodSheet> {
         // Placed before «Бусад» so it sits with the bank groups.
         final otherAt = rows.length - 1;
         rows.insert(otherAt < 0 ? 0 : otherAt, status);
+      } else if ((widget.liveBanks?.call() ?? widget.banks).isEmpty) {
+        const empty = ListTile(
+          key: ValueKey('pay_banks_empty'),
+          title: Text('Төлбөрийн сонголт бүртгээгүй байна'),
+        );
+        final otherAt = rows.length - 1;
+        rows.insert(otherAt < 0 ? 0 : otherAt, empty);
       }
     }
     return ListView(children: rows);
@@ -537,7 +560,9 @@ class _PaymentMethodSheetState extends State<PaymentMethodSheet> {
     } else if (_posActive) {
       children.add(
         PosSimulator(
-          bankLabel: paymentBankLabel(option.bank ?? ''),
+          bankLabel:
+              '${option.choice.bankLabel ?? ''}'
+              '${option.terminalId == null ? '' : ' · TID ${option.terminalId}'}',
           amount: _amount.text,
           busy: busy,
           onSuccess: () => _record(option),

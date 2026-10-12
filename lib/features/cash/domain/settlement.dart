@@ -56,7 +56,7 @@ class SettlementDraft {
   final String customerId;
   final List<String> orderIds;
   final OrderPaymentMethod method;
-  final String? bank;
+  final String? bankId;
   final String? occurredAt;
   final String? note;
   final String? expectedAmount;
@@ -65,7 +65,7 @@ class SettlementDraft {
     required this.customerId,
     required this.orderIds,
     required this.method,
-    this.bank,
+    this.bankId,
     this.occurredAt,
     this.note,
     this.expectedAmount,
@@ -76,7 +76,7 @@ class SettlementDraft {
     'customerId': customerId,
     'orderIds': orderIds,
     'method': method.name,
-    if (bank != null) 'bank': bank,
+    if (bankId != null) 'bankId': bankId,
     if (occurredAt != null) 'occurredAt': occurredAt,
     if (note != null) 'note': note,
     if (expectedAmount != null) 'expectedAmount': expectedAmount,
@@ -110,6 +110,9 @@ class Settlement {
   final CashRef customer;
   final String amount;
   final OrderPaymentMethod method;
+
+  /// Payment-account id; [bank] is the legacy code, [bankLabel] the name.
+  final String? bankId;
   final String? bank;
   final String? bankLabel;
   final DateTime occurredAt;
@@ -131,6 +134,7 @@ class Settlement {
     required this.customer,
     required this.amount,
     required this.method,
+    this.bankId,
     this.bank,
     this.bankLabel,
     required this.occurredAt,

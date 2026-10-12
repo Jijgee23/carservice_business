@@ -189,7 +189,7 @@ abstract interface class OrdersRepository {
     String orderId, {
     required OrderPaymentMethod method,
     required Money amount,
-    String? bank,
+    String? bankId,
   });
   Future<Result<BankSettings>> getBanks();
   Future<Result<OrderPaymentTotals>> reversePayment(

@@ -19,14 +19,14 @@ const settlementAmountChangedNotice =
 class SettlementFlowController extends ChangeNotifier {
   SettlementFlowController({
     required this.repo,
-    required this.enabledBanks,
+    required this.accounts,
     this.branchId,
     DateTime? now,
   }) : _now = now ?? DateTime.now(),
        date = _dateOnly(now ?? DateTime.now());
 
   final CashRepository repo;
-  final List<PaymentBank> enabledBanks;
+  final List<PaymentBank> accounts;
   String? branchId;
   final DateTime _now;
 
@@ -39,7 +39,7 @@ class SettlementFlowController extends ChangeNotifier {
   AppError? loadError;
 
   OrderPaymentMethod method = OrderPaymentMethod.CASH;
-  String? bank;
+  String? bankId;
   DateTime date;
   String note = '';
 
@@ -93,7 +93,7 @@ class SettlementFlowController extends ChangeNotifier {
       customer != null &&
       selected.isNotEmpty &&
       totalCents > 0 &&
-      (!needsBank || bank != null);
+      (!needsBank || bankId != null);
 
   void _notify() {
     if (!_disposed) notifyListeners();
@@ -172,12 +172,12 @@ class SettlementFlowController extends ChangeNotifier {
 
   void setMethod(OrderPaymentMethod value) {
     method = value;
-    if (!paymentMethodNeedsBank(value)) bank = null;
+    if (!paymentMethodNeedsBank(value)) bankId = null;
     _notify();
   }
 
   void setBank(String? value) {
-    bank = value;
+    bankId = value;
     _notify();
   }
 
@@ -202,7 +202,7 @@ class SettlementFlowController extends ChangeNotifier {
           if (selected.contains(o.id)) o.id,
       ],
       method: method,
-      bank: needsBank ? bank : null,
+      bankId: needsBank ? bankId : null,
       // Today means "now": a date-only value could predate an order that
       // completed earlier today (server: CASH_DATE_INVALID).
       occurredAt: date == today ? null : cashDateParam(date),

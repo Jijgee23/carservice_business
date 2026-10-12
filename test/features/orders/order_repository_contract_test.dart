@@ -378,7 +378,11 @@ void main() {
       'status': 'PAID',
       'paidAt': '2026-10-05T00:00:00.000Z',
       'createdAt': '2026-10-05T00:00:00.000Z',
+      'bankId': 'acc-khan',
       'bank': 'KHAN',
+      'bankLabel': 'Хаан банк',
+      'bankType': 'BANK_ACCOUNT',
+      'bankIsTest': false,
       'reconciledAt': '2026-10-05T01:00:00.000Z',
       'reconciledBy': {'id': 'u1', 'name': 'Бат'},
     };
@@ -397,30 +401,56 @@ void main() {
       'o1',
       method: OrderPaymentMethod.CARD,
       amount: const Money('10'),
-      bank: 'KHAN',
+      bankId: 'acc-khan',
     );
-    expect(source.body?['bank'], 'KHAN');
+    expect(source.body?['bankId'], 'acc-khan');
+    expect(source.body?.containsKey('bank'), isFalse);
     final record = (created as Ok<OrderPaymentResult>).value.payment;
+    expect(record.bankId, 'acc-khan');
     expect(record.bank, 'KHAN');
+    expect(record.bankLabel, 'Хаан банк');
 
     await repository.createPayment(
       'o1',
       method: OrderPaymentMethod.CASH,
       amount: const Money('10'),
-      bank: 'KHAN',
+      bankId: 'acc-khan',
     );
-    expect(source.body?.containsKey('bank'), isFalse);
+    expect(source.body?.containsKey('bankId'), isFalse);
 
     source.response = {
+      'accounts': [
+        {
+          'id': 'a1',
+          'type': 'BANK_ACCOUNT',
+          'method': 'BANK_TRANSFER',
+          'name': 'Хаан банк',
+          'accountNumberMasked': '••••5678',
+          'terminalId': null,
+          'merchantId': null,
+          'isTest': false,
+        },
+        {
+          'id': 'p1',
+          'type': 'POS',
+          'method': 'CARD',
+          'name': 'Голомт POS',
+          'accountNumberMasked': null,
+          'terminalId': 'TID001',
+          'merchantId': null,
+          'isTest': true,
+        },
+      ],
       'banks': <Object?>[],
       'enabledBanks': ['KHAN', 'TDB'],
       'configured': true,
     };
     final banks = await repository.getBanks();
-    expect((banks as Ok<BankSettings>).value.enabled.map((b) => b.code), [
-      'KHAN',
-      'TDB',
-    ]);
+    final settings = (banks as Ok<BankSettings>).value;
+    expect(settings.accounts.map((b) => b.id), ['a1', 'p1']);
+    expect(settings.transferAccounts.single.maskedNumber, '••••5678');
+    expect(settings.posAccounts.single.terminalId, 'TID001');
+    expect(settings.posAccounts.single.isTest, isTrue);
   });
 
   test('uses ledger payment route and preserves amount as a string', () async {

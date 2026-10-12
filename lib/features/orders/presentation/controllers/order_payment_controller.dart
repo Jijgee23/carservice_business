@@ -57,9 +57,9 @@ class OrderPaymentController extends ChangeNotifier {
       paymentsState.valueOrNull ?? const <OrderPaymentRecord>[];
   QPayState? get qpay => qpayState.valueOrNull;
 
-  /// Banks offered by the picker; empty until GET /banks resolves.
-  List<PaymentBank> get enabledBanks =>
-      banksState.valueOrNull?.enabled ?? const <PaymentBank>[];
+  /// Payment accounts offered by the picker; empty until GET /banks resolves.
+  List<PaymentBank> get accounts =>
+      banksState.valueOrNull?.accounts ?? const <PaymentBank>[];
   bool get isLoading =>
       detailState is AsyncLoading ||
       paymentsState is AsyncLoading ||
@@ -216,11 +216,11 @@ class OrderPaymentController extends ChangeNotifier {
   Future<bool> createManual({
     required String amount,
     required OrderPaymentMethod method,
-    String? bank,
+    String? bankId,
   }) async {
     if (!canCreate || method == OrderPaymentMethod.QPAY) return false;
     if (cashSessionClosed) return _failed(_sessionClosedError);
-    if (paymentMethodNeedsBank(method) && (bank == null || bank.isEmpty)) {
+    if (paymentMethodNeedsBank(method) && (bankId == null || bankId.isEmpty)) {
       _setError(
         const AppError(
           ErrorKind.unknown,
@@ -251,7 +251,7 @@ class OrderPaymentController extends ChangeNotifier {
         orderId,
         method: method,
         amount: Money(normalized),
-        bank: paymentMethodNeedsBank(method) ? bank : null,
+        bankId: paymentMethodNeedsBank(method) ? bankId : null,
       );
       return switch (result) {
         Ok() => true,

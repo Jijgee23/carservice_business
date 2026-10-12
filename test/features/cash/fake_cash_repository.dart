@@ -20,8 +20,12 @@ class FakeCashRepository implements CashRepository {
   final createSettlementErrors = <AppError>[];
 
   @override
-  Future<Result<BankSettings>> getBanks() async =>
-      const Ok(BankSettings(['KHAN', 'GOLOMT']));
+  Future<Result<BankSettings>> getBanks() async => const Ok(
+    BankSettings([
+      PaymentBank(id: 'acc-khan', label: 'Хаан банк'),
+      PaymentBank(id: 'acc-golomt', label: 'Голомт банк'),
+    ]),
+  );
 
   @override
   Future<Result<bool>> isSessionOpen(String branchId) async {
@@ -74,7 +78,8 @@ Settlement settlement({
   customer: const CashRef('c-1', 'Тест ХК'),
   amount: '300000',
   method: method,
-  bank: 'KHAN',
+  bankId: 'acc-khan',
+  bankLabel: 'Хаан банк',
   occurredAt: DateTime(2026, 10, 3, 12),
   orderCount: 2,
   entryId: 'e-9',

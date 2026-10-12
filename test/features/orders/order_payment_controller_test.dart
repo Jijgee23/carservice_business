@@ -104,18 +104,18 @@ class _PaymentRepository extends FakeOrderRepository {
     String orderId, {
     required OrderPaymentMethod method,
     required Money amount,
-    String? bank,
+    String? bankId,
   }) {
     createCalls++;
     createdAmount = amount.raw;
-    createdBank = bank;
+    createdBank = bankId;
     if (createCompleter != null) return createCompleter!.future;
     if (createError != null) return Future.value(Err(createError!));
     return super.createPayment(
       orderId,
       method: method,
       amount: amount,
-      bank: bank,
+      bankId: bankId,
     );
   }
 
@@ -358,7 +358,7 @@ void main() {
         await controller.createManual(
           amount: '10.25',
           method: OrderPaymentMethod.CARD,
-          bank: 'KHAN',
+          bankId: 'acc-khan',
         ),
         isTrue,
       );

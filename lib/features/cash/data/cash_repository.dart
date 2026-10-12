@@ -18,11 +18,18 @@ class RemoteCashRepository implements CashRepository {
   Future<Result<BankSettings>> getBanks() async {
     try {
       final json = await _dataSource.banks();
-      final raw = json is Map ? json['enabledBanks'] : null;
+      final raw = json is Map ? json['accounts'] : null;
       if (raw is! List) {
-        throw const CashParseException('enabledBanks буруу байна.');
+        throw const CashParseException('accounts буруу байна.');
       }
-      return Ok(BankSettings(raw.whereType<String>().toList(growable: false)));
+      return Ok(
+        BankSettings(
+          raw
+              .whereType<Map<String, dynamic>>()
+              .map(PaymentBank.fromJson)
+              .toList(growable: false),
+        ),
+      );
     } catch (error) {
       return Err(_error(error, 'Банкны жагсаалт ачаалж чадсангүй'));
     }

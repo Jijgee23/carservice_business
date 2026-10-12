@@ -203,7 +203,7 @@ class _PostpaidViewState extends State<_PostpaidView> {
     }
     final flow = SettlementFlowController(
       repo: cash,
-      enabledBanks: banks is Ok<BankSettings> ? banks.value.enabled : const [],
+      accounts: banks is Ok<BankSettings> ? banks.value.accounts : const [],
       branchId: branchId,
     );
     final saved = await SettlementFlowScreen.show(

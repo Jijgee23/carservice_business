@@ -105,9 +105,15 @@ class _SettlementFlowScreenState extends State<SettlementFlowScreen> {
     // an unsubmittable draft never reaches it.
     if (!_c.canSubmit) return;
     if (_c.method == OrderPaymentMethod.CARD) {
+      final terminalId = _c.accounts
+          .where((a) => a.id == _c.bankId)
+          .map((a) => a.terminalId)
+          .firstOrNull;
       final paid = await PosSimulator.confirm(
         context,
-        bankLabel: paymentBankLabel(_c.bank ?? ''),
+        bankLabel:
+            '${paymentBankLabelIn(_c.accounts, _c.bankId)}'
+            '${terminalId == null ? '' : ' · TID $terminalId'}',
         amount: _c.total,
       );
       if (!paid || !mounted) return;
@@ -172,8 +178,14 @@ class _SettlementFlowScreenState extends State<SettlementFlowScreen> {
             const SizedBox(height: 12),
             PaymentMethodField(
               key: const ValueKey('settlement_method'),
-              choice: PaymentChoice(_c.method, _c.bank),
-              banks: _c.enabledBanks,
+              choice: PaymentChoice(
+                _c.method,
+                _c.bankId,
+                _c.bankId == null
+                    ? null
+                    : paymentBankLabelIn(_c.accounts, _c.bankId),
+              ),
+              banks: _c.accounts,
               onChanged: (choice) {
                 _c.setMethod(choice.method);
                 if (choice.bank != null) _c.setBank(choice.bank);

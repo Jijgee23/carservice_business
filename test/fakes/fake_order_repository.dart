@@ -714,11 +714,12 @@ class FakeOrderRepository implements OrdersRepository {
     String orderId, {
     required OrderPaymentMethod method,
     required Money amount,
-    String? bank,
+    String? bankId,
   }) async {
     if (!_orders.any((order) => order.id == orderId)) {
       return const Err(AppError(ErrorKind.notFound, 'Захиалга олдсонгүй'));
     }
+    final needsBank = paymentMethodNeedsBank(method);
     final payment = OrderPaymentRecord(
       id: 'payment-${++_paymentSequence}',
       amountMoney: amount,
@@ -726,7 +727,10 @@ class FakeOrderRepository implements OrdersRepository {
       status: OrderPaymentRecordStatus.PAID,
       paidAt: DateTime(2026),
       createdAt: DateTime(2026),
-      bank: paymentMethodNeedsBank(method) ? bank : null,
+      bankId: needsBank ? bankId : null,
+      bankLabel: needsBank && bankId != null
+          ? paymentBankLabelIn(accounts, bankId)
+          : null,
     );
     (_payments[orderId] ??= <OrderPaymentRecord>[]).add(payment);
     final totals = _paymentTotals(orderId);
@@ -739,14 +743,17 @@ class FakeOrderRepository implements OrdersRepository {
     return Ok(OrderPaymentResult(payment: payment, totals: totals));
   }
 
-  /// Banks the fake offers; tests may narrow it.
-  List<String> enabledBankCodes = kPaymentBanks
-      .map((bank) => bank.code)
-      .toList(growable: false);
+  /// Payment accounts the fake offers; tests may narrow it.
+  List<PaymentBank> accounts = const [
+    PaymentBank(id: 'acc-khan', label: 'Хаан банк'),
+    PaymentBank(id: 'acc-golomt', label: 'Голомт банк'),
+    PaymentBank(id: 'acc-tdb', label: 'Худалдаа хөгжлийн банк'),
+    PaymentBank(id: 'pos-khan', label: 'Хаан банк', isPos: true),
+    PaymentBank(id: 'pos-tdb', label: 'Худалдаа хөгжлийн банк', isPos: true),
+  ];
 
   @override
-  Future<Result<BankSettings>> getBanks() async =>
-      Ok(BankSettings(enabledBankCodes));
+  Future<Result<BankSettings>> getBanks() async => Ok(BankSettings(accounts));
 
   @override
   Future<Result<OrderPaymentTotals>> reversePayment(
@@ -771,6 +778,8 @@ class FakeOrderRepository implements OrdersRepository {
         paidAt: current.paidAt,
         createdAt: current.createdAt,
         bank: current.bank,
+        bankId: current.bankId,
+        bankLabel: current.bankLabel,
       );
     }
     final totals = _paymentTotals(orderId);

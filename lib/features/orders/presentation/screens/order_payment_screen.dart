@@ -296,10 +296,10 @@ class _LedgerRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final date = DateFormat('yyyy-MM-dd HH:mm')
         .format(payment.paidAt ?? payment.createdAt);
-    final bank = payment.bank;
+    final bank = payment.bankLabel ?? payment.bankId;
     final method = bank == null
         ? _methodLabel(payment.method)
-        : '${_methodLabel(payment.method)} · ${paymentBankLabel(bank)}';
+        : '${_methodLabel(payment.method)} · $bank';
     final showReverse =
         payment.status == OrderPaymentRecordStatus.PAID && canReverse;
     return ListTile(
@@ -348,8 +348,8 @@ class _ManualPaymentCard extends StatelessWidget {
       title: remaining.isEmpty
           ? 'Төлбөр бүртгэх'
           : 'Төлбөр бүртгэх · Үлдэгдэл $remaining₮',
-      banks: controller.enabledBanks,
-      liveBanks: () => controller.enabledBanks,
+      banks: controller.accounts,
+      liveBanks: () => controller.accounts,
       banksLoading: () => controller.banksLoading,
       banksFailed: () => controller.banksFailed,
       onRetryBanks: controller.retryBanks,
@@ -366,7 +366,7 @@ class _ManualPaymentCard extends StatelessWidget {
       onRecord: (choice, amount) => controller.createManual(
         amount: amount,
         method: choice.method,
-        bank: choice.bank,
+        bankId: choice.bank,
       ),
       qpayBuilder: (_) => _QPayPanel(
         controller: controller,

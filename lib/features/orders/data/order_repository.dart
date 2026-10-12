@@ -468,14 +468,15 @@ class RemoteOrdersRepository implements OrdersRepository {
     String orderId, {
     required OrderPaymentMethod method,
     required Money amount,
-    String? bank,
+    String? bankId,
   }) async {
     try {
       final json = _map(
         await _dataSource.createPayment(orderId, {
           'method': method.name,
           'amount': amount.raw,
-          if (bank != null && paymentMethodNeedsBank(method)) 'bank': bank,
+          if (bankId != null && paymentMethodNeedsBank(method))
+            'bankId': bankId,
         }),
       );
       return Ok(
@@ -493,11 +494,18 @@ class RemoteOrdersRepository implements OrdersRepository {
   Future<Result<BankSettings>> getBanks() async {
     try {
       final json = _map(await _dataSource.banks());
-      final raw = json['enabledBanks'];
+      final raw = json['accounts'];
       if (raw is! List) {
-        throw const OrderParseException('enabledBanks буруу байна.');
+        throw const OrderParseException('accounts буруу байна.');
       }
-      return Ok(BankSettings(raw.whereType<String>().toList(growable: false)));
+      return Ok(
+        BankSettings(
+          raw
+              .whereType<Map<String, dynamic>>()
+              .map(PaymentBank.fromJson)
+              .toList(growable: false),
+        ),
+      );
     } catch (error) {
       return Err(_error(error, 'Банкны жагсаалт ачаалж чадсангүй'));
     }
@@ -784,6 +792,8 @@ OrderPaymentRecord _payment(Object? raw) {
     status: OrderPaymentRecordStatus.fromString(status),
     paidAt: _date(json, 'paidAt'),
     createdAt: _requiredDate(json, 'createdAt'),
+    bankId: json['bankId'] is String ? json['bankId'] as String : null,
+    bankLabel: json['bankLabel'] is String ? json['bankLabel'] as String : null,
     bank: json['bank'] is String ? json['bank'] as String : null,
     settlementId:
         json['settlementId'] is String &&

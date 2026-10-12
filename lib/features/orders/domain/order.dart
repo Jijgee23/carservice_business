@@ -251,7 +251,13 @@ class OrderPaymentRecord {
   final DateTime? paidAt;
   final DateTime createdAt;
 
-  /// Receiving bank code (BANK_TRANSFER / CARD only); null otherwise.
+  /// Receiving payment-account id (BANK_TRANSFER / CARD only); null otherwise.
+  final String? bankId;
+
+  /// Current display name of that account (server join); null otherwise.
+  final String? bankLabel;
+
+  /// Legacy bank code, only for rows backed by a legacy bank; else null.
   final String? bank;
 
   /// Set when the payment belongs to a postpaid lump-sum settlement
@@ -269,6 +275,8 @@ class OrderPaymentRecord {
     required this.status,
     required this.paidAt,
     required this.createdAt,
+    this.bankId,
+    this.bankLabel,
     this.bank,
     this.settlementId,
     this.locked = false,

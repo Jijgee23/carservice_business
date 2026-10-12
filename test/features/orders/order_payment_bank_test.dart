@@ -48,6 +48,24 @@ ServiceOrderDetail _order() => ServiceOrderDetail(
   reports: const [],
 );
 
+const _twoAccounts = [
+  PaymentBank(id: 'acc-khan', label: 'Хаан банк'),
+  PaymentBank(id: 'acc-tdb', label: 'Худалдаа хөгжлийн банк'),
+  PaymentBank(id: 'pos-khan', label: 'Хаан банк', isPos: true),
+  PaymentBank(id: 'pos-tdb', label: 'Худалдаа хөгжлийн банк', isPos: true),
+];
+
+const _domainAccounts = [
+  PaymentBank(id: 'a1', label: 'Хаан банк', maskedNumber: '••••5678'),
+  PaymentBank(
+    id: 'p1',
+    label: 'Голомт POS',
+    isPos: true,
+    terminalId: 'TID001',
+    isTest: true,
+  ),
+];
+
 const _perms = ['payments.view', 'payments.create', 'payments.delete'];
 
 Future<void> _pump(
@@ -100,6 +118,62 @@ void main() {
         .clearDevicePixelRatioTestValue();
   });
 
+  group('domain', () {
+    test('options: BANK_ACCOUNT feeds transfer, POS feeds card, once each', () {
+      final options = buildPaymentOptions(
+        banks: _domainAccounts,
+        includeQPay: false,
+      );
+      final transfer = options.where((o) => o.group == kTransferGroup).toList();
+      final card = options.where((o) => o.group == kCardGroup).toList();
+      expect(transfer.map((o) => o.choice.bank), ['a1']);
+      expect(card.map((o) => o.choice.bank), ['p1']);
+      expect(card.single.label.contains('Туршилт'), isTrue);
+    });
+
+    test('empty accounts leave only cash and other', () {
+      final options = buildPaymentOptions(banks: const [], includeQPay: false);
+      expect(options.map((o) => o.choice.method), [
+        OrderPaymentMethod.CASH,
+        OrderPaymentMethod.OTHER,
+      ]);
+    });
+
+    test('choice equality ignores the label', () {
+      expect(
+        const PaymentChoice(OrderPaymentMethod.CARD, 'p1', 'Голомт POS'),
+        const PaymentChoice(OrderPaymentMethod.CARD, 'p1'),
+      );
+    });
+
+    test('paymentBankLabelIn falls back to the raw id', () {
+      expect(paymentBankLabelIn(_domainAccounts, 'a1'), 'Хаан банк');
+      expect(paymentBankLabelIn(_domainAccounts, 'gone'), 'gone');
+      expect(paymentBankLabelIn(_domainAccounts, null), '');
+    });
+
+    test('BankSettings splits transfer and POS accounts', () {
+      const s = BankSettings(_domainAccounts);
+      expect(s.transferAccounts.map((a) => a.id), ['a1']);
+      expect(s.posAccounts.map((a) => a.id), ['p1']);
+    });
+
+    test('PaymentBank.fromJson maps the GET /banks account shape', () {
+      final bank = PaymentBank.fromJson({
+        'id': 'p1',
+        'type': 'POS',
+        'name': 'Голомт POS',
+        'accountNumberMasked': null,
+        'terminalId': 'TID001',
+        'isTest': true,
+      });
+      expect(bank.isPos, isTrue);
+      expect(bank.terminalId, 'TID001');
+      expect(bank.isTest, isTrue);
+      expect(bank.maskedNumber, '');
+    });
+  });
+
   group('controller', () {
     test('bank required for CARD / transfer, ignored for CASH', () async {
       final repo = FakeOrderRepository(seedOrders: [_order()]);
@@ -127,7 +201,7 @@ void main() {
         await controller.createManual(
           amount: '10',
           method: OrderPaymentMethod.CARD,
-          bank: 'KHAN',
+          bankId: 'acc-khan',
         ),
         isTrue,
       );
@@ -135,17 +209,17 @@ void main() {
         await controller.createManual(
           amount: '5',
           method: OrderPaymentMethod.CASH,
-          bank: 'KHAN',
+          bankId: 'acc-khan',
         ),
         isTrue,
       );
-      expect(controller.payments.map((p) => p.bank), ['KHAN', null]);
+      expect(controller.payments.map((p) => p.bankId), ['acc-khan', null]);
       controller.dispose();
     });
 
-    test('banks load once and expose only enabled ones', () async {
+    test('banks load once and expose the active accounts', () async {
       final repo = FakeOrderRepository(seedOrders: [_order()])
-        ..enabledBankCodes = ['KHAN', 'TDB'];
+        ..accounts = _twoAccounts;
       final controller = OrderPaymentController(
         repo: repo,
         orderId: 'order-1',
@@ -153,7 +227,12 @@ void main() {
       );
       await controller.load();
       await Future<void>.delayed(Duration.zero);
-      expect(controller.enabledBanks.map((b) => b.code), ['KHAN', 'TDB']);
+      expect(controller.accounts.map((b) => b.id), [
+        'acc-khan',
+        'acc-tdb',
+        'pos-khan',
+        'pos-tdb',
+      ]);
       controller.dispose();
     });
   });
@@ -163,7 +242,7 @@ void main() {
       tester,
     ) async {
       final repo = FakeOrderRepository(seedOrders: [_order()])
-        ..enabledBankCodes = ['KHAN', 'TDB'];
+        ..accounts = _twoAccounts;
       await _pump(tester, repo, _user(_perms));
       final open = find.byKey(const ValueKey('open_payment_sheet'));
       await tester.ensureVisible(open);
@@ -176,15 +255,18 @@ void main() {
         y('pay_opt_CASH'),
         y('pay_opt_QPAY'),
         y('pay_group_$kTransferGroup'),
-        y('pay_opt_BANK_TRANSFER_KHAN'),
-        y('pay_opt_BANK_TRANSFER_TDB'),
+        y('pay_opt_BANK_TRANSFER_acc-khan'),
+        y('pay_opt_BANK_TRANSFER_acc-tdb'),
         y('pay_group_$kCardGroup'),
-        y('pay_opt_CARD_KHAN'),
-        y('pay_opt_CARD_TDB'),
+        y('pay_opt_CARD_pos-khan'),
+        y('pay_opt_CARD_pos-tdb'),
         y('pay_opt_OTHER'),
       ];
       expect([...order]..sort(), order);
-      expect(find.byKey(const ValueKey('pay_opt_CARD_GOLOMT')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('pay_opt_CARD_pos-golomt')),
+        findsNothing,
+      );
     });
 
     testWidgets('banks arriving after the sheet opens appear; error retries', (
@@ -197,7 +279,7 @@ void main() {
       await tester.tap(open);
       await tester.pump(const Duration(milliseconds: 300));
       expect(find.byKey(const ValueKey('pay_banks_loading')), findsOneWidget);
-      expect(find.byKey(const ValueKey('pay_opt_CARD_KHAN')), findsNothing);
+      expect(find.byKey(const ValueKey('pay_opt_CARD_pos-khan')), findsNothing);
 
       repo.gate.complete(const Err(AppError(ErrorKind.unknown, 'x')));
       await tester.pump();
@@ -215,27 +297,46 @@ void main() {
       await tester.ensureVisible(open);
       await tester.tap(open);
       await tester.pump(const Duration(milliseconds: 300));
-      expect(find.byKey(const ValueKey('pay_opt_CARD_KHAN')), findsNothing);
+      expect(find.byKey(const ValueKey('pay_opt_CARD_pos-khan')), findsNothing);
 
-      repo.gate.complete(const Ok(BankSettings(['KHAN', 'TDB'])));
+      repo.gate.complete(const Ok(BankSettings(_twoAccounts)));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
       expect(find.byKey(const ValueKey('pay_banks_loading')), findsNothing);
       expect(
-        find.byKey(const ValueKey('pay_opt_BANK_TRANSFER_KHAN')),
+        find.byKey(const ValueKey('pay_opt_BANK_TRANSFER_acc-khan')),
         findsOneWidget,
       );
-      expect(find.byKey(const ValueKey('pay_opt_CARD_TDB')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('pay_opt_CARD_pos-tdb')),
+        findsOneWidget,
+      );
 
-      await tester.tap(find.byKey(const ValueKey('pay_opt_CARD_KHAN')));
+      await tester.tap(find.byKey(const ValueKey('pay_opt_CARD_pos-khan')));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('pos_start')), findsOneWidget);
+    });
+
+    testWidgets('no accounts: empty-state row before «Бусад»', (tester) async {
+      final repo = FakeOrderRepository(seedOrders: [_order()])..accounts = [];
+      await _pump(tester, repo, _user(_perms));
+      final open = find.byKey(const ValueKey('open_payment_sheet'));
+      await tester.ensureVisible(open);
+      await tester.tap(open);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('pay_banks_empty')), findsOneWidget);
+      expect(find.text('Төлбөрийн сонголт бүртгээгүй байна'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('pay_banks_empty'))).dy <
+            tester.getTopLeft(find.byKey(const ValueKey('pay_opt_OTHER'))).dy,
+        isTrue,
+      );
     });
 
     testWidgets('transfer records BANK_TRANSFER + bank', (tester) async {
       final repo = FakeOrderRepository(seedOrders: [_order()]);
       await _pump(tester, repo, _user(_perms));
-      await _openOption(tester, 'BANK_TRANSFER_GOLOMT');
+      await _openOption(tester, 'BANK_TRANSFER_acc-golomt');
       await tester.enterText(
         find.byKey(const ValueKey('payment_amount_input')),
         '40',
@@ -245,7 +346,7 @@ void main() {
 
       final saved = await _saved(repo);
       expect(saved.single.method, OrderPaymentMethod.BANK_TRANSFER);
-      expect(saved.single.bank, 'GOLOMT');
+      expect(saved.single.bankId, 'acc-golomt');
       expect(find.byKey(const ValueKey('pay_sheet_title')), findsNothing);
     });
 
@@ -254,7 +355,7 @@ void main() {
     ) async {
       final repo = FakeOrderRepository(seedOrders: [_order()]);
       await _pump(tester, repo, _user(_perms));
-      await _openOption(tester, 'CARD_KHAN');
+      await _openOption(tester, 'CARD_pos-khan');
       await tester.enterText(
         find.byKey(const ValueKey('payment_amount_input')),
         '40',
@@ -271,13 +372,13 @@ void main() {
 
       final saved = await _saved(repo);
       expect(saved.single.method, OrderPaymentMethod.CARD);
-      expect(saved.single.bank, 'KHAN');
+      expect(saved.single.bankId, 'pos-khan');
     });
 
     testWidgets('card: simulator Цуцлах records nothing', (tester) async {
       final repo = FakeOrderRepository(seedOrders: [_order()]);
       await _pump(tester, repo, _user(_perms));
-      await _openOption(tester, 'CARD_KHAN');
+      await _openOption(tester, 'CARD_pos-khan');
       await tester.tap(find.byKey(const ValueKey('pos_start')));
       await tester.pump(const Duration(milliseconds: 100));
       await tester.tap(find.byKey(const ValueKey('pos_cancel')));
@@ -300,7 +401,7 @@ void main() {
       await tester.pumpAndSettle();
       final saved = await _saved(repo);
       expect(saved.single.method, OrderPaymentMethod.CASH);
-      expect(saved.single.bank, isNull);
+      expect(saved.single.bankId, isNull);
     });
   });
 }

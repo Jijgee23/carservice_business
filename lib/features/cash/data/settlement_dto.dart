@@ -94,6 +94,7 @@ Settlement parseSettlement(Object? raw) {
     customer: customer,
     amount: _money(json['amount'], 'amount'),
     method: method,
+    bankId: _optStr(json['bankId']),
     bank: _optStr(json['bank']),
     bankLabel: _optStr(json['bankLabel']),
     occurredAt: _date(json['occurredAt'], 'occurredAt'),
