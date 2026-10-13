@@ -1295,10 +1295,13 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
                   decoration: InputDecoration(
                     hintText: 'Үйлчилгээ хайх...',
                     prefixIcon: const Icon(Icons.search, size: 18),
+                    // Fixed box: AppLoading's Center would otherwise expand
+                    // across the whole field and squeeze the typed text out
+                    // of view.
                     suffixIcon: _searching
-                        ? const AppLoading(
-                            size: 14,
-                            padding: EdgeInsets.all(12),
+                        ? const SizedBox.square(
+                            dimension: 48,
+                            child: AppLoading(size: 14),
                           )
                         : _searchCtrl.text.isNotEmpty
                         ? IconButton(

@@ -341,6 +341,9 @@ class OrderPaymentController extends ChangeNotifier {
       'QPAY_INVOICE_PAID',
       'QPAY_CANCEL_FAILED',
       'QPAY_INVOICE_PARTIALLY_PAID',
+      'QPAY_OVERPAYMENT',
+      'QPAY_ORDER_CANCELLED',
+      'QPAY_PAYMENT_NOT_PENDING',
     };
     if (!codes.contains(error.code) || error.kind == ErrorKind.unknown) {
       return error;

@@ -23,6 +23,12 @@ void main() {
     );
   });
 
+  test('AppointmentSummary maps REFUNDED explicitly (not unknown)', () {
+    final status = AppointmentSummary.fromJson(_json('REFUNDED')).paymentStatus;
+    expect(status, AppointmentBookingPaymentStatus.REFUNDED);
+    expect(status!.label, 'Төлбөр буцаагдсан');
+  });
+
   test('an older server without the field leaves paymentStatus null', () {
     expect(AppointmentSummary.fromJson(_json()).paymentStatus, isNull);
   });

@@ -331,6 +331,11 @@ class AppointmentDetailController extends ChangeNotifier {
         AppError(ErrorKind.unknown, 'Цаг захиалга сонгогдоогүй байна'),
       );
     }
+    if (mutating) {
+      return const Err(
+        AppError(ErrorKind.unknown, 'Өөр үйлдэл боловсруулагдаж байна'),
+      );
+    }
     final generation = _generation;
     mutating = true;
     notifyListeners();
@@ -342,9 +347,8 @@ class AppointmentDetailController extends ChangeNotifier {
     mutating = false;
     if (result case Ok(:final value)) {
       lastRefund = value;
-      // No `REFUNDED` member exists on the frozen enum — `NOT_REQUIRED` is
-      // the closest honest neutral value once money has been returned.
-      paymentStatus = AppointmentBookingPaymentStatus.NOT_REQUIRED;
+      // Server now reports REFUNDED explicitly (appointmentBookingPaymentStatus).
+      paymentStatus = AppointmentBookingPaymentStatus.REFUNDED;
     }
     notifyListeners();
     return result;

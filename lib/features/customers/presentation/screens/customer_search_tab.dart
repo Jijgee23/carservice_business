@@ -112,8 +112,11 @@ class _CustomerSearchTabState extends State<CustomerSearchTab> {
                             color: context.colors.textHint,
                           ),
                           suffixIcon: ctrl.listState is AsyncLoading
-                              ? const Padding(
-                                  padding: EdgeInsets.all(AppDimens.paddingMD),
+                              // Fixed box: AppLoading's Center would
+                              // otherwise expand across the whole field and
+                              // squeeze the typed text out of view.
+                              ? const SizedBox.square(
+                                  dimension: 48,
                                   child: AppLoading(size: 16),
                                 )
                               : _ctrl.text.isNotEmpty

@@ -37,18 +37,44 @@ void main() {
       expect(withoutMessage.message, 'Хандах эрх байхгүй');
     });
 
-    test('404 maps to notFound with a fixed message', () {
+    test('404 maps to notFound with a fallback message when none is sent', () {
       final error = mapDioException(_badResponse(404));
       expect(error.kind, ErrorKind.notFound);
       expect(error.message, 'Олдсонгүй');
       expect(error.statusCode, 404);
     });
 
-    test('500 maps to server with a fixed message', () {
+    test('404 surfaces the server message and code when present', () {
+      final error = mapDioException(
+        _badResponse(
+          404,
+          data: {
+            'error': 'Төлбөр аль хэдийн цуцлагдсан.',
+            'code': 'PAYMENT_NOT_FOUND',
+          },
+        ),
+      );
+      expect(error.kind, ErrorKind.notFound);
+      expect(error.message, 'Төлбөр аль хэдийн цуцлагдсан.');
+      expect(error.code, 'PAYMENT_NOT_FOUND');
+    });
+
+    test('500 maps to server with a fallback message when none is sent', () {
       final error = mapDioException(_badResponse(500));
       expect(error.kind, ErrorKind.server);
       expect(error.message, 'Серверийн алдаа');
       expect(error.statusCode, 500);
+    });
+
+    test('500 surfaces the server message when present', () {
+      final error = mapDioException(
+        _badResponse(
+          500,
+          data: {'error': 'Серверийн алдаа гарлаа. Дахин оролдоно уу.'},
+        ),
+      );
+      expect(error.kind, ErrorKind.server);
+      expect(error.message, 'Серверийн алдаа гарлаа. Дахин оролдоно уу.');
     });
 
     test(
@@ -89,6 +115,21 @@ void main() {
         expect(error.fieldErrors, {'requestedAt': 'Огноо буруу.'});
       },
     );
+
+    test('409 APPOINTMENT_NOT_PAYABLE keeps the server message and code', () {
+      final error = mapDioException(
+        _badResponse(
+          409,
+          data: {
+            'error': 'Энэ цаг цуцлагдсан тул хураамж төлөх боломжгүй.',
+            'code': 'APPOINTMENT_NOT_PAYABLE',
+          },
+        ),
+      );
+      expect(error.statusCode, 409);
+      expect(error.code, 'APPOINTMENT_NOT_PAYABLE');
+      expect(error.message, 'Энэ цаг цуцлагдсан тул хураамж төлөх боломжгүй.');
+    });
 
     test('409 and 422 never collapse into the same statusCode', () {
       final conflict = mapDioException(_badResponse(409, data: {}));

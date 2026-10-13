@@ -391,11 +391,23 @@ void main() {
           expect(controller.lastRefund, value);
           expect(
             controller.paymentStatus,
-            AppointmentBookingPaymentStatus.NOT_REQUIRED,
+            AppointmentBookingPaymentStatus.REFUNDED,
           );
         }
       },
     );
+
+    test('refundPayment ignores a second tap while one is in flight', () async {
+      final seed = _pending(status: AppointmentStatus.CONFIRMED);
+      final fake = FakeAppointmentRepository(seed: [seed]);
+      final controller = AppointmentDetailController(initial: seed, repo: fake);
+      addTearDown(controller.dispose);
+
+      final first = controller.refundPayment(note: 'a');
+      final second = await controller.refundPayment(note: 'b');
+      expect(second, isA<Err<AppointmentRefundResult>>());
+      await first;
+    });
   });
 
   group('AppointmentDetailController — generation guard', () {

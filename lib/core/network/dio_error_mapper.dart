@@ -48,14 +48,15 @@ AppError mapDioException(DioException error) {
       ),
       404 => AppError(
         ErrorKind.notFound,
-        'Олдсонгүй',
+        // Server text (PAYMENT_NOT_FOUND "already cancelled", ...) wins when present.
+        message ?? 'Олдсонгүй',
         statusCode: status,
         code: metadata.code,
         fieldErrors: metadata.fieldErrors,
       ),
       500 => AppError(
         ErrorKind.server,
-        'Серверийн алдаа',
+        message ?? 'Серверийн алдаа',
         statusCode: status,
         code: metadata.code,
         fieldErrors: metadata.fieldErrors,

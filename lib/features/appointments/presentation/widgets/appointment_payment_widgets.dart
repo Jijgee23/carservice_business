@@ -20,6 +20,7 @@ Color appointmentPaymentStatusColor(
   AppointmentBookingPaymentStatus.UNDERPAID => context.opsWarning,
   AppointmentBookingPaymentStatus.FAILED => context.opsDanger,
   AppointmentBookingPaymentStatus.NOT_REQUIRED => context.opsTextSecondary,
+  AppointmentBookingPaymentStatus.REFUNDED => context.opsTextSecondary,
   AppointmentBookingPaymentStatus.unknown => context.opsTextSecondary,
 };
 
@@ -31,6 +32,7 @@ IconData appointmentPaymentStatusIcon(AppointmentBookingPaymentStatus status) =>
       AppointmentBookingPaymentStatus.FAILED => Icons.error_outline,
       AppointmentBookingPaymentStatus.NOT_REQUIRED =>
         Icons.remove_circle_outline,
+      AppointmentBookingPaymentStatus.REFUNDED => Icons.undo,
       AppointmentBookingPaymentStatus.unknown => Icons.help_outline,
     };
 
@@ -112,38 +114,41 @@ class AppointmentPaymentPanel extends StatelessWidget {
             const SizedBox(height: AppDimens.paddingXS),
             Text(detailMessage!, style: context.textStyles.caption),
           ],
-          const SizedBox(height: AppDimens.paddingSM),
-          Wrap(
-            spacing: AppDimens.paddingSM,
-            runSpacing: AppDimens.paddingSM,
-            children: [
-              if (onCheck != null)
-                OutlinedButton.icon(
-                  key: const ValueKey('appointment_payment_check_button'),
-                  onPressed: busy ? null : onCheck,
-                  icon: const Icon(Icons.refresh, size: 18),
-                  label: const Text('Төлбөр шалгах'),
-                ),
-              if (onRetry != null)
-                OutlinedButton.icon(
-                  key: const ValueKey('appointment_payment_retry_button'),
-                  onPressed: busy ? null : onRetry,
-                  icon: const Icon(Icons.replay, size: 18),
-                  label: const Text('Дахин үүсгэх'),
-                ),
-              if (onRefund != null)
-                OutlinedButton.icon(
-                  key: const ValueKey('appointment_payment_refund_button'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: context.opsDanger,
-                    side: BorderSide(color: context.opsDanger),
+          // A refunded fee is terminal: no check / retry / refund is offered.
+          if (status != AppointmentBookingPaymentStatus.REFUNDED) ...[
+            const SizedBox(height: AppDimens.paddingSM),
+            Wrap(
+              spacing: AppDimens.paddingSM,
+              runSpacing: AppDimens.paddingSM,
+              children: [
+                if (onCheck != null)
+                  OutlinedButton.icon(
+                    key: const ValueKey('appointment_payment_check_button'),
+                    onPressed: busy ? null : onCheck,
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: const Text('Төлбөр шалгах'),
                   ),
-                  onPressed: busy ? null : onRefund,
-                  icon: const Icon(Icons.undo, size: 18),
-                  label: const Text('Буцаах'),
-                ),
-            ],
-          ),
+                if (onRetry != null)
+                  OutlinedButton.icon(
+                    key: const ValueKey('appointment_payment_retry_button'),
+                    onPressed: busy ? null : onRetry,
+                    icon: const Icon(Icons.replay, size: 18),
+                    label: const Text('Дахин үүсгэх'),
+                  ),
+                if (onRefund != null)
+                  OutlinedButton.icon(
+                    key: const ValueKey('appointment_payment_refund_button'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: context.opsDanger,
+                      side: BorderSide(color: context.opsDanger),
+                    ),
+                    onPressed: busy ? null : onRefund,
+                    icon: const Icon(Icons.undo, size: 18),
+                    label: const Text('Буцаах'),
+                  ),
+              ],
+            ),
+          ],
         ],
       ),
     );

@@ -89,6 +89,7 @@ enum AppointmentBookingPaymentStatus {
   UNDERPAID,
   FAILED,
   PAID,
+  REFUNDED,
   unknown;
 
   static AppointmentBookingPaymentStatus fromJson(Object? value) {
@@ -105,6 +106,7 @@ enum AppointmentBookingPaymentStatus {
     UNDERPAID => 'Дутуу төлсөн',
     FAILED => 'Төлбөрийн invoice алдаатай',
     PAID => 'Төлбөр төлөгдсөн',
+    REFUNDED => 'Төлбөр буцаагдсан',
     unknown => 'Тодорхойгүй',
   };
 }
