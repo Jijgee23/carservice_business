@@ -71,15 +71,25 @@ class AuthController extends ChangeNotifier {
     AuthTransport? transport,
     SavedLoginStore? savedLogins,
     Future<void> Function()? onSignedIn,
+    Future<Map<String, Object>> Function()? deviceFields,
   }) : _post = transport ?? _dioTransport,
        _savedLogins = savedLogins ?? HiveSavedLoginStore.instance,
-       _onSignedIn = onSignedIn ?? DeviceService.instance.registerAfterLogin;
+       _onSignedIn = onSignedIn ?? _noSignedInHook,
+       _deviceFields = deviceFields ?? DeviceService.instance.loginFields;
+
+  // The server registers the push device during `auth/login` /
+  // `auth/activate` itself — nothing extra to call after sign-in.
+  static Future<void> _noSignedInHook() async {}
 
   final AuthTransport _post;
   final SavedLoginStore _savedLogins;
 
-  /// Post-login side effect (push-token registration); injectable for tests.
+  /// Post-login side effect; injectable for tests (no-op by default).
   final Future<void> Function() _onSignedIn;
+
+  /// Device fields (`type`, `fcm`, `model`, `os`, `deviceId`) sent with
+  /// `auth/login` / `auth/activate`; injectable for tests.
+  final Future<Map<String, Object>> Function() _deviceFields;
 
   /// Last account that signed in on this device (no secrets) — prefills the
   /// identifier on the login page, including right after logout.
@@ -224,8 +234,7 @@ class AuthController extends ChangeNotifier {
     setAuthState(AuthState.noLogged);
   }
 
-  /// [serverCleanup] = false skips the device-unregister and `auth/logout`
-  /// calls — used after the account was deactivated/deleted, when the server
+  /// [serverCleanup] = false skips the `auth/logout` call — used after the account was deactivated/deleted, when the server
   /// has already revoked the tokens and dropped the devices, so those calls
   /// would only 401, trigger a nested forced logout and toast an error.
   Future<void> logout({bool serverCleanup = true}) async {
@@ -234,10 +243,8 @@ class AuthController extends ChangeNotifier {
     // is already gone, so there is nothing to send.
     if (serverCleanup && Authenticator.user != null) {
       try {
-        // Unregister first: this call can itself refresh (rotate) the tokens…
-        final unregistered = await DeviceService.instance.unregister();
-        // …so read the refresh token only now. Reading it earlier revoked an
-        // already-rotated token and left the new one valid for 7 days.
+        // One call: the server revokes this session's refresh token and drops
+        // the push device this login registered (no separate DELETE /devices).
         final refreshToken = Authenticator.user?.refreshToken;
         if (refreshToken != null && refreshToken.isNotEmpty) {
           final res = await api(
@@ -245,11 +252,11 @@ class AuthController extends ChangeNotifier {
             'auth/logout',
             body: {'refreshToken': refreshToken},
           );
-          if (res != null && res.statusCode == 200) {
-            debugPrint('Logout successful, device unregistered: $unregistered');
-          } else {
-            debugPrint('Logout failed, device unregistered: $unregistered');
-          }
+          debugPrint(
+            res != null && res.statusCode == 200
+                ? 'Logout successful, device removed: ${res.data?['deviceRemoved']}'
+                : 'Logout failed',
+          );
         }
       } catch (_) {}
     }
@@ -351,6 +358,7 @@ class AuthController extends ChangeNotifier {
     final res = await _call('auth/login', {
       'identifier': _canonical,
       'password': passwordCtrl.text,
+      ...await _deviceFields(),
     });
     if (res == null || errorText != null) return notifyListeners();
     if (res.ok) return _handleLoginResponse(res.data);
@@ -368,6 +376,7 @@ class AuthController extends ChangeNotifier {
       'identifier': _canonical,
       'code': otpCtrl.text.trim(),
       'password': newPasswordCtrl.text,
+      ...await _deviceFields(),
     });
     if (res == null || errorText != null) return notifyListeners();
     if (res.ok) return _handleLoginResponse(res.data);

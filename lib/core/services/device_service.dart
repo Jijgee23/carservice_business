@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:carservice_business/core/network/api_client.dart';
 import 'package:carservice_business/core/services/auth_storage.dart';
 import 'package:carservice_business/core/services/notification_service.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
@@ -37,7 +38,47 @@ class DeviceService {
     return 'WEB';
   }
 
-  /// Login хийсэн дараа дуудна — FCM token авч серверт бүртгэнэ.
+  /// `auth/login` / `auth/activate`-ийн body-д нэмэх төхөөрөмжийн талбарууд —
+  /// сервер нэвтрэлтийн үед push төхөөрөмжийг өөрөө бүртгэж, `auth/logout`
+  /// үед устгадаг тул тусдаа `POST /devices` / `DELETE /devices/{id}`
+  /// дуудах шаардлагагүй. `deviceId` нь token солигдоход ашигладаг ижил
+  /// install id (нэг утас = нэг Device мөр).
+  ///
+  /// Хэзээ ч throw хийхгүй: авч чадаагүй талбар (FCM-гүй, тестийн орчин г.м.)
+  /// орхигдож, сервер 400 + `fieldErrors`-оор хариулна.
+  Future<Map<String, Object>> loginFields() async {
+    final fields = <String, Object>{};
+    try {
+      fields['deviceId'] = _deviceId;
+    } catch (_) {}
+    if (!kIsWeb) {
+      if (Platform.isIOS) fields['type'] = 'ios';
+      if (Platform.isAndroid) fields['type'] = 'android';
+    }
+    try {
+      final token = await NotificationService.instance.getToken();
+      if (token != null && token.isNotEmpty) fields['fcm'] = token;
+    } catch (e) {
+      debugPrint('DeviceService.loginFields fcm error: $e');
+    }
+    try {
+      final info = DeviceInfoPlugin();
+      if (!kIsWeb && Platform.isAndroid) {
+        final a = await info.androidInfo;
+        fields['model'] = '${a.manufacturer} ${a.model}'.trim();
+        fields['os'] = 'Android ${a.version.release}';
+      } else if (!kIsWeb && Platform.isIOS) {
+        final i = await info.iosInfo;
+        fields['model'] = i.modelName;
+        fields['os'] = '${i.systemName} ${i.systemVersion}';
+      }
+    } catch (e) {
+      debugPrint('DeviceService.loginFields device info error: $e');
+    }
+    return fields;
+  }
+
+  /// App эхлэхэд (нэвтэрсэн хэрэглэгчтэй) дуудна — FCM token-ийг шинэчилнэ.
   Future<void> registerAfterLogin() async {
     final token = await NotificationService.instance.getToken();
     await _register(token);
@@ -47,19 +88,6 @@ class DeviceService {
   Future<void> updateToken(String fcmToken) async {
     if (Authenticator.user == null) return;
     await _register(fcmToken);
-  }
-
-  Future<bool> unregister() async {
-    try {
-      await api(Api.delete, 'devices/$_deviceId');
-      if (BindingBase.debugZoneErrorsAreFatal) {
-        debugPrint('DeviceService.unregister: $_deviceId');
-      }
-      return true;
-    } catch (e) {
-      debugPrint('DeviceService.unregister error: $e');
-      return false;
-    }
   }
 
   Future<void> _register(String? fcmToken) async {
