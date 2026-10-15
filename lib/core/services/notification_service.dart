@@ -72,9 +72,14 @@ class NotificationService {
         apns = await _messaging.getAPNSToken();
         if (apns == null) await Future<void>.delayed(const Duration(seconds: 1));
       }
-      if (apns == null) return 'simulator';
+      if (apns == null) {
+        if (kDebugMode) debugPrint('FCM token: none (no APNs token, simulator?)');
+        return 'simulator';
+      }
     }
-    return _messaging.getToken();
+    final token = await _messaging.getToken();
+    if (kDebugMode) debugPrint('FCM token: $token');
+    return token;
   }
 
   Stream<String> get onTokenRefresh => _messaging.onTokenRefresh;

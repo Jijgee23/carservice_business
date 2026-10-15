@@ -412,7 +412,7 @@ class _VinHistorySection extends StatelessWidget {
                     if (r.year != null) '${r.year}',
                   ].whereType<String>().join(' '),
                   if (r.ownerName != null) r.ownerName!,
-                  '${r.orderCount} захиалга',
+                  '${r.orderCount} засварын хуудас',
                   if (r.lastOrderAt != null)
                     'сүүлд ${fmt.format(r.lastOrderAt!.toLocal())}',
                 ].where((e) => e.isNotEmpty).join(' · '),
@@ -471,7 +471,7 @@ class _HistoryList extends StatelessWidget {
         <_HistoryEntry>[
           ...history.orders.map(
             (o) => _HistoryEntry(
-              title: o.number != null ? 'Захиалга №${o.number}' : 'Захиалга',
+              title: o.number != null ? 'Засварын хуудас №${o.number}' : 'Засварын хуудас',
               subtitle: [
                 if (o.status != null) o.status!,
                 if (o.paymentStatus != null) o.paymentStatus!,

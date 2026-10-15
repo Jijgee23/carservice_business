@@ -365,11 +365,11 @@ class _HistoryPane extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const _PostpaidSectionHeading(
-          title: 'Захиалгын түүх',
+          title: 'Засварын хуудасны түүх',
           subtitle: 'Сонгосон төлбөр, огноо, тээврийн хэрэгслийн шүүлтүүр',
         ),
         if (page.orders.isEmpty)
-          const _PostpaidInlineEmpty(message: 'Шүүлтэд тохирох захиалга алга')
+          const _PostpaidInlineEmpty(message: 'Шүүлтэд тохирох засварын хуудас алга')
         else ...[
           for (final order in page.orders)
             Padding(
@@ -489,7 +489,7 @@ class _PostpaidPermissionDenied extends StatelessWidget {
     child: Padding(
       padding: const EdgeInsets.all(32),
       child: Text(
-        'Танд захиалгын төлбөрийн мэдээлэл харах эрх байхгүй байна.',
+        'Танд засварын хуудасны төлбөрийн мэдээлэл харах эрх байхгүй байна.',
         textAlign: TextAlign.center,
         style: context.textStyles.body,
       ),

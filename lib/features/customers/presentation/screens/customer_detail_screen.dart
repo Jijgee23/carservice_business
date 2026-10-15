@@ -160,7 +160,7 @@ class _CustomerDetailBody extends StatelessWidget {
         title: const Text('Устгах боломжгүй'),
         content: const Text(
           'Энэ үйлчлүүлэгчтэй холбоотой засварын хуудас байгаа тул устгах '
-          'боломжгүй. Эхлээд холбогдох захиалгуудыг цуцлах эсвэл өөр '
+          'боломжгүй. Эхлээд холбогдох засварын хуудсуудыг цуцлах эсвэл өөр '
           'үйлчлүүлэгч рүү шилжүүлнэ үү.',
         ),
         actions: [
@@ -251,7 +251,7 @@ class _CustomerDetailBody extends StatelessWidget {
                   const SizedBox(width: 12),
                   Expanded(
                     child: _StatCard(
-                      label: 'Захиалга',
+                      label: 'Засварын хуудас',
                       count: ctrl.historyTotal,
                       icon: Icons.receipt_long_outlined,
                       color: context.colors.accent,
@@ -275,7 +275,7 @@ class _CustomerDetailBody extends StatelessWidget {
                   ),
                 ),
               const SizedBox(height: 20),
-              Text('Захиалгын түүх', style: context.textStyles.h3),
+              Text('Засварын хуудасны түүх', style: context.textStyles.h3),
               const SizedBox(height: 10),
               _HistorySection(controller: ctrl),
             ],
@@ -485,7 +485,7 @@ class _HistorySection extends StatelessWidget {
       state: controller.historyState,
       isEmpty: (value) => value.isEmpty,
       empty: const EmptyState(
-        message: 'Захиалгын түүх алга',
+        message: 'Засварын хуудасны түүх алга',
         icon: Icons.receipt_long_outlined,
       ),
       onRetry: controller.loadHistory,

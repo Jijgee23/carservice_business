@@ -4,7 +4,7 @@ abstract final class OrdersErrorCodes {
   static const confirmationRequired = 'CONFIRMATION_REQUIRED';
   static const paidPaymentLocked = 'PAID_PAYMENT_LOCKED';
   static const paidPaymentLockedCancelMessage =
-      'Төлбөр нь хаагдсан ээлжид бүртгэгдсэн тул захиалгыг цуцлах боломжгүй.';
+      'Төлбөр нь хаагдсан ээлжид бүртгэгдсэн тул засварын хуудсыг цуцлах боломжгүй.';
   static const paidPaymentLockedItemMessage =
       'Төлбөр нь хаагдсан ээлжид бүртгэгдсэн тул мөрийг засах, цуцлах боломжгүй.';
   static const paidPaymentExists = 'PAID_PAYMENT_EXISTS';
@@ -14,7 +14,7 @@ abstract final class OrdersErrorCodes {
   static const postpaidCloseForbidden = 'POSTPAID_CLOSE_FORBIDDEN';
   static const postpaidSettlementForbidden = 'POSTPAID_SETTLEMENT_FORBIDDEN';
   static const postpaidSettlementForbiddenMessage =
-      'Дууссан дараа тооцоот захиалгын төлбөрийг зөвхөн эрхтэй хэрэглэгч (нягтлан) бүртгэнэ.';
+      'Дууссан дараа тооцоот засварын хуудасны төлбөрийг зөвхөн эрхтэй хэрэглэгч (нягтлан) бүртгэнэ.';
   static const internalPostpaidConflict = 'ORDER_INTERNAL_POSTPAID_CONFLICT';
   static const internalPostpaidConflictMessage =
       'Дотоод засвар болон дараа тооцоо зэрэг байж болохгүй.';
@@ -30,5 +30,5 @@ abstract final class OrdersErrorCodes {
   static const internalNoPaymentMessage = 'Дотоод засварт төлбөр бүртгэхгүй.';
   static const internalHasPayments = 'ORDER_INTERNAL_HAS_PAYMENTS';
   static const internalHasPaymentsMessage =
-      'Төлбөр бүртгэгдсэн захиалгыг дотоод засвар болгох боломжгүй.';
+      'Төлбөр бүртгэгдсэн засварын хуудсыг дотоод засвар болгох боломжгүй.';
 }

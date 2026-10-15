@@ -152,7 +152,7 @@ void main() {
     );
   });
 
-  testWidgets('"Ирсэн" calls markArrived and then reveals "Захиалга үүсгэх" '
+  testWidgets('"Ирсэн" calls markArrived and then reveals "Засварын хуудас үүсгэх" '
       'once arrived, gated by orders.create', (tester) async {
     final result = await _pump(
       tester,
@@ -184,7 +184,7 @@ void main() {
     );
   });
 
-  testWidgets('tapping "Захиалга үүсгэх" pushes CreateOrderScreen with the '
+  testWidgets('tapping "Засварын хуудас үүсгэх" pushes CreateOrderScreen with the '
       'appointment linked and reloads on success', (tester) async {
     await _pump(
       tester,

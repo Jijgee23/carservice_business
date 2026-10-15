@@ -26,9 +26,9 @@
     },
     {
       "client_info": {
-        "mobilesdk_app_id": "1:17267525827:android:581e50b6756fd048fffa76",
+        "mobilesdk_app_id": "1:17267525827:android:c9885daea88d1211fffa76",
         "android_client_info": {
-          "package_name": "mn.infosystems.carservice_business"
+          "package_name": "mn.infosystems.carservice"
         }
       },
       "oauth_client": [],
@@ -45,9 +45,9 @@
     },
     {
       "client_info": {
-        "mobilesdk_app_id": "1:17267525827:android:3d6901d43cc0ec75fffa76",
+        "mobilesdk_app_id": "1:17267525827:android:581e50b6756fd048fffa76",
         "android_client_info": {
-          "package_name": "mn.infosystems.mn.customer"
+          "package_name": "mn.infosystems.carservice_business"
         }
       },
       "oauth_client": [],

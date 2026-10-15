@@ -109,7 +109,7 @@ class OrderDetailController extends ChangeNotifier {
     final id = _orderId;
     if (id == null) {
       return const Err(
-        AppError(ErrorKind.unknown, 'Захиалга сонгогдоогүй байна'),
+        AppError(ErrorKind.unknown, 'Засварын хуудас сонгогдоогүй байна'),
       );
     }
     final generation = _generation;
@@ -128,7 +128,7 @@ class OrderDetailController extends ChangeNotifier {
     final id = _orderId;
     if (id == null) {
       return const Err(
-        AppError(ErrorKind.unknown, 'Захиалга сонгогдоогүй байна'),
+        AppError(ErrorKind.unknown, 'Засварын хуудас сонгогдоогүй байна'),
       );
     }
     final generation = _generation;
@@ -144,7 +144,7 @@ class OrderDetailController extends ChangeNotifier {
     final id = _orderId;
     if (id == null) {
       return const Err(
-        AppError(ErrorKind.unknown, 'Захиалга сонгогдоогүй байна'),
+        AppError(ErrorKind.unknown, 'Засварын хуудас сонгогдоогүй байна'),
       );
     }
     final generation = _generation;
@@ -164,7 +164,7 @@ class OrderDetailController extends ChangeNotifier {
     final id = _orderId;
     if (id == null) {
       return const Err(
-        AppError(ErrorKind.unknown, 'Захиалга сонгогдоогүй байна'),
+        AppError(ErrorKind.unknown, 'Засварын хуудас сонгогдоогүй байна'),
       );
     }
     final generation = _generation;
@@ -181,7 +181,7 @@ class OrderDetailController extends ChangeNotifier {
     final id = _orderId;
     if (id == null) {
       return const Err(
-        AppError(ErrorKind.unknown, 'Захиалга сонгогдоогүй байна'),
+        AppError(ErrorKind.unknown, 'Засварын хуудас сонгогдоогүй байна'),
       );
     }
     final generation = _generation;
@@ -191,7 +191,7 @@ class OrderDetailController extends ChangeNotifier {
       await listController?.refresh();
       if (!_disposed && generation == _generation) {
         detailState = const AsyncError(
-          AppError(ErrorKind.notFound, 'Захиалга устгагдсан'),
+          AppError(ErrorKind.notFound, 'Засварын хуудас устгагдсан'),
         );
         notifyListeners();
       }

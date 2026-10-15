@@ -50,7 +50,7 @@ class _ChooseBranchScreenState extends State<ChooseBranchScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Захиалга, цаг захиалга, тайлан цаашид энэ салбараар '
+                  'Засварын хуудас, цаг захиалга, тайлан цаашид энэ салбараар '
                   'харагдана. Дараа нь дээд талын цэснээс өөр салбар руу '
                   'шилжиж болно.',
                   style: theme.textTheme.bodyMedium?.copyWith(

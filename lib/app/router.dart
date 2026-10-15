@@ -721,7 +721,7 @@ class _MissingOrderRoute extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      const Scaffold(body: Center(child: Text('Захиалгын дугаар буруу байна')));
+      const Scaffold(body: Center(child: Text('Засварын хуудасны дугаар буруу байна')));
 }
 
 /// `/customers` — wraps the existing `CustomerSearchTab` (P3-F2) in its own

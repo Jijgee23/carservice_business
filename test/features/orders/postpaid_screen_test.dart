@@ -103,7 +103,7 @@ void main() {
 
     expect(find.text('Нийт үлдэгдэл'), findsOneWidget);
     expect(find.text('Тээврийн хэрэгслээр'), findsOneWidget);
-    expect(find.text('Захиалгын түүх'), findsOneWidget);
+    expect(find.text('Засварын хуудасны түүх'), findsOneWidget);
     expect(find.text('#A-0001'), findsOneWidget);
   });
 
@@ -178,6 +178,6 @@ void main() {
       size: const Size(700, 800),
     );
     expect(find.text('Тээврийн хэрэгслээр'), findsOneWidget);
-    expect(find.text('Захиалгын түүх'), findsOneWidget);
+    expect(find.text('Засварын хуудасны түүх'), findsOneWidget);
   });
 }

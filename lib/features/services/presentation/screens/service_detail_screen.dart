@@ -138,7 +138,7 @@ class _ServiceDetailBody extends StatelessWidget {
       context,
       title: 'Үйлчилгээ устгах уу?',
       message: willArchive
-          ? '${service.displayName}-г захиалгад ашигласан тул бүрмөсөн '
+          ? '${service.displayName}-г засварын хуудсанд ашигласан тул бүрмөсөн '
                 'устгахгүй, харин архивлана. Каталогт "Идэвхгүй" гэж харагдана.'
           : '${service.displayName}-г бүрмөсөн устгахдаа итгэлтэй байна уу?',
       confirmLabel: 'Устгах',
@@ -255,7 +255,7 @@ class _ServiceDetailBody extends StatelessWidget {
               AppCard(
                 child: _DetailRow(
                   icon: Icons.receipt_long_outlined,
-                  label: 'Захиалгад ашигласан',
+                  label: 'Засварын хуудсанд ашигласан',
                   value: '${s.orderItemCount ?? 0} удаа',
                 ),
               ),

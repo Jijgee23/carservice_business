@@ -10,7 +10,7 @@ import 'package:carservice_business/features/orders/domain/order.dart';
 import 'package:carservice_business/features/orders/domain/payment_bank.dart';
 
 const settlementAmountChangedNotice =
-    'Захиалгын үлдэгдэл өөрчлөгдсөн тул жагсаалтыг шинэчиллээ. Дүнг шалгаад дахин баталгаажуулна уу.';
+    'Засварын хуудасны үлдэгдэл өөрчлөгдсөн тул жагсаалтыг шинэчиллээ. Дүнг шалгаад дахин баталгаажуулна уу.';
 
 /// Form state of «Тооцоо нийлэх»: customer + branch -> eligible orders (all
 /// ticked, total = sum of ticked outstandings) -> method/bank/date/note.

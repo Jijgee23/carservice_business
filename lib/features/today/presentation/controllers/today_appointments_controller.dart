@@ -113,7 +113,7 @@ class TodayAppointmentsController extends ChangeNotifier {
 
   /// `POST /appointments/[id]/arrived`. On success the appointment is
   /// marked arrived locally (see class doc) so the timeline can offer
-  /// "Захиалга үүсгэх" immediately, without waiting for the next poll.
+  /// "Засварын хуудас үүсгэх" immediately, without waiting for the next poll.
   Future<AppError?> markArrived(String appointmentId) async {
     if (_busy.contains(appointmentId)) return null;
     _busy.add(appointmentId);

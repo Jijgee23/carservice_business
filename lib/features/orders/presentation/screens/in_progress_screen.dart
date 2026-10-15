@@ -64,7 +64,7 @@ class _InProgressScreenState extends State<InProgressScreen> {
   Widget build(BuildContext context) {
     final user = widget.user ?? Authenticator.user;
     if (!_canView(user)) {
-      return const Scaffold(body: Center(child: Text('Захиалга харах эрхгүй')));
+      return const Scaffold(body: Center(child: Text('Засварын хуудас харах эрхгүй')));
     }
     final controller = context.watch<OrderController>();
     return Scaffold(
@@ -78,7 +78,7 @@ class _InProgressScreenState extends State<InProgressScreen> {
           ),
           IconButton(
             key: const ValueKey('in_progress_postpaid_nav'),
-            tooltip: 'Дараа төлөх захиалга',
+            tooltip: 'Дараа төлөх засварын хуудас',
             onPressed: () => AppNav.push('/orders/postpaid'),
             icon: const Icon(Icons.account_balance_wallet_outlined),
           ),

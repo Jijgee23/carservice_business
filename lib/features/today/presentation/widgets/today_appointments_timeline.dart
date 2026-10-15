@@ -25,7 +25,7 @@ import 'package:carservice_business/core/navigation/app_nav.dart';
 ///
 /// Actions are gated by [canEditAppointments] (`appointments.edit`, for the
 /// "Ирсэн" arrival button) and [canCreateOrders] (`orders.create`, for the
-/// "Захиалга үүсгэх" button shown once an appointment has been marked
+/// "Засварын хуудас үүсгэх" button shown once an appointment has been marked
 /// arrived). Both default to `false` — the caller must pass its own
 /// permission check, matching `TodayScreen`'s `_has(...)` pattern for the
 /// order lanes.
@@ -449,7 +449,7 @@ class _TimelineRow extends StatelessWidget {
                               ),
                               onPressed: onCreateOrder,
                               icon: const Icon(Icons.add_circle_outline),
-                              label: const Text('Захиалга үүсгэх'),
+                              label: const Text('Засварын хуудас үүсгэх'),
                             )
                           : FilledButton.icon(
                               key: ValueKey(

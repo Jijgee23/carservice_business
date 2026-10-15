@@ -36,7 +36,7 @@ class AppShell extends StatelessWidget {
     AdaptiveNavigationDestination(
       icon: Icons.receipt_long_outlined,
       selectedIcon: Icons.receipt_long_rounded,
-      label: 'Захиалга',
+      label: 'Засвар',
     ),
     AdaptiveNavigationDestination(
       icon: Icons.event_outlined,

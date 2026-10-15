@@ -268,7 +268,7 @@ class _SettlementFlowScreenState extends State<SettlementFlowScreen> {
     }
     if (_c.orders.isEmpty) {
       return const EmptyState(
-        message: 'Тооцоо нийлэх захиалга алга.',
+        message: 'Тооцоо нийлэх засварын хуудас алга.',
         icon: Icons.receipt_long_outlined,
       );
     }
@@ -312,7 +312,7 @@ class _SettlementFlowScreenState extends State<SettlementFlowScreen> {
               children: [
                 Expanded(
                   child: Text(
-                    'Нийт (${_c.selected.length} захиалга)',
+                    'Нийт (${_c.selected.length} засварын хуудас)',
                     style: context.textStyles.bodyMedium,
                   ),
                 ),

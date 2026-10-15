@@ -372,7 +372,7 @@ class AppointmentDetailController extends ChangeNotifier {
       return const Err(
         AppError(
           ErrorKind.unknown,
-          'Энэ цаг захиалгад захиалга аль хэдийн холбогдсон байна',
+          'Энэ цаг захиалгад засварын хуудас аль хэдийн холбогдсон байна',
           statusCode: 409,
         ),
       );
@@ -384,7 +384,7 @@ class AppointmentDetailController extends ChangeNotifier {
       return const Err(
         AppError(
           ErrorKind.unknown,
-          'Захиалга үүсгэхэд салбар, үйлчлүүлэгч, тээврийн хэрэгслийн мэдээлэл дутуу байна',
+          'Засварын хуудас үүсгэхэд салбар, үйлчлүүлэгч, тээврийн хэрэгслийн мэдээлэл дутуу байна',
         ),
       );
     }

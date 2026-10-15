@@ -79,7 +79,7 @@ void main() {
       expect(find.text('Бат'), findsWidgets);
       expect(find.text('99001122'), findsOneWidget);
       expect(find.text('Машинууд'), findsOneWidget);
-      expect(find.text('Захиалгын түүх'), findsOneWidget);
+      expect(find.text('Засварын хуудасны түүх'), findsOneWidget);
     });
   }
 

@@ -9,7 +9,7 @@
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
-	<string>mn.infosystems.carservice-business</string>
+	<string>mn.infosystems.carcare-business</string>
 	<key>PROJECT_ID</key>
 	<string>carcare-bf796</string>
 	<key>STORAGE_BUCKET</key>
@@ -25,6 +25,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:17267525827:ios:ea2e846441866f57fffa76</string>
+	<string>1:17267525827:ios:db9ce94171e61731fffa76</string>
 </dict>
 </plist>

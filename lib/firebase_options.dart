@@ -1,6 +1,5 @@
 import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
-import 'package:flutter/foundation.dart'
-    show defaultTargetPlatform, kIsWeb, TargetPlatform;
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb, TargetPlatform;
 
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
@@ -11,9 +10,7 @@ class DefaultFirebaseOptions {
       case TargetPlatform.iOS:
         return ios;
       default:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions are not supported for this platform.',
-        );
+        throw UnsupportedError('DefaultFirebaseOptions are not supported for this platform.');
     }
   }
 
@@ -24,13 +21,12 @@ class DefaultFirebaseOptions {
     projectId: 'carcare-bf796',
     storageBucket: 'carcare-bf796.firebasestorage.app',
   );
-
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyDm5aUFwxlSiLaeh2xZZ3pQSxUhe6HiXWE',
-    appId: '1:17267525827:ios:ea2e846441866f57fffa76',
+    appId: '1:17267525827:ios:db9ce94171e61731fffa76',
     messagingSenderId: '17267525827',
     projectId: 'carcare-bf796',
     storageBucket: 'carcare-bf796.firebasestorage.app',
-    iosBundleId: 'mn.infosystems.carservice-business',
+    iosBundleId: 'mn.infosystems.carcare-business',
   );
 }

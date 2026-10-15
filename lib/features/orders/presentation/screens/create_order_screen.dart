@@ -366,7 +366,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     return Scaffold(
       backgroundColor: context.opsBackground,
       appBar: AppBar(
-        title: Text('Захиалга үүсгэх'),
+        title: Text('Засварын хуудас үүсгэх'),
         actions: const [ShellNotificationBell()],
       ),
       body: Column(
@@ -1729,7 +1729,7 @@ class _BottomBar extends StatelessWidget {
                                     ),
                                     SizedBox(width: 8),
                                     Text(
-                                      'Захиалга үүсгэх',
+                                      'Засварын хуудас үүсгэх',
                                       style: TextStyle(
                                         fontSize: 15,
                                         fontWeight: FontWeight.w700,
@@ -1750,7 +1750,7 @@ class _BottomBar extends StatelessWidget {
                     ),
                     child: Center(
                       child: Text(
-                        'Захиалга үүсгэх',
+                        'Засварын хуудас үүсгэх',
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,

@@ -6,7 +6,7 @@ const closeUnpaidPostpaidPermission = 'orders.closeUnpaidPostpaid';
 
 /// Shown instead of the payment actions when settlement is not allowed.
 const postpaidSettlementNote =
-    'Дууссан дараа тооцоот захиалгын төлбөрийг нягтлан бүртгэнэ.';
+    'Дууссан дараа тооцоот засварын хуудасны төлбөрийг нягтлан бүртгэнэ.';
 
 bool userCanSettlePostpaid(User? user) =>
     user?.isOwner == true ||

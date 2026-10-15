@@ -57,7 +57,7 @@ class RemoteOrdersRepository implements OrdersRepository {
         PagedResult(items: parsed.items, pagination: parsed.pagination),
       );
     } catch (error) {
-      return Err(_error(error, 'Захиалгын жагсаалт ачаалж чадсангүй'));
+      return Err(_error(error, 'Засварын хуудасны жагсаалт ачаалж чадсангүй'));
     }
   }
 
@@ -66,7 +66,7 @@ class RemoteOrdersRepository implements OrdersRepository {
     try {
       return Ok(OrderDetailDto.fromJson(await _dataSource.detail(id)).value);
     } catch (error) {
-      return Err(_error(error, 'Захиалгын мэдээлэл ачаалж чадсангүй'));
+      return Err(_error(error, 'Засварын хуудасны мэдээлэл ачаалж чадсангүй'));
     }
   }
 
@@ -144,7 +144,7 @@ class RemoteOrdersRepository implements OrdersRepository {
       };
       return Ok(OrderSummaryDto.fromJson(await _dataSource.create(body)).value);
     } catch (error) {
-      return Err(_error(error, 'Захиалга үүсгэж чадсангүй'));
+      return Err(_error(error, 'Засварын хуудас үүсгэж чадсангүй'));
     }
   }
 
@@ -164,7 +164,7 @@ class RemoteOrdersRepository implements OrdersRepository {
         ).value,
       );
     } catch (error) {
-      return Err(_error(error, 'Захиалгын төлөв шинэчилж чадсангүй'));
+      return Err(_error(error, 'Засварын хуудасны төлөв шинэчилж чадсангүй'));
     }
   }
 
@@ -190,7 +190,7 @@ class RemoteOrdersRepository implements OrdersRepository {
       await _dataSource.delete(id);
       return const Ok(null);
     } catch (error) {
-      return Err(_error(error, 'Захиалга устгаж чадсангүй'));
+      return Err(_error(error, 'Засварын хуудас устгаж чадсангүй'));
     }
   }
 
@@ -241,7 +241,7 @@ class RemoteOrdersRepository implements OrdersRepository {
         ),
       );
     } catch (error) {
-      return Err(_error(error, 'Захиалга шилжүүлж чадсангүй'));
+      return Err(_error(error, 'Засварын хуудас шилжүүлж чадсангүй'));
     }
   }
 

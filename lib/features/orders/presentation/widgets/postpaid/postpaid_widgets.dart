@@ -45,7 +45,7 @@ class PostpaidSummaryCard extends StatelessWidget {
           Text('Нийт үлдэгдэл', style: context.textStyles.h3),
           const SizedBox(height: 4),
           Text(
-            'Серверийн бүх цагийн нэгтгэл · цуцлагдсан захиалга ороогүй',
+            'Серверийн бүх цагийн нэгтгэл · цуцлагдсан засварын хуудас ороогүй',
             style: context.textStyles.caption,
           ),
           const SizedBox(height: 16),
@@ -54,7 +54,7 @@ class PostpaidSummaryCard extends StatelessWidget {
             runSpacing: 12,
             children: [
               PostpaidMetric(
-                label: 'Захиалга',
+                label: 'Засварын хуудас',
                 value: '${summary.orderCount}',
                 icon: Icons.receipt_long_outlined,
                 color: context.opsAccent,
@@ -148,7 +148,7 @@ class PostpaidVehicleCard extends StatelessWidget {
                     '${aggregate.orderCount}',
                     style: context.textStyles.bodyMedium,
                   ),
-                  Text('захиалга', style: context.textStyles.caption),
+                  Text('засварын хуудас', style: context.textStyles.caption),
                 ],
               ),
             ],

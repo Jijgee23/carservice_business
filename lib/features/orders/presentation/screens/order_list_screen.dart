@@ -219,7 +219,7 @@ class _OrderListScreenState extends State<OrderListScreen> {
     if (!_canView(user)) {
       return Material(
         color: context.opsBackground,
-        child: const Center(child: Text('Захиалга харах эрхгүй')),
+        child: const Center(child: Text('Засварын хуудас харах эрхгүй')),
       );
     }
 
@@ -262,7 +262,7 @@ class _OrderListScreenState extends State<OrderListScreen> {
                         _QuickAction(
                           key: 'order_create_button',
                           icon: Icons.add_circle_outline_rounded,
-                          label: 'Шинэ захиалга',
+                          label: 'Шинэ засварын хуудас',
                           primary: true,
                           onTap: () => _createOrder(controller),
                         ),
@@ -275,7 +275,7 @@ class _OrderListScreenState extends State<OrderListScreen> {
                       _QuickAction(
                         key: 'orders_postpaid_nav',
                         icon: Icons.account_balance_wallet_outlined,
-                        label: 'Дараа төлөх захиалга',
+                        label: 'Дараа төлөх засварын хуудас',
                         onTap: () => AppNav.push('/orders/postpaid'),
                       ),
                       _QuickAction(
@@ -390,8 +390,8 @@ class _OrderListScreenState extends State<OrderListScreen> {
       AsyncData(:final value) when value.isEmpty => Center(
         child: Text(
           controller.query.isNotEmpty || controller.filter.activeCount > 0
-              ? 'Шүүлтэд тохирох захиалга байхгүй'
-              : 'Захиалга байхгүй байна',
+              ? 'Шүүлтэд тохирох засварын хуудас байхгүй'
+              : 'Засварын хуудас байхгүй байна',
         ),
       ),
       AsyncData(:final value) => LayoutBuilder(
@@ -1056,7 +1056,7 @@ class _ListFooter extends StatelessWidget {
       padding: const EdgeInsets.all(20),
       child: Center(
         child: Text(
-          'Нийт ${controller.total} захиалга',
+          'Нийт ${controller.total} засварын хуудас',
           style: context.textStyles.caption,
         ),
       ),

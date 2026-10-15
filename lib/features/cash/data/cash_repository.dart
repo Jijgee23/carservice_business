@@ -58,7 +58,7 @@ class RemoteCashRepository implements CashRepository {
         ),
       );
     } catch (error) {
-      return Err(_error(error, 'Захиалгын жагсаалт ачаалж чадсангүй'));
+      return Err(_error(error, 'Засварын хуудасны жагсаалт ачаалж чадсангүй'));
     }
   }
 

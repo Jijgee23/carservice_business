@@ -286,7 +286,7 @@ class OrderDetailDto {
     final rawItems = json['items'];
     final rawReports = json['reports'];
     if (rawItems is! List || rawReports is! List) {
-      throw const OrderParseException('Захиалгын мөр/тайлан буруу байна.');
+      throw const OrderParseException('Засварын хуудасны мөр/тайлан буруу байна.');
     }
     return OrderDetailDto(
       ServiceOrderDetail(
@@ -395,7 +395,7 @@ class OrderPageDto {
     final json = _map(raw, 'orders response');
     final list = json['orders'];
     if (list is! List) {
-      throw const OrderParseException('Захиалгын жагсаалт буруу байна.');
+      throw const OrderParseException('Засварын хуудасны жагсаалт буруу байна.');
     }
     return OrderPageDto(
       list

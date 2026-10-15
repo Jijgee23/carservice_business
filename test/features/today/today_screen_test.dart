@@ -511,7 +511,7 @@ void main() {
       },
     );
 
-    testWidgets('phone shows a top-level Захиалга | Цаг split', (tester) async {
+    testWidgets('phone shows a top-level Засварын хуудас | Цаг split', (tester) async {
       await pump(
         tester,
         width: 375,

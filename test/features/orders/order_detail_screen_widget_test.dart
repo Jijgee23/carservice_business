@@ -152,7 +152,7 @@ void main() {
     tester,
   ) async {
     await _pump(tester, 375, _user(const []));
-    expect(find.text('Захиалга харах эрхгүй'), findsOneWidget);
+    expect(find.text('Засварын хуудас харах эрхгүй'), findsOneWidget);
   });
 
   testWidgets(
@@ -318,7 +318,7 @@ void main() {
       await tester.tap(delete);
       await tester.pumpAndSettle();
 
-      expect(find.text('Захиалгыг устгах уу?'), findsOneWidget);
+      expect(find.text('Засварын хуудсыг устгах уу?'), findsOneWidget);
     });
 
     testWidgets('hides delete when the user cannot delete', (tester) async {

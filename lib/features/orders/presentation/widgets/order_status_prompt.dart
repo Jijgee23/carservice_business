@@ -75,7 +75,7 @@ Future<OrderStatusDecision?> promptOrderStatusChange(
     final ok = await ConfirmSheet.show(
       context,
       title: 'Ажил эхлүүлэх үү?',
-      message: 'Захиалгын ажил эхэлж, хугацаа тоологдож эхэлнэ.',
+      message: 'Засварын хуудасны ажил эхэлж, хугацаа тоологдож эхэлнэ.',
       confirmLabel: 'Эхлүүлэх',
       icon: Icons.play_arrow_rounded,
       iconColor: context.opsAccent,
@@ -85,8 +85,8 @@ Future<OrderStatusDecision?> promptOrderStatusChange(
   if (status == OrderStatus.COMPLETED) {
     final ok = await ConfirmSheet.show(
       context,
-      title: 'Захиалга дуусгах уу?',
-      message: 'Дуусгасны дараа захиалганд өөрчлөлт хийх боломжгүй болно.',
+      title: 'Засварын хуудас дуусгах уу?',
+      message: 'Дуусгасны дараа засварын хуудсанд өөрчлөлт хийх боломжгүй болно.',
       confirmLabel: 'Дуусгах',
       icon: Icons.check_circle_outline_rounded,
       iconColor: context.opsGood,
@@ -98,8 +98,8 @@ Future<OrderStatusDecision?> promptOrderStatusChange(
       context,
       steps: [
         ConfirmStep(
-          title: 'Захиалга цуцлах уу?',
-          message: 'Цуцалсны дараа захиалганд өөрчлөлт хийх боломжгүй болно.',
+          title: 'Засварын хуудас цуцлах уу?',
+          message: 'Цуцалсны дараа засварын хуудсанд өөрчлөлт хийх боломжгүй болно.',
           confirmLabel: 'Үргэлжлүүлэх',
           icon: Icons.cancel_outlined,
           iconColor: context.opsWarning,

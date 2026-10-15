@@ -272,7 +272,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     }
     final confirm = await ConfirmSheet.show(
       context,
-      title: 'Захиалгыг устгах уу?',
+      title: 'Засварын хуудсыг устгах уу?',
       message: 'Энэ үйлдлийг буцаах боломжгүй.',
       confirmLabel: 'Устгах',
       isDangerous: true,
@@ -410,7 +410,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     final provider = context.watch<OrderDetailController>();
     final user = widget.user ?? Authenticator.user;
     if (!_canView(user)) {
-      return const Scaffold(body: Center(child: Text('Захиалга харах эрхгүй')));
+      return const Scaffold(body: Center(child: Text('Засварын хуудас харах эрхгүй')));
     }
 
     switch (provider.detailState) {
@@ -734,7 +734,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 ),
                 icon: const Icon(Icons.delete_outline, size: 20),
                 label: const Text(
-                  'Захиалга устгах',
+                  'Засварын хуудас устгах',
                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                 ),
               ),
@@ -825,10 +825,10 @@ class _LockedBanner extends StatelessWidget {
         ? context.opsGood.withOpacity(0.12)
         : context.opsDanger.withOpacity(0.12);
     final fg = isCompleted ? context.opsGood : context.opsDanger;
-    final title = isCompleted ? 'Захиалга дууссан' : 'Захиалга цуцлагдсан';
+    final title = isCompleted ? 'Засварын хуудас дууссан' : 'Засварын хуудас цуцлагдсан';
     final sub = isCompleted
-        ? 'Дууссан захиалганд өөрчлөлт хийх боломжгүй.'
-        : 'Цуцлагдсан захиалганд өөрчлөлт хийх боломжгүй.';
+        ? 'Дууссан засварын хуудсанд өөрчлөлт хийх боломжгүй.'
+        : 'Цуцлагдсан засварын хуудсанд өөрчлөлт хийх боломжгүй.';
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),

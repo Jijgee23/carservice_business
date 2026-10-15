@@ -456,7 +456,7 @@ class _Header extends StatelessWidget {
               if (onCreate != null && compact)
                 IconButton.filled(
                   key: const ValueKey('today_create_order'),
-                  tooltip: 'Шинэ захиалга',
+                  tooltip: 'Шинэ засварын хуудас',
                   style: IconButton.styleFrom(minimumSize: const Size(48, 48)),
                   onPressed: onCreate,
                   icon: const Icon(Icons.add),
@@ -468,7 +468,7 @@ class _Header extends StatelessWidget {
                   style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
                   onPressed: onCreate,
                   icon: const Icon(Icons.add),
-                  label: const Text('Шинэ захиалга'),
+                  label: const Text('Шинэ засварын хуудас'),
                 ),
               ],
             ],
@@ -889,7 +889,7 @@ class _NarrowBoard extends StatelessWidget {
   };
 }
 
-/// Phone top-level "Захиалга | Цаг" split (`TENANT_UI_UX_PLAN.md` Phase 4).
+/// Phone top-level "Засварын хуудас | Цаг" split (`TENANT_UI_UX_PLAN.md` Phase 4).
 class _SectionSelector extends StatelessWidget {
   const _SectionSelector({required this.section, required this.onSection});
   final _TodaySection section;
@@ -905,7 +905,7 @@ class _SectionSelector extends StatelessWidget {
           key: const ValueKey('today_section_selector'),
           showSelectedIcon: false,
           segments: const [
-            ButtonSegment(value: _TodaySection.orders, label: Text('Захиалга')),
+            ButtonSegment(value: _TodaySection.orders, label: Text('Засварын хуудас')),
             ButtonSegment(
               value: _TodaySection.appointments,
               label: Text('Цаг'),
@@ -930,10 +930,10 @@ class _BoardNotes extends StatelessWidget {
   Widget build(BuildContext context) {
     final notes = <String>[
       if (board.laterCount > 0)
-        'Дараагийн өдрүүдэд ${board.laterCount} захиалга товлогдсон',
-      if (board.truncated) 'Зарим захиалга харагдахгүй байж магадгүй',
+        'Дараагийн өдрүүдэд ${board.laterCount} засварын хуудас товлогдсон',
+      if (board.truncated) 'Зарим засварын хуудас харагдахгүй байж магадгүй',
       if (board.completedMayBeIncomplete)
-        'Дууссан захиалгын жагсаалт дутуу байж магадгүй',
+        'Дууссан засварын хуудасны жагсаалт дутуу байж магадгүй',
     ];
     if (notes.isEmpty) return const SizedBox.shrink();
     return Padding(
@@ -950,7 +950,7 @@ class _BoardNotes extends StatelessWidget {
           ),
           TextButton(
             onPressed: () => AppNav.go('/orders'),
-            child: const Text('Бүх захиалга'),
+            child: const Text('Бүх засварын хуудас'),
           ),
         ],
       ),
@@ -1008,9 +1008,9 @@ class _EmptyLane extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = switch (lane) {
-      TodayLane.waiting => 'Хүлээгдэж буй захиалга алга',
+      TodayLane.waiting => 'Хүлээгдэж буй засварын хуудас алга',
       TodayLane.inProgress => 'Одоогоор хийгдэж буй ажил алга',
-      TodayLane.completed => 'Өнөөдөр дууссан захиалга алга',
+      TodayLane.completed => 'Өнөөдөр дууссан засварын хуудас алга',
     };
     return Center(
       child: Padding(

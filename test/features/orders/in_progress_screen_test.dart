@@ -145,7 +145,7 @@ void main() {
         ),
       ),
     );
-    expect(find.text('Захиалга харах эрхгүй'), findsOneWidget);
+    expect(find.text('Засварын хуудас харах эрхгүй'), findsOneWidget);
     controller.dispose();
   });
 

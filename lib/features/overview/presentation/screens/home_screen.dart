@@ -156,7 +156,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: _StatCard(
                           count: _overview?.counts.todayOrders,
                           loading: _overviewLoading,
-                          label: 'Өнөөдрийн\nзахиалга',
+                          label: 'Өнөөдрийн\nзасварын хуудас',
                           icon: Icons.receipt_long_outlined,
                           color: context.colors.good,
                           bgColor: context.colors.goodBg,
@@ -167,7 +167,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: _StatCard(
                           count: _overview?.counts.openOrders,
                           loading: _overviewLoading,
-                          label: 'Нээлттэй\nзахиалга',
+                          label: 'Нээлттэй\nзасварын хуудас',
                           icon: Icons.pending_actions_outlined,
                           color: context.colors.accent,
                           bgColor: context.colors.accent.withOpacity(0.12),
@@ -192,8 +192,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       _MenuEntry(
                         icon: Icons.receipt_long_rounded,
                         color: context.colors.good,
-                        label: 'Захиалгууд',
-                        subtitle: 'Үйлчилгээний захиалга харах',
+                        label: 'Засварын хуудсууд',
+                        subtitle: 'Үйлчилгээний засварын хуудас харах',
                         onTap: () {
                           final ctrl = context.read<OrderController>();
                           AppNav.to(
@@ -231,7 +231,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         icon: Icons.insights_rounded,
                         color: context.colors.danger,
                         label: 'Тайлан',
-                        subtitle: 'Орлого, захиалгын тайлан харах',
+                        subtitle: 'Орлого, засварын хуудасны тайлан харах',
                         onTap: () => AppNav.push(AppRoutes.reports),
                       ),
                     ],

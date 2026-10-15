@@ -356,7 +356,7 @@ class _AppointmentDetailBody extends StatelessWidget {
     if (!context.mounted) return;
     switch (result) {
       case Ok(:final value):
-        messageComplete('Захиалга үүсгэгдлээ');
+        messageComplete('Засварын хуудас үүсгэгдлээ');
         // Land on the new order with Today underneath, so back from the
         // detail returns to Today rather than this appointment.
         AppNav.go('/overview');
@@ -637,7 +637,7 @@ class _DetailContent extends StatelessWidget {
             key: const ValueKey('appointment_convert_order_button'),
             onPressed: busy ? null : onConvertToOrder,
             icon: const Icon(Icons.receipt_long_outlined, size: 18),
-            label: const Text('Захиалга үүсгэх'),
+            label: const Text('Засварын хуудас үүсгэх'),
           ),
         if (canCreateOrder &&
             appointment.serviceOrder == null &&
@@ -744,7 +744,7 @@ class _LinkedOrderRow extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Холбогдох захиалга',
+                      'Холбогдох засварын хуудас',
                       style: context.textStyles.caption,
                     ),
                     Text(
