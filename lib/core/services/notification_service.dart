@@ -65,8 +65,14 @@ class NotificationService {
 
   Future<String?> getToken() async {
     if (!kIsWeb && Platform.isIOS) {
-      final token = await _messaging.getAPNSToken();
-      if (token == null) return 'simulator';
+      // The APNs token arrives asynchronously after launch, and FCM can't
+      // issue a token without it — wait for it instead of giving up at once.
+      String? apns;
+      for (var i = 0; i < 10 && apns == null; i++) {
+        apns = await _messaging.getAPNSToken();
+        if (apns == null) await Future<void>.delayed(const Duration(seconds: 1));
+      }
+      if (apns == null) return 'simulator';
     }
     return _messaging.getToken();
   }

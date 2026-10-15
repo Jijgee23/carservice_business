@@ -19,7 +19,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyAqQrFhpGeHHtoQVXq8Jw_q0iA0szLfUB8',
-    appId: '1:17267525827:android:9bda1428e52fcba7fffa76',
+    appId: '1:17267525827:android:581e50b6756fd048fffa76',
     messagingSenderId: '17267525827',
     projectId: 'carcare-bf796',
     storageBucket: 'carcare-bf796.firebasestorage.app',
@@ -27,7 +27,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyDm5aUFwxlSiLaeh2xZZ3pQSxUhe6HiXWE',
-    appId: '1:17267525827:ios:e6e19c3df6e6ef73fffa76',
+    appId: '1:17267525827:ios:ea2e846441866f57fffa76',
     messagingSenderId: '17267525827',
     projectId: 'carcare-bf796',
     storageBucket: 'carcare-bf796.firebasestorage.app',

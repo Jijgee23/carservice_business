@@ -23,6 +23,9 @@ void main() {
     flutterRequired();
     await appIniter();
     onTokenRefresh();
+    // A restored session never goes through login, so re-register here —
+    // otherwise the server keeps a stale token (e.g. from an old Firebase app).
+    if (Authenticator.user != null) unawaited(DeviceService.instance.registerAfterLogin());
     runApp(CarserviceApp());
   }, onException);
 }

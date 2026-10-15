@@ -4,11 +4,6 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>fetch</string>
-		<string>remote-notification</string>
-	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -29,6 +24,20 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>khanbank</string>
+		<string>golomtbank</string>
+		<string>tdbbank</string>
+		<string>statebank</string>
+		<string>monpay</string>
+		<string>socialpay</string>
+		<string>bogdbank</string>
+		<string>capitalbank</string>
+		<string>transbank</string>
+		<string>mostmoney</string>
+		<string>qpay</string>
+	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>
@@ -54,24 +63,15 @@
 	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>remote-notification</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
-	<key>LSApplicationQueriesSchemes</key>
-	<array>
-		<string>khanbank</string>
-		<string>golomtbank</string>
-		<string>tdbbank</string>
-		<string>statebank</string>
-		<string>monpay</string>
-		<string>socialpay</string>
-		<string>bogdbank</string>
-		<string>capitalbank</string>
-		<string>transbank</string>
-		<string>mostmoney</string>
-		<string>qpay</string>
-	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
