@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import 'package:carservice_business/app/theme/app_theme.dart';
@@ -109,8 +110,9 @@ void main() {
   ) async {
     await pump(tester, 1024);
 
-    // Table header renders the record columns, not phone cards.
-    expect(find.text('Цаг'), findsOneWidget);
+    // Table header renders the record columns, not phone cards. The
+    // default every-date list shows the full date in its first column.
+    expect(find.text('Огноо'), findsOneWidget);
     expect(find.text('Үйлчлүүлэгч'), findsOneWidget);
     expect(find.text('Бат'), findsOneWidget);
     expect(find.text('Сараа'), findsOneWidget);
@@ -300,5 +302,30 @@ void main() {
     await tester.pump(const Duration(milliseconds: 20));
 
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('defaults to every date; Өнөөдөр and Бүгд switch the day view', (
+    tester,
+  ) async {
+    final controller = await pump(tester, 390);
+    final today = DateTime.now();
+
+    expect(controller.allDates, isTrue);
+    expect(find.text('Бүх цаг захиалга'), findsOneWidget);
+    // The list spans many days, so each card carries its day.
+    expect(find.text(DateFormat('MM/dd').format(today)), findsNWidgets(3));
+
+    await tester.tap(find.byKey(const ValueKey('appointments_today_chip')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 20));
+    expect(controller.allDates, isFalse);
+    expect(find.text(DateFormat('yyyy/MM/dd').format(today)), findsOneWidget);
+    expect(find.text(DateFormat('MM/dd').format(today)), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('appointments_all_dates_chip')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 20));
+    expect(controller.allDates, isTrue);
+    expect(find.text('Бүх цаг захиалга'), findsOneWidget);
   });
 }

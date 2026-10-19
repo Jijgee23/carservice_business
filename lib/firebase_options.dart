@@ -23,10 +23,10 @@ class DefaultFirebaseOptions {
   );
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyDm5aUFwxlSiLaeh2xZZ3pQSxUhe6HiXWE',
-    appId: '1:17267525827:ios:db9ce94171e61731fffa76',
+    appId: '1:17267525827:ios:ea2e846441866f57fffa76',
     messagingSenderId: '17267525827',
     projectId: 'carcare-bf796',
     storageBucket: 'carcare-bf796.firebasestorage.app',
-    iosBundleId: 'mn.infosystems.carcare-business',
+    iosBundleId: 'mn.infosystems.carservice-business',
   );
 }

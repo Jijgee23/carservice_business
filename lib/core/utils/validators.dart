@@ -50,8 +50,35 @@ String? normalizePhone(String? input) {
   return d;
 }
 
-/// Улсын дугаарыг канон (том үсэг, зай хасагдсан) болгоно.
-String normalizePlate(String input) => input.trim().toUpperCase();
+// Латин ↔ кирилл нүдэнд ижил үсгүүд: монгол дугаарын үсэг кирилл тул латин
+// хувилбарыг кирилл болгоно ("1234ABC" ба "1234АВС" нэг машин).
+const _plateLatinToCyrillic = {
+  'A': 'А',
+  'B': 'В',
+  'C': 'С',
+  'E': 'Е',
+  'H': 'Н',
+  'K': 'К',
+  'M': 'М',
+  'O': 'О',
+  'P': 'Р',
+  'T': 'Т',
+  'X': 'Х',
+  'Y': 'У',
+};
+final _plateStripRx = RegExp(r'[^0-9A-ZА-ЯЁӨҮ]');
+final _plateLatinRx = RegExp(r'[ABCEHKMOPTXY]');
+
+/// Улсын дугаарын канон формат: том үсэг, зай/тэмдэгтгүй, латин төстэй үсэг
+/// кирилл. Сервер (`carservice.mn/lib/vehicle-plate.ts` `normalizePlate`)-тэй
+/// яг ижил дүрэм; `ДУГААРГҮЙ` хэвээр үлдэнэ.
+String normalizePlate(String input) => input
+    .toUpperCase()
+    .replaceAll(_plateStripRx, '')
+    .replaceAllMapped(
+      _plateLatinRx,
+      (m) => _plateLatinToCyrillic[m[0]] ?? m[0]!,
+    );
 
 // ─── AppValidators ────────────────────────────────────────────────────────────
 
@@ -158,8 +185,9 @@ class AppValidators {
   static String? Function(String?) minLength(int min, String label) {
     return (v) {
       if (v == null || v.trim().isEmpty) return '$label оруулна уу';
-      if (v.trim().length < min)
+      if (v.trim().length < min) {
         return '$label хамгийн багадаа $min тэмдэгт байна';
+      }
       return null;
     };
   }

@@ -1,0 +1,9 @@
+# Copy to android/key.properties (gitignored) for Play release builds.
+# Create the upload keystore once, outside the repo, and back it up:
+#   keytool -genkey -v -keystore ~/keys/carservice-upload.jks \
+#     -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+# storeFile is relative to android/app (or absolute).
+storePassword=CHANGE_ME
+keyPassword=CHANGE_ME
+keyAlias=upload
+storeFile=/Users/you/keys/carservice-upload.jks

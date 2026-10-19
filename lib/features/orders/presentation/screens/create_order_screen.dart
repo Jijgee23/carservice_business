@@ -33,6 +33,7 @@ class CreateOrderScreen extends StatefulWidget {
     this.appointmentId,
     this.initialVehicle,
     this.initialCustomer,
+    this.vehicleSearch,
   });
 
   final OrdersRepository repository;
@@ -47,12 +48,32 @@ class CreateOrderScreen extends StatefulWidget {
   final VehicleSummary? initialVehicle;
   final CustomerSummary? initialCustomer;
 
+  /// Test seam for the vehicle search; defaults to
+  /// [DiagnosticService.searchVehicles] (plate, make, model, VIN, owner).
+  final Future<List<VehicleSummary>> Function(String query)? vehicleSearch;
+
   @override
   State<CreateOrderScreen> createState() => _CreateOrderScreenState();
 }
 
 class _CreateOrderScreenState extends State<CreateOrderScreen> {
-  // 1. Харилцагч — вэбтэй адил эхлээд харилцагч, дараа нь түүний машин.
+  // Машин эсвэл харилцагчаас аль нэгээр нь эхэлнэ. Машинаар эхэлбэл
+  // харилцагч нь машины эзэмшигч болно: сервер машин сонгосон харилцагчийнх
+  // байхыг шаарддаг (`validateOrderReferences`).
+  final _vehicleCtrl = TextEditingController();
+  List<VehicleSummary> _vehicleResults = [];
+  bool _searchingVehicle = false;
+  Timer? _vehicleTimer;
+  int _vehicleSearchSeq = 0;
+
+  /// Why the tapped search result can't be used (no owner).
+  String? _vehicleNotice;
+
+  /// The customer was taken from the picked vehicle's owner: clearing the
+  /// vehicle clears them too, and they can't be changed on their own.
+  bool _customerFromVehicle = false;
+
+  // Харилцагч — эхлээд харилцагч сонговол дараа нь түүний машин.
   final _customerCtrl = TextEditingController();
   List<CustomerSummary> _customerResults = [];
   bool _searchingCustomer = false;
@@ -105,6 +126,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
 
   @override
   void dispose() {
+    _vehicleTimer?.cancel();
+    _vehicleCtrl.dispose();
     _customerTimer?.cancel();
     _customerCtrl.dispose();
     _notesCtrl.dispose();
@@ -203,9 +226,74 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     });
   }
 
+  void _searchVehicle(String q) {
+    _vehicleTimer?.cancel();
+    final seq = ++_vehicleSearchSeq;
+    if (_vehicleNotice != null) setState(() => _vehicleNotice = null);
+    if (q.trim().isEmpty) {
+      setState(() {
+        _vehicleResults = [];
+        _searchingVehicle = false;
+      });
+      return;
+    }
+    _vehicleTimer = Timer(const Duration(milliseconds: 400), () async {
+      if (!mounted) return;
+      setState(() => _searchingVehicle = true);
+      final search = widget.vehicleSearch ?? DiagnosticService.searchVehicles;
+      final results = await search(q.trim());
+      if (!mounted || seq != _vehicleSearchSeq) return;
+      setState(() {
+        _vehicleResults = results;
+        _searchingVehicle = false;
+      });
+    });
+  }
+
+  /// Vehicle first: its owner becomes the order's customer.
+  void _selectSearchedVehicle(VehicleSummary v) {
+    final owner = v.customer;
+    if (owner == null) {
+      // The server needs the order's customer to own the vehicle.
+      setState(
+        () => _vehicleNotice =
+            '${plateLabel(v.plate, v.vin)}: эзэмшигч бүртгэгдээгүй. Машины '
+            'мэдээллээс эзэмшигч оноосны дараа засварын хуудас үүсгэнэ.',
+      );
+      return;
+    }
+    _vehicleTimer?.cancel();
+    _vehicleSearchSeq++;
+    setState(() {
+      _vehicle = v;
+      _customer = owner;
+      _customerFromVehicle = true;
+      _customerVehicles = [v];
+      _vehicleResults = [];
+      _searchingVehicle = false;
+      _vehicleNotice = null;
+      _vehicleCtrl.clear();
+      _paymentMode = _paymentMode.afterVehicleChange(v.isPostpaid);
+    });
+  }
+
+  /// Clears the vehicle; an owner taken from it goes with it, a customer
+  /// picked first stays with their vehicles.
+  void _clearVehicle() => setState(() {
+    _vehicle = null;
+    if (_customerFromVehicle) {
+      _customer = null;
+      _customerFromVehicle = false;
+      _customerVehicles = [];
+      _loadingVehicles = false;
+      _vehiclesSeq++;
+    }
+  });
+
   void _selectCustomer(CustomerSummary c) {
     setState(() {
       _customer = c;
+      _customerFromVehicle = false;
       _vehicle = null;
       _customerResults = [];
       _customerCtrl.clear();
@@ -215,6 +303,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
 
   void _clearCustomer() => setState(() {
     _customer = null;
+    _customerFromVehicle = false;
     _vehicle = null;
     _customerVehicles = [];
     _loadingVehicles = false;
@@ -254,8 +343,11 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     final owner = result.customer ?? result.vehicle.customer;
     if (owner != null && owner.id != _customer?.id) {
       // Бүртгэх үед өөр эзэмшигч сонгосон бол тэр харилцагч руу шилжинэ.
+      // Машинаар эхэлсэн бол (харилцагч сонгоогүй) эзэмшигч нь машинаас.
+      final fromVehicle = _customer == null || _customerFromVehicle;
       setState(() {
         _customer = owner;
+        _customerFromVehicle = fromVehicle;
         _vehicle = result.vehicle;
         _paymentMode = _paymentMode.afterVehicleChange(
           result.vehicle.isPostpaid,
@@ -377,45 +469,44 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ── 1. Харилцагч ───────────────────────────────────────
+                  // ── 1. Машин ───────────────────────────────────────────
+                  // Улсын дугаар, марк, эзэмшигчээр хайна; эсвэл эхлээд
+                  // харилцагч сонговол түүний машинууд энд гарна.
                   _SectionLabel(
                     number: '1',
-                    title: 'Харилцагч сонгох',
-                    done: _customer != null,
-                  ),
-                  const SizedBox(height: 10),
-                  _CustomerSection(
-                    ctrl: _customerCtrl,
-                    searching: _searchingCustomer,
-                    results: _customerResults,
-                    selected: _customer,
-                    onSearch: _searchCustomer,
-                    onSelect: _selectCustomer,
-                    onClear: _clearCustomer,
-                    onNewCustomer: _openNewCustomer,
-                  ),
-                  const SizedBox(height: 24),
-
-                  // ── 2. Машин ───────────────────────────────────────────
-                  _SectionLabel(
-                    number: '2',
                     title: 'Машин сонгох',
                     done: _vehicle != null,
                   ),
                   const SizedBox(height: 10),
-                  _CustomerVehiclesSection(
-                    customer: _customer,
-                    loading: _loadingVehicles,
-                    vehicles: _customerVehicles,
-                    selected: _vehicle,
-                    onSelect: (v) => setState(() {
-                      _vehicle = v;
-                      _paymentMode = _paymentMode.afterVehicleChange(
-                        v.isPostpaid,
-                      );
-                    }),
-                    onNewVehicle: _openNewVehicle,
-                  ),
+                  if (_vehicle != null)
+                    _SelectedVehicleCard(
+                      vehicle: _vehicle!,
+                      onClear: _clearVehicle,
+                    )
+                  else if (_customer != null)
+                    _CustomerVehiclesSection(
+                      customer: _customer,
+                      loading: _loadingVehicles,
+                      vehicles: _customerVehicles,
+                      selected: _vehicle,
+                      onSelect: (v) => setState(() {
+                        _vehicle = v;
+                        _paymentMode = _paymentMode.afterVehicleChange(
+                          v.isPostpaid,
+                        );
+                      }),
+                      onNewVehicle: _openNewVehicle,
+                    )
+                  else
+                    _VehicleSearchSection(
+                      ctrl: _vehicleCtrl,
+                      searching: _searchingVehicle,
+                      results: _vehicleResults,
+                      notice: _vehicleNotice,
+                      onSearch: _searchVehicle,
+                      onSelect: _selectSearchedVehicle,
+                      onNewVehicle: _openNewVehicle,
+                    ),
                   if (_vehicle != null) ...[
                     const SizedBox(height: 14),
                     Text(
@@ -435,6 +526,30 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                       style: context.textStyles.caption,
                     ),
                   ],
+                  const SizedBox(height: 24),
+
+                  // ── 2. Харилцагч ───────────────────────────────────────
+                  _SectionLabel(
+                    number: '2',
+                    title: _customerFromVehicle
+                        ? 'Харилцагч · машины эзэмшигч'
+                        : 'Харилцагч сонгох',
+                    done: _customer != null,
+                  ),
+                  const SizedBox(height: 10),
+                  if (_customerFromVehicle && _customer != null)
+                    _VehicleOwnerCard(customer: _customer!)
+                  else
+                    _CustomerSection(
+                      ctrl: _customerCtrl,
+                      searching: _searchingCustomer,
+                      results: _customerResults,
+                      selected: _customer,
+                      onSearch: _searchCustomer,
+                      onSelect: _selectCustomer,
+                      onClear: _clearCustomer,
+                      onNewCustomer: _openNewCustomer,
+                    ),
                   const SizedBox(height: 24),
 
                   // ── 3. Салбар ──────────────────────────────────────────
@@ -564,10 +679,14 @@ class _SectionLabel extends StatelessWidget {
           ),
         ),
         SizedBox(width: 8),
-        Text(
-          title,
-          style: context.textStyles.h3.copyWith(
-            color: done ? context.opsGood : context.opsTextPrimary,
+        Flexible(
+          child: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: context.textStyles.h3.copyWith(
+              color: done ? context.opsGood : context.opsTextPrimary,
+            ),
           ),
         ),
         if (optional) ...[
@@ -874,6 +993,266 @@ class _CustomerVehiclesSection extends StatelessWidget {
   }
 }
 
+// ─── Vehicle first ─────────────────────────────────────────────────────────────
+
+/// Search box for starting from the vehicle: plate, make, model, VIN or the
+/// owner's name / phone. A plate is matched however it is typed
+/// ([DiagnosticService.searchVehicles] sends it canonical).
+class _VehicleSearchSection extends StatelessWidget {
+  final TextEditingController ctrl;
+  final bool searching;
+  final List<VehicleSummary> results;
+  final String? notice;
+  final ValueChanged<String> onSearch;
+  final ValueChanged<VehicleSummary> onSelect;
+  final VoidCallback onNewVehicle;
+
+  const _VehicleSearchSection({
+    required this.ctrl,
+    required this.searching,
+    required this.results,
+    required this.notice,
+    required this.onSearch,
+    required this.onSelect,
+    required this.onNewVehicle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final shown = results.take(6).toList(growable: false);
+    return Column(
+      children: [
+        Container(
+          decoration: _cardDecoration(context),
+          child: TextField(
+            key: const ValueKey('create_order_vehicle_search'),
+            controller: ctrl,
+            onChanged: onSearch,
+            textCapitalization: TextCapitalization.characters,
+            style: context.textStyles.body,
+            decoration: InputDecoration(
+              hintText: 'Улсын дугаар, марк эсвэл эзэмшигчээр хайх...',
+              prefixIcon: Icon(
+                Icons.directions_car_outlined,
+                color: context.opsTextHint,
+                size: 20,
+              ),
+              suffixIcon: searching
+                  ? const Padding(
+                      padding: EdgeInsets.all(14),
+                      child: SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  : ctrl.text.isNotEmpty
+                  ? IconButton(
+                      icon: Icon(
+                        Icons.close,
+                        size: 18,
+                        color: context.opsTextHint,
+                      ),
+                      onPressed: () {
+                        ctrl.clear();
+                        onSearch('');
+                      },
+                    )
+                  : null,
+              filled: true,
+              fillColor: context.opsSurface,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppDimens.radiusMD),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppDimens.radiusMD),
+                borderSide: BorderSide.none,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppDimens.radiusMD),
+                borderSide: BorderSide(color: context.opsAccent, width: 1.5),
+              ),
+            ),
+          ),
+        ),
+        if (shown.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Container(
+            clipBehavior: Clip.antiAlias,
+            decoration: _cardDecoration(context),
+            child: Column(
+              children: [
+                for (final (i, v) in shown.indexed)
+                  _PickRow(
+                    key: ValueKey('create_order_found_vehicle_${v.id}'),
+                    icon: Icons.directions_car_outlined,
+                    title: plateLabel(v.plate, v.vin),
+                    subtitle: [
+                      v.displayName,
+                      v.customer?.displayName ?? 'Эзэмшигчгүй',
+                    ].join(' · '),
+                    isOrganization: v.ownerIsOrganization,
+                    divider: i < shown.length - 1,
+                    onTap: () => onSelect(v),
+                  ),
+              ],
+            ),
+          ),
+        ],
+        if (notice != null) ...[
+          const SizedBox(height: 8),
+          Container(
+            key: const ValueKey('create_order_vehicle_notice'),
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: context.opsWarning.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(AppDimens.radiusMD),
+              border: Border.all(color: context.opsWarning.withOpacity(0.35)),
+            ),
+            child: Text(
+              notice!,
+              style: context.textStyles.caption.copyWith(
+                color: context.opsWarning,
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 10),
+        _AddButton(label: 'Шинэ машин бүртгэх', onTap: onNewVehicle),
+      ],
+    );
+  }
+}
+
+/// The picked vehicle, with a clear button.
+class _SelectedVehicleCard extends StatelessWidget {
+  final VehicleSummary vehicle;
+  final VoidCallback onClear;
+
+  const _SelectedVehicleCard({required this.vehicle, required this.onClear});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const ValueKey('create_order_selected_vehicle'),
+      decoration: _cardDecoration(
+        context,
+        border: context.opsAccent.withOpacity(0.35),
+      ),
+      padding: const EdgeInsets.all(14),
+      child: Row(
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: context.opsAccent.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(AppDimens.radiusMD),
+            ),
+            child: Icon(
+              Icons.directions_car_rounded,
+              color: context.opsAccent,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  plateLabel(vehicle.plate, vehicle.vin),
+                  style: context.textStyles.h3.copyWith(
+                    color: context.opsAccent,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(vehicle.displayName, style: context.textStyles.caption),
+              ],
+            ),
+          ),
+          IconButton(
+            key: const ValueKey('create_order_clear_vehicle'),
+            tooltip: 'Машин солих',
+            onPressed: onClear,
+            icon: Icon(Icons.close, size: 18, color: context.opsTextSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The customer taken from the picked vehicle. Read-only: the server takes
+/// the order's customer to be the vehicle's owner; another customer means
+/// another vehicle.
+class _VehicleOwnerCard extends StatelessWidget {
+  final CustomerSummary customer;
+
+  const _VehicleOwnerCard({required this.customer});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const ValueKey('create_order_vehicle_owner'),
+      width: double.infinity,
+      decoration: _cardDecoration(context),
+      padding: const EdgeInsets.all(14),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: context.opsAccent.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(AppDimens.radiusMD),
+            ),
+            child: Icon(Icons.person_rounded, color: context.opsAccent),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        customer.displayName,
+                        overflow: TextOverflow.ellipsis,
+                        style: context.textStyles.bodyMedium,
+                      ),
+                    ),
+                    if (customer.isOrganization) ...[
+                      const SizedBox(width: 6),
+                      const OrgBadge(),
+                    ],
+                  ],
+                ),
+                Text(
+                  customer.isOrganization
+                      ? '${customer.contactName} · ${customer.phone}'
+                      : customer.phone,
+                  style: context.textStyles.caption,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Машины эзэмшигч — өөр харилцагч бол машинаа солино уу.',
+                  style: context.textStyles.caption.copyWith(
+                    color: context.opsTextHint,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _PickRow extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -1022,9 +1401,11 @@ class _BranchSection extends StatelessWidget {
               child: CircularProgressIndicator(strokeWidth: 2),
             ),
             const SizedBox(width: 10),
-            Text(
-              'Салбаруудыг ачааллаж байна...',
-              style: context.textStyles.caption,
+            Expanded(
+              child: Text(
+                'Салбаруудыг ачааллаж байна...',
+                style: context.textStyles.caption,
+              ),
             ),
           ],
         ),
@@ -1579,10 +1960,11 @@ class _BottomBar extends StatelessWidget {
     final bottom = MediaQuery.of(context).padding.bottom;
 
     // Determine what's missing
-    final String? missingHint = customer == null
-        ? 'Харилцагч сонгоогүй байна'
-        : vehicle == null
+    // In the form's order: the vehicle (which brings its owner) first.
+    final String? missingHint = vehicle == null
         ? 'Машин сонгоогүй байна'
+        : customer == null
+        ? 'Харилцагч сонгоогүй байна'
         : branch == null
         ? 'Салбар сонгоогүй байна'
         : null;

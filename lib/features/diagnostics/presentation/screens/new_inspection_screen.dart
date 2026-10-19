@@ -16,6 +16,7 @@ import 'package:carservice_business/features/controllers.dart';
 import 'package:carservice_business/core/services/diagnostic_service.dart';
 import 'package:carservice_business/core/widgets/dialogs/message.dart';
 import 'package:carservice_business/core/widgets/common/common_widgets.dart';
+import 'package:carservice_business/core/widgets/plate/plate_field.dart';
 import 'package:carservice_business/core/widgets/adaptive/permission_gate.dart';
 import 'package:carservice_business/features/diagnostics/presentation/screens/create_template_screen.dart';
 import 'package:carservice_business/features/diagnostics/presentation/screens/report_detail_screen.dart';
@@ -299,7 +300,7 @@ class _VehicleStepState extends State<_VehicleStep> {
   }
 
   Future<void> _search() async {
-    final q = _plateCtrl.text.trim();
+    final q = normalizePlate(_plateCtrl.text);
     if (q.isEmpty) return;
     setState(() {
       _searching = true;
@@ -382,7 +383,7 @@ class _VehicleStepState extends State<_VehicleStep> {
   }
 
   Future<void> _create() async {
-    final plate = _noPlate ? kNoPlate : _plateCtrl.text.trim().toUpperCase();
+    final plate = _noPlate ? kNoPlate : normalizePlate(_plateCtrl.text);
     final make = _makeCtrl.text.trim();
     final model = _modelCtrl.text.trim();
 
@@ -568,40 +569,42 @@ class _VehicleStepState extends State<_VehicleStep> {
                   ),
                   if (!_noPlate) ...[
                     const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: AppTextField(
-                            label: 'Дугаар',
-                            hint: 'УБ 1234 АБА',
-                            controller: _plateCtrl,
-                            onChanged: (_) {
-                              setState(() {
-                                _results = [];
-                                _showCreateForm = false;
-                              });
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        SizedBox(
-                          height: 50,
-                          child: ElevatedButton(
-                            onPressed: _searching ? null : _search,
-                            child: _searching
-                                ? SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      color: CarserviceTheme.of(context)
-                                          .onAccent,
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : Text('Хайх'),
-                          ),
-                        ),
-                      ],
+                    Text('Дугаар', style: context.textStyles.captionMedium),
+                    const SizedBox(height: 6),
+                    // Digits then Cyrillic letters from the field's keypad;
+                    // «Бэлэн» searches.
+                    PlateField(
+                      fieldKey: const ValueKey('inspection_plate'),
+                      controller: _plateCtrl,
+                      onChanged: (_) {
+                        setState(() {
+                          _results = [];
+                          _showCreateForm = false;
+                        });
+                      },
+                      onSubmitted: (_) {
+                        if (!_searching) _search();
+                      },
+                      decoration: InputDecoration(
+                        hintText: '1234УБА',
+                        suffixIcon: _searching
+                            ? const Padding(
+                                padding: EdgeInsets.all(12),
+                                child: SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                              )
+                            : IconButton(
+                                key: const ValueKey('inspection_plate_search'),
+                                tooltip: 'Хайх',
+                                icon: const Icon(Icons.search),
+                                onPressed: _search,
+                              ),
+                      ),
                     ),
                   ],
                 ],

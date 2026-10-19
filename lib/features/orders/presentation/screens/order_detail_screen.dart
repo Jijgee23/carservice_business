@@ -9,6 +9,7 @@ import 'package:carservice_business/core/domain/service_catalog.dart'
 import 'package:carservice_business/core/domain/service_catalog.dart'
     as catalog
     show DiagnosticTemplateSummary;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:carservice_business/features/orders/presentation/feature_theme.dart';
@@ -18,6 +19,7 @@ import 'package:carservice_business/features/orders/presentation/controllers/ord
 import 'package:carservice_business/features/orders/presentation/controllers/order_item_controller.dart';
 import 'package:carservice_business/features/orders/presentation/widgets/detail/order_detail_widgets.dart';
 import 'package:carservice_business/features/orders/presentation/widgets/detail/order_item_widgets.dart';
+import 'package:carservice_business/features/orders/presentation/widgets/diagnostic_template_picker_sheet.dart';
 import 'package:carservice_business/features/orders/domain/postpaid_settlement.dart';
 import 'package:carservice_business/features/orders/presentation/widgets/list/order_list_widgets.dart';
 import 'package:carservice_business/features/orders/presentation/widgets/order_status_prompt.dart';
@@ -288,16 +290,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   }
 
   Future<void> _openPayment() async {
-    await AppNav.to(
-      ChangeNotifierProvider(
-        create: (_) => OrderPaymentController(
-          repo: context.read<OrdersRepository>(),
-          orderId: widget.orderId,
-          user: widget.user,
-          sessionOpenLookup: RemoteCashRepository().isSessionOpen,
-        ),
-        child: OrderPaymentScreen(orderId: widget.orderId, user: widget.user),
-      ),
+    await OrderPaymentScreen.open(
+      context,
+      orderId: widget.orderId,
+      user: widget.user,
     );
     if (mounted) await context.read<OrderDetailController>().refresh();
   }
@@ -339,21 +335,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   Future<void> _openNewInspection({required ServiceItem item}) async {
     final order = context.read<OrderDetailController>().order;
     if (order == null) return;
-    final templateId =
-        item.diagnosticTemplateId ??
-        await AppNav.sheet<String>(
-          _TemplatePickerSheet(),
-          backgroundColor:
-              Colors.transparent, // sheet paints its own rounded surface
-        );
-    if (templateId == null || !mounted) return;
-    await NewInspectionScreen.pushFromOrder(
+    await openOrderDiagnostic(
       context,
       orderId: order.id,
-      itemId: item.id,
+      item: item,
       vehicle: order.vehicle,
       customer: order.customer,
-      templateId: templateId,
     );
     if (mounted) {
       await context.read<OrderDetailController>().refresh();
@@ -381,16 +368,69 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     ServiceItem item,
     ServiceItemStatus status,
   ) async {
-    if (status == ServiceItemStatus.COMPLETED &&
-        item.kind == ItemKind.DIAGNOSTIC &&
-        item.diagnosticReportId == null) {
+    if (status == ServiceItemStatus.COMPLETED && lineNeedsReport(item)) {
       messageError('Оношилгооны тайлан бөглөсний дараа дуусгана уу.');
       return;
     }
+    if (!await _ensureOrderStarted()) return;
     final result = await _itemController?.changeStatus(item.id, status);
     if (!mounted) return;
     if (result case Err(:final error)) {
       messageError(error.display);
+    }
+  }
+
+  /// Line progress only moves on an IN_PROGRESS order (server:
+  /// `ORDER_STATUS_INVALID`). On a SCHEDULED order a line change first asks
+  /// to start the order, with the same prompt as the "Төлөв" row.
+  Future<bool> _ensureOrderStarted() async {
+    final controller = context.read<OrderDetailController>();
+    final order = controller.order;
+    if (order == null || order.status != OrderStatus.SCHEDULED) return true;
+    final decision = await promptOrderStatusChange(
+      context,
+      OrderStatus.IN_PROGRESS,
+      order: order,
+    );
+    if (decision == null || !mounted) return false;
+    final result = await controller.updateStatus(
+      OrderStatus.IN_PROGRESS,
+      durationMinutes: decision.durationMinutes,
+    );
+    if (!mounted) return false;
+    if (result case Err(:final error)) {
+      messageError(error.display);
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> _completeAllItems(
+    List<ServiceItem> items, {
+    required int skipped,
+  }) async {
+    final ok = await ConfirmSheet.show(
+      context,
+      title: 'Бүх ажлыг дуусгах уу?',
+      message: [
+        '${items.length} ажлын мөрийг "Дууссан" болгоно.',
+        if (skipped > 0) '$skipped оношилгооны мөр тайлангүй тул алгасна.',
+      ].join('\n'),
+      confirmLabel: 'Дуусгах',
+      icon: Icons.done_all_rounded,
+      iconColor: context.opsGood,
+    );
+    if (!ok || !mounted) return;
+    final result = await _itemController?.completeAll([
+      for (final item in items) item.id,
+    ]);
+    if (!mounted || result == null) return;
+    if (result.firstError case final error?) {
+      messageError(
+        result.done > 0
+            ? '${result.done}/${items.length} мөр дууссан. ${error.display}'
+            : error.display,
+      );
     }
   }
 
@@ -410,7 +450,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     final provider = context.watch<OrderDetailController>();
     final user = widget.user ?? Authenticator.user;
     if (!_canView(user)) {
-      return const Scaffold(body: Center(child: Text('Засварын хуудас харах эрхгүй')));
+      return const Scaffold(
+        body: Center(child: Text('Засварын хуудас харах эрхгүй')),
+      );
     }
 
     switch (provider.detailState) {
@@ -496,6 +538,170 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     );
   }
 
+  Widget _itemsCard(
+    BuildContext context,
+    ServiceOrderDetail o,
+    User? user,
+    bool locked,
+    bool itemEdit,
+    List<ServiceItem> activeItems,
+  ) {
+    final items = _itemController!;
+    ServiceItemStatus statusOf(ServiceItem item) =>
+        items.pendingStatusOf(item.id) ?? item.status;
+    final canLineStatus = itemEdit && _canItemStatus(user);
+    final tracked = progressItems(o.items);
+    final open = tracked
+        .where((item) => statusOf(item) != ServiceItemStatus.COMPLETED)
+        .toList(growable: false);
+    // Diagnostic lines without a report can't be completed; the bulk action
+    // leaves them out and says so.
+    final completable = o.status == OrderStatus.IN_PROGRESS && canLineStatus
+        ? open
+              .where(
+                (item) =>
+                    !lineNeedsReport(item) && !items.isStatusBusy(item.id),
+              )
+              .toList(growable: false)
+        : const <ServiceItem>[];
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text('Ажлын мөрүүд', style: context.textStyles.h3),
+              ),
+              if (_canItemHistory(user))
+                TextButton.icon(
+                  onPressed: _showItemHistory,
+                  icon: const Icon(Icons.history, size: 16),
+                  label: const Text('Түүх'),
+                ),
+              if (o.status.canAddItems && itemEdit)
+                TextButton.icon(
+                  onPressed: _addItem,
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('Нэмэх'),
+                ),
+            ],
+          ),
+          if (tracked.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Expanded(
+                  child: OrderProgressView(
+                    key: const ValueKey('items_progress'),
+                    progress: OrderProgressSummary(
+                      total: tracked.length,
+                      completed: tracked.length - open.length,
+                    ),
+                  ),
+                ),
+                if (completable.length >= 2) ...[
+                  const SizedBox(width: 12),
+                  TextButton.icon(
+                    key: const ValueKey('items_complete_all_button'),
+                    onPressed: () => _completeAllItems(
+                      completable,
+                      skipped: open.where(lineNeedsReport).length,
+                    ),
+                    icon: const Icon(Icons.done_all_rounded, size: 16),
+                    label: const Text('Бүгдийг дуусгах'),
+                  ),
+                ],
+              ],
+            ),
+          ],
+          if (activeItems.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text(
+                'Ажлын мөр байхгүй',
+                style: context.textStyles.caption,
+              ),
+            )
+          else ...[
+            const Divider(height: 16),
+            for (final kind in ItemKind.values)
+              if (activeItems.any((item) => item.kind == kind)) ...[
+                Padding(
+                  padding: const EdgeInsets.only(top: 4, bottom: 2),
+                  child: Text(
+                    kind.label,
+                    style: context.textStyles.caption.copyWith(
+                      color: context.itemKindColor(kind),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                ...activeItems
+                    .where((item) => item.kind == kind)
+                    .map(
+                      (item) => OrderItemCard(
+                        item: item,
+                        locked: locked,
+                        paidLocked: o.hasPaidPayment,
+                        paidLockReason: paidLockReason(o),
+                        canEdit: o.status.canAddItems && itemEdit,
+                        canPrice:
+                            o.status.canAddItems &&
+                            itemEdit &&
+                            _canItemPrice(user),
+                        // A SCHEDULED order is started first when a line
+                        // moves (_ensureOrderStarted), so that needs the
+                        // order status permission too.
+                        canStatus:
+                            (o.status == OrderStatus.IN_PROGRESS ||
+                                (o.status == OrderStatus.SCHEDULED &&
+                                    _canEdit(user))) &&
+                            item.kind != ItemKind.PART &&
+                            canLineStatus,
+                        pendingStatus: items.pendingStatusOf(item.id),
+                        statusBusy: items.isStatusBusy(item.id),
+                        diagnosticEditable:
+                            o.status == OrderStatus.IN_PROGRESS && itemEdit,
+                        onEdit: () => _editItem(item),
+                        onCancel: () => _cancelItem(item),
+                        onStatus: (status) => _changeItemStatus(item, status),
+                        onDiagnosticCreate: item.kind == ItemKind.DIAGNOSTIC
+                            ? () => _openNewInspection(item: item)
+                            : null,
+                        onDiagnosticFill: item.kind == ItemKind.DIAGNOSTIC
+                            ? () => _openNewInspection(item: item)
+                            : null,
+                        onDiagnosticView: item.diagnosticReportId == null
+                            ? null
+                            : () => AppNav.to(
+                                ReportDetailScreen(
+                                  reportId: item.diagnosticReportId!,
+                                  deleteLocked: isLineCompletedLocked(item),
+                                ),
+                              ),
+                      ),
+                    ),
+              ],
+            Divider(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Нийт дүн', style: context.textStyles.bodyMedium),
+                Text(
+                  _moneyText(o.totalAmountMoney),
+                  style: context.textStyles.h3.copyWith(
+                    color: context.opsAccent,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _detailList(
     BuildContext context,
     ServiceOrderDetail o,
@@ -549,115 +755,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           ),
           const SizedBox(height: 14),
           // ─── Items ───────────────────────────────────────────────────
-          AppCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text('Ажлын мөрүүд', style: context.textStyles.h3),
-                    ),
-                    if (_canItemHistory(user))
-                      TextButton.icon(
-                        onPressed: _showItemHistory,
-                        icon: const Icon(Icons.history, size: 16),
-                        label: const Text('Түүх'),
-                      ),
-                    if (o.status.canAddItems && itemEdit)
-                      TextButton.icon(
-                        onPressed: _addItem,
-                        icon: const Icon(Icons.add, size: 16),
-                        label: const Text('Нэмэх'),
-                      ),
-                  ],
-                ),
-                if (activeItems.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: Text(
-                      'Ажлын мөр байхгүй',
-                      style: context.textStyles.caption,
-                    ),
-                  )
-                else ...[
-                  const Divider(height: 16),
-                  for (final kind in ItemKind.values)
-                    if (activeItems.any((item) => item.kind == kind)) ...[
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4, bottom: 2),
-                        child: Text(
-                          kind.label,
-                          style: context.textStyles.caption.copyWith(
-                            color: context.itemKindColor(kind),
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      ...activeItems
-                          .where((item) => item.kind == kind)
-                          .map(
-                            (item) => OrderItemCard(
-                              item: item,
-                              locked: locked,
-                              paidLocked: o.hasPaidPayment,
-                              paidLockReason: paidLockReason(o),
-                              canEdit: o.status.canAddItems && itemEdit,
-                              canPrice:
-                                  o.status.canAddItems &&
-                                  itemEdit &&
-                                  _canItemPrice(user),
-                              canStatus:
-                                  o.status == OrderStatus.IN_PROGRESS &&
-                                  item.kind != ItemKind.PART &&
-                                  itemEdit &&
-                                  _canItemStatus(user),
-                              diagnosticEditable:
-                                  o.status == OrderStatus.IN_PROGRESS &&
-                                  itemEdit,
-                              onEdit: () => _editItem(item),
-                              onCancel: () => _cancelItem(item),
-                              onStatus: (status) =>
-                                  _changeItemStatus(item, status),
-                              onDiagnosticCreate:
-                                  item.kind == ItemKind.DIAGNOSTIC
-                                  ? () => _openNewInspection(item: item)
-                                  : null,
-                              onDiagnosticFill: item.kind == ItemKind.DIAGNOSTIC
-                                  ? () => _openNewInspection(item: item)
-                                  : null,
-                              onDiagnosticView: item.diagnosticReportId == null
-                                  ? null
-                                  : () => AppNav.to(
-                                      ReportDetailScreen(
-                                        reportId: item.diagnosticReportId!,
-                                        deleteLocked: isLineCompletedLocked(
-                                          item,
-                                        ),
-                                      ),
-                                    ),
-                            ),
-                          ),
-                    ],
-                  Divider(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Нийт дүн', style: context.textStyles.bodyMedium),
-                      Text(
-                        _moneyText(o.totalAmountMoney),
-                        style: context.textStyles.h3.copyWith(
-                          color: context.opsAccent,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ],
-            ),
+          ListenableBuilder(
+            listenable: _itemController!,
+            builder: (context, _) =>
+                _itemsCard(context, o, user, locked, itemEdit, activeItems),
           ),
           const SizedBox(height: 14),
-
           // ─── Payment ──────────────────────────────────────────────────
           if (_canViewPayments(user) && o.isInternal) ...[
             AppCard(
@@ -825,7 +928,9 @@ class _LockedBanner extends StatelessWidget {
         ? context.opsGood.withOpacity(0.12)
         : context.opsDanger.withOpacity(0.12);
     final fg = isCompleted ? context.opsGood : context.opsDanger;
-    final title = isCompleted ? 'Засварын хуудас дууссан' : 'Засварын хуудас цуцлагдсан';
+    final title = isCompleted
+        ? 'Засварын хуудас дууссан'
+        : 'Засварын хуудас цуцлагдсан';
     final sub = isCompleted
         ? 'Дууссан засварын хуудсанд өөрчлөлт хийх боломжгүй.'
         : 'Цуцлагдсан засварын хуудсанд өөрчлөлт хийх боломжгүй.';
@@ -1131,12 +1236,12 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
     // Аль нэг нь алдаа шидвэл нөгөөг нь харуулж, spinner-ийг заавал зогсооно.
     final servicesF = ServiceCatalogService.getServices(q: q)
         .catchError((Object e, StackTrace st) {
-          debugPrint('ItemForm services load failed: $e\n$st');
+          if (kDebugMode) debugPrint('ItemForm services load failed: $e\n$st');
           return <CatalogService>[];
         });
     final templatesF = ServiceCatalogService.getTemplates(q: q)
         .catchError((Object e, StackTrace st) {
-          debugPrint('ItemForm templates load failed: $e\n$st');
+          if (kDebugMode) debugPrint('ItemForm templates load failed: $e\n$st');
           return <catalog.DiagnosticTemplateSummary>[];
         });
     final services = await servicesF;
@@ -1848,188 +1953,6 @@ class _DiagnosticsSection extends StatelessWidget {
               );
             }),
         ],
-      ),
-    );
-  }
-}
-
-// ─── Template picker bottom sheet ────────────────────────────────────────────
-
-class _TemplatePickerSheet extends StatefulWidget {
-  const _TemplatePickerSheet();
-
-  @override
-  State<_TemplatePickerSheet> createState() => _TemplatePickerSheetState();
-}
-
-class _TemplatePickerSheetState extends State<_TemplatePickerSheet> {
-  List<DiagnosticTemplateSummary>? _templates;
-  bool _loading = true;
-  final _repo = DiagnosticRepository();
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    final result = await _repo.getTemplates();
-    if (mounted) {
-      setState(() {
-        _templates = result;
-        _loading = false;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bottom = MediaQuery.of(context).padding.bottom;
-    return Container(
-      decoration: BoxDecoration(
-        color: context.opsSurface,
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(AppDimens.radiusXL),
-        ),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Handle
-          Center(
-            child: Container(
-              margin: const EdgeInsets.symmetric(vertical: 10),
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: context.opsDivider,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-          // Title
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 14),
-            child: Row(
-              children: [
-                Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: context.opsAccent.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.post_add_outlined,
-                    size: 16,
-                    color: context.opsAccent,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Оношилгооны загвар', style: context.textStyles.h3),
-                    Text(
-                      'Загвараа сонгоно уу',
-                      style: context.textStyles.caption,
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const Divider(height: 1),
-
-          // Body
-          Flexible(
-            child: _loading
-                ? const AppLoading(padding: EdgeInsets.all(32))
-                : (_templates == null || _templates!.isEmpty)
-                ? Padding(
-                    padding: EdgeInsets.all(32),
-                    child: Center(
-                      child: Text(
-                        'Идэвхтэй загвар олдсонгүй.\nВеб дашбоардаас загвар үүсгэнэ үү.',
-                        textAlign: TextAlign.center,
-                        style: context.textStyles.body.copyWith(
-                          color: context.opsTextSecondary,
-                        ),
-                      ),
-                    ),
-                  )
-                : ListView.separated(
-                    shrinkWrap: true,
-                    padding: EdgeInsets.only(bottom: bottom + 16),
-                    itemCount: _templates!.length,
-                    separatorBuilder: (_, _) =>
-                        const Divider(height: 1, indent: 16, endIndent: 16),
-                    itemBuilder: (_, i) {
-                      final t = _templates![i];
-                      return _TemplateRow(
-                        template: t,
-                        onTap: () => AppNav.back(t.id),
-                      );
-                    },
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TemplateRow extends StatelessWidget {
-  final DiagnosticTemplateSummary template;
-  final VoidCallback onTap;
-  const _TemplateRow({required this.template, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final type = template.type;
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: context.diagnosticTypeBackground(type),
-                borderRadius: BorderRadius.circular(AppDimens.radiusFull),
-              ),
-              child: Text(
-                type.label,
-                style: context.textStyles.label.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: context.diagnosticTypeColor(type),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(template.name, style: context.textStyles.bodyMedium),
-                  if (template.description != null &&
-                      template.description!.isNotEmpty) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      template.description!,
-                      style: context.textStyles.caption,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            Icon(Icons.chevron_right, size: 18, color: context.opsTextHint),
-          ],
-        ),
       ),
     );
   }

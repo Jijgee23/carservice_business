@@ -46,4 +46,15 @@ app.*.map.json
 
 # Environment
 .env
+.env.*
+!.env.example
+
+# Signing material (Android keystores are also ignored in android/.gitignore)
+*.jks
+*.keystore
+key.properties
+*.p8
+*.p12
+*.cer
+*.mobileprovision
 .fvm/

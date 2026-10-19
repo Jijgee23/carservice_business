@@ -12,39 +12,90 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:carservice_business/app/theme/app_theme.dart';
 import 'package:carservice_business/core/widgets/common/common_widgets.dart';
 import 'package:carservice_business/core/domain/user.dart';
+import 'package:carservice_business/core/navigation/app_nav.dart';
 import 'package:carservice_business/core/utils/async_value.dart';
+import 'package:carservice_business/core/utils/result.dart';
+import 'package:carservice_business/features/cash/data/cash_repository.dart';
+import 'package:carservice_business/features/orders/domain/orders_repository.dart';
 import 'package:carservice_business/features/orders/domain/order.dart';
 import 'package:carservice_business/features/orders/domain/payment_bank.dart';
 import 'package:carservice_business/features/orders/domain/postpaid_settlement.dart';
 import 'package:carservice_business/features/orders/presentation/controllers/order_payment_controller.dart';
 import 'package:carservice_business/features/orders/presentation/feature_theme.dart';
 import 'package:carservice_business/features/orders/presentation/widgets/payment_method_sheet.dart';
+import 'package:carservice_business/features/orders/presentation/widgets/qpay_bank_grid.dart';
 
 class OrderPaymentScreen extends StatefulWidget {
   final String orderId;
   final User? user;
 
-  const OrderPaymentScreen({super.key, required this.orderId, this.user});
+  /// Opens «Төлбөр бүртгэх» as soon as the payment state has loaded, when
+  /// the order can still take a payment.
+  final bool openRecord;
+
+  const OrderPaymentScreen({
+    super.key,
+    required this.orderId,
+    this.user,
+    this.openRecord = false,
+  });
+
+  /// Pushes the payment screen for [orderId] with its own controller and
+  /// completes when it is closed. [repo] defaults to the app's repository,
+  /// [sessionOpenLookup] to the cash drawer flag.
+  static Future<void> open(
+    BuildContext context, {
+    required String orderId,
+    User? user,
+    bool openRecord = false,
+    OrdersRepository? repo,
+    Future<Result<bool>> Function(String branchId)? sessionOpenLookup,
+  }) {
+    final repository = repo ?? context.read<OrdersRepository>();
+    return AppNav.to<void>(
+      ChangeNotifierProvider(
+        create: (_) => OrderPaymentController(
+          repo: repository,
+          orderId: orderId,
+          user: user,
+          sessionOpenLookup: sessionOpenLookup ?? RemoteCashRepository().isSessionOpen,
+        ),
+        child: OrderPaymentScreen(orderId: orderId, user: user, openRecord: openRecord),
+      ),
+    );
+  }
 
   @override
   State<OrderPaymentScreen> createState() => _OrderPaymentScreenState();
 }
 
-class _OrderPaymentScreenState extends State<OrderPaymentScreen>
-    with WidgetsBindingObserver {
+class _OrderPaymentScreenState extends State<OrderPaymentScreen> with WidgetsBindingObserver {
   bool _openedBankApp = false;
   String? _shownError;
 
-  OrderPaymentController get _controller =>
-      context.read<OrderPaymentController>();
+  OrderPaymentController get _controller => context.read<OrderPaymentController>();
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _controller.load();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await _controller.load();
+      if (mounted && widget.openRecord) _openRecordIfPayable();
     });
+  }
+
+  void _openRecordIfPayable() {
+    final controller = _controller;
+    final detail = controller.order;
+    if (detail == null || !_canRecord(controller, detail)) return;
+    _openRecordSheet(
+      context,
+      controller,
+      remaining: _remainingRaw(detail),
+      onBankLaunch: _launchBank,
+    );
   }
 
   @override
@@ -71,15 +122,11 @@ class _OrderPaymentScreenState extends State<OrderPaymentScreen>
           _shownError = error.display;
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
-            ScaffoldMessenger.of(context)
-                .showSnackBar(SnackBar(content: Text(error.display)));
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.display)));
           });
         }
         return Scaffold(
-          appBar: AppBar(
-            title: const Text('Төлбөр'),
-            actions: const [ShellNotificationBell()],
-          ),
+          appBar: AppBar(title: const Text('Төлбөр'), actions: const [ShellNotificationBell()]),
           body: !controller.canView
               ? const _ForbiddenPaymentView()
               : _buildBody(context, controller),
@@ -125,13 +172,8 @@ class _OrderPaymentScreenState extends State<OrderPaymentScreen>
             const SizedBox(height: 12),
             Padding(
               key: const ValueKey('internal_payment_note'),
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppDimens.paddingSM,
-              ),
-              child: Text(
-                internalOrderPaymentNote,
-                style: context.textStyles.caption,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: AppDimens.paddingSM),
+              child: Text(internalOrderPaymentNote, style: context.textStyles.caption),
             ),
           ] else if (controller.settlementLocked &&
               (controller.can('payments.create') ||
@@ -140,19 +182,11 @@ class _OrderPaymentScreenState extends State<OrderPaymentScreen>
             const SizedBox(height: 12),
             Padding(
               key: const ValueKey('postpaid_settlement_note'),
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppDimens.paddingSM,
-              ),
-              child: Text(
-                postpaidSettlementNote,
-                style: context.textStyles.caption,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: AppDimens.paddingSM),
+              child: Text(postpaidSettlementNote, style: context.textStyles.caption),
             ),
           ],
-          if (detail.paymentStatus != PaymentStatus.PAID &&
-              (controller.canCreate ||
-                  (!controller.internalLocked &&
-                      controller.qpay?.qpayEnabled == true))) ...[
+          if (_canRecord(controller, detail)) ...[
             const SizedBox(height: 12),
             _ManualPaymentCard(
               controller: controller,
@@ -168,23 +202,26 @@ class _OrderPaymentScreenState extends State<OrderPaymentScreen>
   Future<void> _launchBank(String link) async {
     if (!isSafeBankUrl(link)) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Банкны холбоос буруу байна.')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Банкны холбоос буруу байна.')));
       }
       return;
     }
-    final uri = Uri.parse(link);
-    if (!await canLaunchUrl(uri)) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Банкны апп нээх боломжгүй байна.')),
-        );
-      }
-      return;
+    // No canLaunchUrl first: it only answers for schemes declared in the
+    // Android <queries> / iOS LSApplicationQueriesSchemes, while launchUrl
+    // opens any installed bank app. False means the app isn't installed.
+    var launched = false;
+    try {
+      launched = await launchUrl(Uri.parse(link), mode: LaunchMode.externalApplication);
+    } catch (_) {
+      launched = false;
     }
-    _openedBankApp = true;
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (launched) {
+      _openedBankApp = true;
+    } else if (mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text(bankAppNotOpenedMessage)));
+    }
   }
 }
 
@@ -206,9 +243,7 @@ class _SummaryCard extends StatelessWidget {
     final paid = detail.paidAmountMoney ?? _fallbackMoney(detail.paidAmount);
     final remaining =
         detail.paymentTotals?.remainingAmountMoney ??
-        (total == null || paid == null
-            ? null
-            : Money(_subtractDisplayMoney(total.raw, paid.raw)));
+        (total == null || paid == null ? null : Money(_subtractDisplayMoney(total.raw, paid.raw)));
     return _PaymentCard(
       title: 'Төлбөрийн мэдээлэл',
       icon: Icons.payments_outlined,
@@ -248,10 +283,7 @@ class _LedgerCard extends StatelessWidget {
       icon: Icons.receipt_long_outlined,
       children: [
         if (state is AsyncLoading && payments == null)
-          const Padding(
-            padding: EdgeInsets.all(AppDimens.paddingMD),
-            child: AppLoading(),
-          )
+          const Padding(padding: EdgeInsets.all(AppDimens.paddingMD), child: AppLoading())
         else if (payments == null || payments.isEmpty)
           const Padding(
             padding: EdgeInsets.fromLTRB(
@@ -294,14 +326,12 @@ class _LedgerRow extends StatelessWidget {
   final VoidCallback onReverse;
   @override
   Widget build(BuildContext context) {
-    final date = DateFormat('yyyy-MM-dd HH:mm')
-        .format(payment.paidAt ?? payment.createdAt);
+    final date = DateFormat('yyyy-MM-dd HH:mm').format(payment.paidAt ?? payment.createdAt);
     final bank = payment.bankLabel ?? payment.bankId;
     final method = bank == null
         ? _methodLabel(payment.method)
         : '${_methodLabel(payment.method)} · $bank';
-    final showReverse =
-        payment.status == OrderPaymentRecordStatus.PAID && canReverse;
+    final showReverse = payment.status == OrderPaymentRecordStatus.PAID && canReverse;
     return ListTile(
       dense: true,
       title: Text('${_displayMoney(payment.amountMoney)} · $method'),
@@ -322,9 +352,7 @@ class _LedgerRow extends StatelessWidget {
           ? IconButton(
               key: ValueKey('reverse_payment_${payment.id}'),
               tooltip: reverseBlockedReason ?? 'Буцаах',
-              onPressed: busy || reverseBlockedReason != null
-                  ? null
-                  : onReverse,
+              onPressed: busy || reverseBlockedReason != null ? null : onReverse,
               icon: const Icon(Icons.undo_rounded),
             )
           : null,
@@ -342,38 +370,11 @@ class _ManualPaymentCard extends StatelessWidget {
   final String remaining;
   final Future<void> Function(String) onBankLaunch;
 
-  Future<void> _open(BuildContext context) => PaymentMethodSheet.showRecord(
+  Future<void> _open(BuildContext context) => _openRecordSheet(
     context,
-    builder: () => PaymentMethodSheet(
-      title: remaining.isEmpty
-          ? 'Төлбөр бүртгэх'
-          : 'Төлбөр бүртгэх · Үлдэгдэл $remaining₮',
-      banks: controller.accounts,
-      liveBanks: () => controller.accounts,
-      banksLoading: () => controller.banksLoading,
-      banksFailed: () => controller.banksFailed,
-      onRetryBanks: controller.retryBanks,
-      defaultAmount: remaining,
-      // The row shows even when QPay is not configured; the panel then
-      // explains it instead of offering a QR button.
-      includeQPay: !controller.internalLocked,
-      includeManual: controller.canCreate,
-      listenable: controller,
-      isSettled: () => controller.order?.paymentStatus == PaymentStatus.PAID,
-      busy: () => controller.isBusy,
-      errorText: () => controller.lastError?.display,
-      showNoSessionWarning: controller.showNoSessionWarning,
-      onRecord: (choice, amount) => controller.createManual(
-        amount: amount,
-        method: choice.method,
-        bankId: choice.bank,
-      ),
-      qpayBuilder: (_) => _QPayPanel(
-        controller: controller,
-        onBankLaunch: onBankLaunch,
-        remaining: remaining,
-      ),
-    ),
+    controller,
+    remaining: remaining,
+    onBankLaunch: onBankLaunch,
   );
 
   @override
@@ -397,82 +398,106 @@ class _ManualPaymentCard extends StatelessWidget {
   );
 }
 
-/// QPay detail of the payment sheet: create, QR + bank links, check, cancel.
-class _QPayPanel extends StatefulWidget {
-  const _QPayPanel({
-    required this.controller,
-    required this.onBankLaunch,
-    required this.remaining,
-  });
+/// Whether the order can still take a payment here: unpaid, and either a
+/// manual payment or QPay is open to the user.
+bool _canRecord(OrderPaymentController controller, ServiceOrderDetail detail) =>
+    detail.paymentStatus != PaymentStatus.PAID &&
+    (controller.canCreate ||
+        (!controller.internalLocked && controller.qpay?.qpayEnabled == true));
+
+/// «Төлбөр бүртгэх»: amount, method and QPay in one sheet.
+Future<void> _openRecordSheet(
+  BuildContext context,
+  OrderPaymentController controller, {
+  required String remaining,
+  required Future<void> Function(String) onBankLaunch,
+}) => PaymentMethodSheet.showRecord(
+    context,
+    builder: () => PaymentMethodSheet(
+      title: 'Төлбөр бүртгэх',
+      balance: remaining.isEmpty ? null : remaining,
+      banks: controller.accounts,
+      liveBanks: () => controller.accounts,
+      banksLoading: () => controller.banksLoading,
+      banksFailed: () => controller.banksFailed,
+      onRetryBanks: controller.retryBanks,
+      defaultAmount: remaining,
+      // Every method takes more than 0 and at most the unpaid balance; a
+      // larger amount can't be typed at all.
+      maxAmount: remaining.isEmpty ? null : remaining,
+      validateAmount: (amount) => validateQPayAmount(amount, remaining),
+      // The QPay button shows even when QPay is not configured; its note
+      // then explains it and the button stays off.
+      includeQPay: !controller.internalLocked,
+      includeManual: controller.canCreate,
+      listenable: controller,
+      isSettled: () => controller.order?.paymentStatus == PaymentStatus.PAID,
+      busy: () => controller.isBusy,
+      errorText: () => controller.lastError?.display,
+      showNoSessionWarning: controller.showNoSessionWarning,
+      onRecord: (choice, amount) =>
+          controller.createManual(amount: amount, method: choice.method, bankId: choice.bank),
+      qpay: QPaySheetHooks(
+        pending: () => controller.qpay?.pending != null,
+        canCreate: () => controller.canCreate && controller.qpay?.qpayEnabled == true,
+        create: (amount) => controller.createQPay(amount: amount),
+        noteBuilder: (context) => _qpayNote(context, controller),
+        viewBuilder: (_) => _QPayView(controller: controller, onBankLaunch: onBankLaunch),
+      ),
+    ),
+  );
+
+/// QPay's state under its row in the payment form; null when QPay is ready
+/// for the form's «QR үүсгэх».
+Widget? _qpayNote(BuildContext context, OrderPaymentController controller) {
+  final style = context.textStyles.caption;
+  if (controller.qpayState is AsyncLoading) {
+    return const Center(
+      key: ValueKey('qpay_loading'),
+      child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+    );
+  }
+  if (controller.qpayState is AsyncError) {
+    return Row(
+      key: const ValueKey('qpay_load_failed'),
+      children: [
+        Expanded(child: Text(qpayLoadFailedMessage, style: style)),
+        TextButton(
+          key: const ValueKey('qpay_retry'),
+          onPressed: controller.retryQPay,
+          child: const Text('Дахин оролдох'),
+        ),
+      ],
+    );
+  }
+  final String text;
+  if (controller.qpay?.qpayEnabled != true) {
+    text = qpayNotConfiguredMessage;
+  } else if (controller.qpay?.pending case final pending?) {
+    text = 'Нэхэмжлэл хүлээгдэж байна · ${_displayMoney(pending.amountMoney)}';
+  } else if (!controller.canCreate) {
+    text = 'QPay нэхэмжлэл үүсгэх эрхгүй байна.';
+  } else {
+    return null;
+  }
+  return Padding(
+    key: const ValueKey('qpay_note'),
+    padding: const EdgeInsets.symmetric(horizontal: 4),
+    child: Text(text, style: style),
+  );
+}
+
+/// The pending QPay invoice in the payment sheet: QR, bank apps, check and
+/// cancel. Created from the sheet's form.
+class _QPayView extends StatelessWidget {
+  const _QPayView({required this.controller, required this.onBankLaunch});
   final OrderPaymentController controller;
   final Future<void> Function(String) onBankLaunch;
 
-  /// Raw remaining balance; default and upper bound of the QPay amount.
-  final String remaining;
-
-  @override
-  State<_QPayPanel> createState() => _QPayPanelState();
-}
-
-class _QPayPanelState extends State<_QPayPanel> {
-  late final TextEditingController _amount = TextEditingController(
-    text: liveFormatPriceInput(widget.remaining),
-  );
-  String? _amountError;
-
-  @override
-  void dispose() {
-    _amount.dispose();
-    super.dispose();
-  }
-
-  /// Error text for the typed amount, or null when valid (> 0, <= remaining).
-  String? _validate() => validateQPayAmount(_amount.text, widget.remaining);
-
-  void _create() {
-    final error = _validate();
-    setState(() => _amountError = error);
-    if (error != null) return;
-    widget.controller.createQPay(
-      amount: _amount.text.replaceAll(',', '').trim(),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final controller = widget.controller;
-    final onBankLaunch = widget.onBankLaunch;
-    if (controller.qpayState is AsyncLoading) {
-      return const Padding(
-        key: ValueKey('qpay_loading'),
-        padding: EdgeInsets.all(AppDimens.paddingMD),
-        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-      );
-    }
-    if (controller.qpayState is AsyncError) {
-      return Padding(
-        key: const ValueKey('qpay_load_failed'),
-        padding: const EdgeInsets.only(top: AppDimens.paddingXS),
-        child: Row(
-          children: [
-            const Expanded(child: Text(qpayLoadFailedMessage)),
-            TextButton(
-              key: const ValueKey('qpay_retry'),
-              onPressed: controller.retryQPay,
-              child: const Text('Дахин оролдох'),
-            ),
-          ],
-        ),
-      );
-    }
-    if (controller.qpay?.qpayEnabled != true) {
-      return const Padding(
-        key: ValueKey('qpay_not_configured'),
-        padding: EdgeInsets.only(top: AppDimens.paddingXS),
-        child: Text(qpayNotConfiguredMessage),
-      );
-    }
     final pending = controller.qpay?.pending;
+    if (pending == null) return const SizedBox.shrink();
     final result = controller.qpayCheckResult;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -489,115 +514,61 @@ class _QPayPanelState extends State<_QPayPanel> {
             color: context.opsWarning,
             key: const ValueKey('qpay_sheet_feedback'),
           ),
-        if (pending == null && controller.canCreate)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: AppDimens.paddingXS),
+          child: Text('Нэхэмжлэл хүлээгдэж байна · ${_displayMoney(pending.amountMoney)}'),
+        ),
+        if (decodeQrImage(pending.qrImage) case final bytes?)
           Padding(
-            padding: const EdgeInsets.only(top: AppDimens.paddingXS),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                TextField(
-                  key: const ValueKey('qpay_amount_input'),
-                  controller: _amount,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  inputFormatters: const [PriceInputFormatter()],
-                  onChanged: (_) {
-                    if (_amountError != null) {
-                      setState(() => _amountError = null);
-                    }
-                  },
-                  decoration: InputDecoration(
-                    labelText: 'Дүн',
-                    suffixText: '₮',
-                    errorText: _amountError,
-                  ),
+            padding: const EdgeInsets.all(12),
+            child: Center(
+              child: Container(
+                // QR codes need a guaranteed-white backing to stay
+                // scannable, independent of the active theme.
+                color: Colors.white,
+                padding: const EdgeInsets.all(AppDimens.paddingSM),
+                child: Image.memory(
+                  bytes,
+                  width: 192,
+                  height: 192,
+                  errorBuilder: (_, _, _) => const _QrFallback(),
                 ),
-                const SizedBox(height: AppDimens.paddingSM),
-                FilledButton(
-                  key: const ValueKey('create_qpay'),
-                  onPressed: controller.isBusy || controller.cashSessionClosed
-                      ? null
-                      : _create,
-                  child: const Text('QR үүсгэх'),
-                ),
-              ],
+              ),
             ),
           )
-        else if (pending == null)
+        else
           const Padding(
-            padding: EdgeInsets.only(top: AppDimens.paddingXS),
-            child: Text('QPay нэхэмжлэл үүсгэх эрхгүй байна.'),
-          )
-        else ...[
+            padding: EdgeInsets.all(AppDimens.paddingMD),
+            child: Center(child: _QrFallback()),
+          ),
+        if (pending.urls.where((bank) => isSafeBankUrl(bank.link)).toList() case final banks
+            when banks.isNotEmpty)
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: AppDimens.paddingXS),
-            child: Text(
-              'Нэхэмжлэл хүлээгдэж байна · ${_displayMoney(pending.amountMoney)}',
+            padding: const EdgeInsets.only(bottom: AppDimens.paddingMD),
+            child: QPayBankGrid(
+              banks: banks,
+              onSelect: controller.isBusy ? null : (bank) => onBankLaunch(bank.link),
             ),
           ),
-          if (decodeQrImage(pending.qrImage) case final bytes?)
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Center(
-                child: Container(
-                  // QR codes need a guaranteed-white backing to stay
-                  // scannable, independent of the active theme.
-                  color: Colors.white,
-                  padding: const EdgeInsets.all(AppDimens.paddingSM),
-                  child: Image.memory(
-                    bytes,
-                    width: 180,
-                    height: 180,
-                    errorBuilder: (_, _, _) => const _QrFallback(),
-                  ),
-                ),
-              ),
-            )
-          else
-            const Padding(
-              padding: EdgeInsets.all(AppDimens.paddingMD),
-              child: Center(child: _QrFallback()),
-            ),
-          if (pending.urls.any((item) => isSafeBankUrl(item.link)))
-            Padding(
-              padding: const EdgeInsets.only(bottom: AppDimens.paddingSM),
-              child: Wrap(
-                spacing: 8,
-                children: [
-                  for (final bank in pending.urls)
-                    if (isSafeBankUrl(bank.link))
-                      OutlinedButton(
-                        onPressed: controller.isBusy
-                            ? null
-                            : () => onBankLaunch(bank.link),
-                        child: Text(bank.nameMn),
-                      ),
-                ],
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                key: const ValueKey('check_qpay'),
+                onPressed: controller.canEdit && !controller.isBusy ? controller.checkQPay : null,
+                child: const Text('Төлбөр шалгах'),
               ),
             ),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  key: const ValueKey('check_qpay'),
-                  onPressed: controller.canEdit && !controller.isBusy
-                      ? controller.checkQPay
-                      : null,
-                  child: const Text('Төлбөр шалгах'),
-                ),
-              ),
-              const SizedBox(width: 8),
-              TextButton(
-                key: const ValueKey('cancel_qpay'),
-                onPressed: controller.canDelete && !controller.isBusy
-                    ? controller.cancelQPay
-                    : null,
-                child: const Text('Цуцлах'),
-              ),
-            ],
-          ),
-        ],
+            const SizedBox(width: 8),
+            TextButton(
+              key: const ValueKey('cancel_qpay'),
+              onPressed: controller.canDelete && !controller.isBusy
+                  ? controller.cancelQPay
+                  : null,
+              child: const Text('Цуцлах'),
+            ),
+          ],
+        ),
       ],
     );
   }
@@ -609,8 +580,9 @@ const qpayLoadFailedMessage = 'QPay-ийн мэдээлэл ачаалж чад�
 const qpayAmountRequiredMessage = 'Дүнгээ оруулна уу.';
 const qpayAmountExceedsMessage = 'Дүн үлдэгдлээс их байж болохгүй.';
 
-/// Validates a typed QPay amount: must be > 0 and not above [remaining]
-/// (raw decimal string; empty remaining = no upper bound). Null when valid.
+/// Validates the payment form's typed amount, for QPay and every other
+/// method: must be > 0 and not above [remaining] (raw decimal string; empty
+/// remaining = no upper bound). Null when valid.
 String? validateQPayAmount(String input, String remaining) {
   final value = double.tryParse(input.trim().replaceAll(',', ''));
   if (value == null || value <= 0) return qpayAmountRequiredMessage;
@@ -620,11 +592,7 @@ String? validateQPayAmount(String input, String remaining) {
 }
 
 class _QPayFeedbackBanner extends StatelessWidget {
-  const _QPayFeedbackBanner({
-    super.key,
-    required this.text,
-    required this.color,
-  });
+  const _QPayFeedbackBanner({super.key, required this.text, required this.color});
 
   final String text;
   final Color color;
@@ -656,11 +624,7 @@ class _QrFallback extends StatelessWidget {
 }
 
 class _PaymentCard extends StatelessWidget {
-  const _PaymentCard({
-    required this.title,
-    required this.icon,
-    required this.children,
-  });
+  const _PaymentCard({required this.title, required this.icon, required this.children});
   final String title;
   final IconData icon;
   final List<Widget> children;
@@ -677,11 +641,7 @@ class _PaymentCard extends StatelessWidget {
               Icon(icon, size: 18, color: context.opsAccent),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(
-                  title,
-                  overflow: TextOverflow.ellipsis,
-                  style: context.textStyles.h3,
-                ),
+                child: Text(title, overflow: TextOverflow.ellipsis, style: context.textStyles.h3),
               ),
             ],
           ),
@@ -732,20 +692,15 @@ String _remainingRaw(ServiceOrderDetail detail) {
   final paid = detail.paidAmountMoney ?? _fallbackMoney(detail.paidAmount);
   final remaining =
       detail.paymentTotals?.remainingAmountMoney ??
-      (total == null || paid == null
-          ? null
-          : Money(_subtractDisplayMoney(total.raw, paid.raw)));
+      (total == null || paid == null ? null : Money(_subtractDisplayMoney(total.raw, paid.raw)));
   if (remaining != null) return remaining.raw;
   final balance = detail.unpaidBalance;
   if (balance == null) return '';
-  return balance == balance.roundToDouble()
-      ? balance.toInt().toString()
-      : balance.toString();
+  return balance == balance.roundToDouble() ? balance.toInt().toString() : balance.toString();
 }
 
 String _displayMoney(Money? money) => money == null ? '—' : '${money.raw}₮';
-Money? _fallbackMoney(double? value) =>
-    value == null ? null : Money(value.toString());
+Money? _fallbackMoney(double? value) => value == null ? null : Money(value.toString());
 
 String _methodLabel(OrderPaymentMethod method) => switch (method) {
   OrderPaymentMethod.CASH => 'Бэлэн',
@@ -779,6 +734,59 @@ Uint8List? decodeQrImage(String? raw) {
   }
 }
 
+const bankAppNotOpenedMessage = 'Банкны апп нээгдсэнгүй. Уг банкны апп суусан эсэхээ шалгана уу.';
+
+/// Schemes of the bank apps QPay links an invoice to (`urls[].link`). Kept in
+/// step with the Android `<queries>` (AndroidManifest.xml) and iOS
+/// `LSApplicationQueriesSchemes` (Info.plist).
+const qpayBankSchemes = {
+  'ardapp',
+  'arigbank',
+  'bogdbank',
+  'candypay',
+  'capitalbank',
+  'capitronbank',
+  'chinggis',
+  'ckbank',
+  'golomtbank',
+  'khanbank',
+  'mbank',
+  'monpay',
+  'most',
+  'mostmoney',
+  'nibank',
+  'pocket',
+  'qpay',
+  'qpaywallet',
+  'socialpay',
+  'statebank',
+  'statebankmongolia',
+  'tdbbank',
+  'toki',
+  'transbank',
+  'xacbank',
+};
+
+/// Schemes that are never a bank app, whatever the link carries.
+const _blockedSchemes = {
+  'about',
+  'blob',
+  'content',
+  'data',
+  'file',
+  'ftp',
+  'http',
+  'intent',
+  'javascript',
+  'mailto',
+  'market',
+  'sms',
+  'tel',
+  'vbscript',
+};
+
+final _customScheme = RegExp(r'^[a-z][a-z0-9+.-]*$');
+
 bool isSafeBankUrl(String raw) {
   final uri = Uri.tryParse(raw.trim());
   final scheme = uri?.scheme.toLowerCase() ?? '';
@@ -786,29 +794,21 @@ bool isSafeBankUrl(String raw) {
     return false;
   }
   if (scheme == 'https') return uri.host.isNotEmpty;
-  return const {
-    'khanbank',
-    'golomtbank',
-    'tdbbank',
-    'statebank',
-    'monpay',
-    'socialpay',
-    'bogdbank',
-    'mostmoney',
-    'qpay',
-  }.contains(scheme);
+  if (qpayBankSchemes.contains(scheme)) return true;
+  // A bank QPay added after the list above. Its link still carries the
+  // invoice (`<bank>://q?qPay_QRcode=…`), so it is offered instead of
+  // silently missing from the grid.
+  return _customScheme.hasMatch(scheme) &&
+      !_blockedSchemes.contains(scheme) &&
+      uri.query.contains('qPay_QRcode=');
 }
 
 String _subtractDisplayMoney(String left, String right) {
   final a = _parts(left);
   final b = _parts(right);
   final scale = a.$2.length > b.$2.length ? a.$2.length : b.$2.length;
-  final av =
-      BigInt.parse(a.$1) * BigInt.from(10).pow(scale) +
-      _fractionPart(a.$2, scale);
-  final bv =
-      BigInt.parse(b.$1) * BigInt.from(10).pow(scale) +
-      _fractionPart(b.$2, scale);
+  final av = BigInt.parse(a.$1) * BigInt.from(10).pow(scale) + _fractionPart(a.$2, scale);
+  final bv = BigInt.parse(b.$1) * BigInt.from(10).pow(scale) + _fractionPart(b.$2, scale);
   final value = av - bv;
   if (value <= BigInt.zero) return '0';
   final raw = value.toString().padLeft(scale + 1, '0');

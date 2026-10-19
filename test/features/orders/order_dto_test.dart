@@ -89,6 +89,23 @@ void main() {
     },
   );
 
+  test('parses the service preview and tolerates a bad one', () {
+    final withPreview = _order()
+      ..['servicePreview'] = ['Тос солих', 7, 'Тоормос засах'];
+    expect(
+      OrderSummaryDto.fromJson({'order': withPreview}).value.servicePreview,
+      ['Тос солих', 'Тоормос засах'],
+    );
+    for (final preview in <Object?>[null, 'Тос солих', 3]) {
+      final order = _order()..['servicePreview'] = preview;
+      expect(
+        OrderSummaryDto.fromJson({'order': order}).value.servicePreview,
+        isEmpty,
+        reason: 'servicePreview=$preview',
+      );
+    }
+  });
+
   test('rejects malformed present progress', () {
     for (final progress in <Object?>[
       null,

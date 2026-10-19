@@ -24,6 +24,10 @@ class NotificationService {
   static const _channelId = 'carservice_default';
   static const _channelName = 'Carservice мэдэгдэл';
 
+  /// Status-bar icon: a white mask (res/drawable), not the colour launcher
+  /// icon, which Android shows as a blank blob.
+  static const _smallIcon = '@drawable/ic_stat_notification';
+
   Future<void> init() async {
     FirebaseMessaging.onBackgroundMessage(_backgroundMessageHandler);
 
@@ -31,7 +35,7 @@ class NotificationService {
 
     await _localNotifications.initialize(
       settings: const InitializationSettings(
-        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+        android: AndroidInitializationSettings(_smallIcon),
         iOS: DarwinInitializationSettings(
           requestAlertPermission: false,
           requestBadgePermission: false,
@@ -98,6 +102,10 @@ class NotificationService {
     }
     final n = message.notification;
     if (n == null) return;
+    // iOS already shows it (setForegroundNotificationPresentationOptions);
+    // a local copy would be a second banner. Its tap arrives through
+    // onMessageOpenedApp.
+    if (!kIsWeb && Platform.isIOS) return;
     _localNotifications.show(
       id: n.hashCode,
       title: n.title,
@@ -108,7 +116,7 @@ class NotificationService {
           _channelName,
           importance: Importance.high,
           priority: Priority.high,
-          icon: '@mipmap/ic_launcher',
+          icon: _smallIcon,
         ),
         iOS: DarwinNotificationDetails(),
       ),

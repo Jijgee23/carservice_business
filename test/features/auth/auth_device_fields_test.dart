@@ -22,7 +22,10 @@ void main() {
       transport: (path, body) async {
         calls.add((path, body));
         return switch (path) {
-          'auth/check-email' => const AuthResponse(200, {'status': 'password', 'identifier': '99112233'}),
+          'auth/check-email' => const AuthResponse(200, {
+            'status': 'password',
+            'identifier': '99112233',
+          }),
           _ => const AuthResponse(401, {'error': 'Нэвтрэх нэр эсвэл нууц үг буруу.'}),
         };
       },

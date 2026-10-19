@@ -80,8 +80,12 @@ void main() {
 
   Finder key(String k) => find.byKey(Key('vehicleCreate.$k'));
 
+  /// Types [plate] and closes the plate keypad («Бэлэн»), as staff do
+  /// before going on with the form.
   Future<void> typePlate(WidgetTester tester, String plate) async {
     await tester.enterText(key('plate'), plate);
+    await tester.pump();
+    await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pump();
   }
 
@@ -117,6 +121,30 @@ void main() {
     await tester.pump();
     expect(find.text('Өнгө'), findsOneWidget);
     expect(find.text('1800 см³'), findsOneWidget);
+  });
+
+  testWidgets('a plate typed on the plate keypad looks up like typing', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(800, 1400);
+    addTearDown(tester.view.reset);
+    lookup.lookupResult = const Ok(_prius);
+    await pumpScreen(tester);
+
+    await tester.tap(key('plate'));
+    await tester.pumpAndSettle(); // the keypad opens
+    for (final char in '1234УБА'.split('')) {
+      await tester.tap(find.byKey(ValueKey('plate_key_$char')));
+      await tester.pump();
+    }
+    expect(
+      tester.widget<EditableText>(find.byType(EditableText).first).controller.text,
+      '1234УБА',
+    );
+    await tester.pump(const Duration(milliseconds: 401));
+    await tester.pump();
+    expect(lookup.lookupPlates, ['1234УБА']);
   });
 
   testWidgets('global source is titled "Системийн бүртгэлээс"', (tester) async {

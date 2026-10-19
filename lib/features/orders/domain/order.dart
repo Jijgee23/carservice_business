@@ -202,6 +202,19 @@ enum ServiceItemStatus {
   static ServiceItemStatus fromString(String value) =>
       tryParse(value) ??
       (throw OrderParseException('status утга буруу байна.'));
+
+  String get label {
+    switch (this) {
+      case PENDING:
+        return 'Хүлээгдэж буй';
+      case IN_PROGRESS:
+        return 'Хийгдэж байна';
+      case COMPLETED:
+        return 'Дууссан';
+      case CANCELLED:
+        return 'Цуцлагдсан';
+    }
+  }
 }
 
 enum OrderPaymentMethod {

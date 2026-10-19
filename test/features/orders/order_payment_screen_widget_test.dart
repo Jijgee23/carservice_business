@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
@@ -51,8 +52,12 @@ class _WidgetPaymentRepository extends FakeOrderRepository {
     this.seedPaidLedger = false,
     this.lockedLedger = false,
     this.qpayCheckOutcome,
+    this.qpayBanks,
   }) : super(seedOrders: [_order()]);
   final bool malformedQPay;
+
+  /// When set, a pending invoice with these bank links.
+  final List<QPayBankUrl>? qpayBanks;
   final bool seedPaidLedger;
   final bool lockedLedger;
   final ({bool paid, String? message})? qpayCheckOutcome;
@@ -115,6 +120,17 @@ class _WidgetPaymentRepository extends FakeOrderRepository {
   ) async {
     if (qpayPaidAfterCheck) {
       return const Ok((qpayEnabled: true, pending: null));
+    }
+    if (qpayBanks case final banks?) {
+      return Ok((
+        qpayEnabled: true,
+        pending: OrderPayment(
+          id: 'qpay-1',
+          amount: 100.50,
+          amountMoney: const Money('100.50'),
+          urls: banks,
+        ),
+      ));
     }
     if (!malformedQPay) return super.getQPay(orderId);
     return Ok((
@@ -181,14 +197,29 @@ Future<void> _pumpPayment(
   await tester.pump(const Duration(milliseconds: 20));
 }
 
+/// Opens the payment form; for a method other than QPay (its own button),
+/// picks it from the form's method list.
 Future<void> _openOption(WidgetTester tester, String optionKey) async {
   final open = find.byKey(const ValueKey('open_payment_sheet'));
   await tester.ensureVisible(open);
   await tester.tap(open);
   await tester.pumpAndSettle();
+  if (optionKey == 'QPAY') return;
+  await tester.tap(find.byKey(const ValueKey('pay_method_select')));
+  await tester.pumpAndSettle();
   await tester.tap(find.byKey(ValueKey('pay_opt_$optionKey')));
   await tester.pumpAndSettle();
 }
+
+/// A pending invoice: the form's QPay button reads «QR харах» and shows it.
+Future<void> _openQPayView(WidgetTester tester) async {
+  await _openOption(tester, 'QPAY');
+  await tester.tap(find.byKey(const ValueKey('view_qpay')));
+  await tester.pumpAndSettle();
+}
+
+VoidCallback? _pressed(WidgetTester tester, String key) =>
+    tester.widget<ButtonStyleButton>(find.byKey(ValueKey(key))).onPressed;
 
 void main() {
   tearDown(() {
@@ -232,7 +263,7 @@ void main() {
     expect(find.byKey(const ValueKey('payment_amount_input')), findsNothing);
     await _openOption(tester, 'QPAY');
     expect(find.byKey(const ValueKey('pay_opt_CASH')), findsNothing);
-    expect(find.byKey(const ValueKey('create_qpay')), findsNothing);
+    expect(_pressed(tester, 'create_qpay'), isNull);
     expect(find.text('QPay нэхэмжлэл үүсгэх эрхгүй байна.'), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
 
@@ -243,11 +274,7 @@ void main() {
     );
     await _openOption(tester, 'CASH');
     expect(find.byKey(const ValueKey('payment_amount_input')), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('pay_sheet_back')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('pay_opt_QPAY')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('create_qpay')), findsOneWidget);
+    expect(_pressed(tester, 'create_qpay'), isNotNull);
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
@@ -263,8 +290,7 @@ void main() {
       );
       await _openOption(tester, 'QPAY');
       expect(find.text(qpayNotConfiguredMessage), findsOneWidget);
-      expect(find.byKey(const ValueKey('create_qpay')), findsNothing);
-      expect(find.byKey(const ValueKey('qpay_amount_input')), findsNothing);
+      expect(_pressed(tester, 'create_qpay'), isNull);
     },
   );
 
@@ -282,9 +308,11 @@ void main() {
       expect(find.text(qpayLoadFailedMessage), findsOneWidget);
       expect(find.text(qpayNotConfiguredMessage), findsNothing);
       repo.qpayLoadFails = false;
+      expect(_pressed(tester, 'create_qpay'), isNull);
       await tester.tap(find.byKey(const ValueKey('qpay_retry')));
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('qpay_amount_input')), findsOneWidget);
+      expect(find.text(qpayLoadFailedMessage), findsNothing);
+      expect(_pressed(tester, 'create_qpay'), isNotNull);
     },
   );
 
@@ -300,7 +328,7 @@ void main() {
       repository: repo,
     );
     await _openOption(tester, 'QPAY');
-    final input = find.byKey(const ValueKey('qpay_amount_input'));
+    final input = find.byKey(const ValueKey('payment_amount_input'));
     expect(tester.widget<TextField>(input).controller!.text, '100.50');
 
     await tester.enterText(input, '0');
@@ -309,20 +337,22 @@ void main() {
     expect(find.text(qpayAmountRequiredMessage), findsOneWidget);
     expect(repo.lastQPayAmount, isNull);
 
+    // More than the unpaid balance can't be typed: the edit is refused.
     await tester.enterText(input, '100.51');
-    await tester.tap(find.byKey(const ValueKey('create_qpay')));
     await tester.pump();
+    expect(tester.widget<TextField>(input).controller!.text, '0');
     expect(find.text(qpayAmountExceedsMessage), findsOneWidget);
     expect(repo.lastQPayAmount, isNull);
 
-    await tester.enterText(input, '4000');
-    expect(tester.widget<TextField>(input).controller!.text, '4,000');
-
     await tester.enterText(input, '40');
     await tester.tap(find.byKey(const ValueKey('create_qpay')));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 20));
+    await tester.pumpAndSettle();
     expect(repo.lastQPayAmount, '40');
+    // The new invoice opens right away; back returns to the form.
+    expect(find.byKey(const ValueKey('check_qpay')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('pay_sheet_back')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('view_qpay')), findsOneWidget);
   });
 
   testWidgets('malformed QR and unsafe bank links render a safe fallback', (
@@ -334,10 +364,81 @@ void main() {
       theme: AppTheme.dark,
       repository: _WidgetPaymentRepository(malformedQPay: true),
     );
-    await _openOption(tester, 'QPAY');
+    await _openQPayView(tester);
     expect(find.textContaining('QR зураг боломжгүй байна'), findsOneWidget);
     expect(find.text('Unsafe'), findsNothing);
     expect(find.text('Missing'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('pending QPay lists bank apps as a logo grid, like the web', (
+    tester,
+  ) async {
+    QPayBankUrl bank(String name, String link, {String logo = ''}) =>
+        QPayBankUrl(
+          name: name,
+          nameMn: name,
+          logo: logo,
+          description: '',
+          link: link,
+        );
+    await _pumpPayment(
+      tester,
+      user: _user(const ['payments.view', 'payments.edit']),
+      theme: AppTheme.light,
+      repository: _WidgetPaymentRepository(
+        qpayBanks: [
+          bank(
+            'Хаан банк',
+            'khanbank://q?qPay_QRcode=0002',
+            logo: 'https://qpay.mn/q/logo/khanbank.png',
+          ),
+          bank('Хас банк', 'xacbank://q?qPay_QRcode=0002'),
+          bank('Шинэ банк', 'newbank://q?qPay_QRcode=0002'),
+          bank('Unsafe', 'javascript:alert(1)'),
+        ],
+      ),
+    );
+    await _openQPayView(tester);
+
+    expect(find.byKey(const ValueKey('qpay_bank_grid')), findsOneWidget);
+    expect(find.text('БАНКНЫ АПП СОНГОХ'), findsOneWidget);
+    for (final name in ['Хаан банк', 'Хас банк', 'Шинэ банк']) {
+      expect(find.text(name), findsOneWidget, reason: name);
+    }
+    expect(find.text('Unsafe'), findsNothing);
+    // No logo, or one that fails to load: the bank's initial stands in.
+    expect(find.text('Х'), findsNWidgets(2));
+    expect(find.text('Ш'), findsOneWidget);
+
+    // Stand-in for the platform launcher: the first tap opens the bank app,
+    // the second finds it missing.
+    final launched = <String>[];
+    var installed = true;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/url_launcher'),
+      (call) async {
+        launched.add((call.arguments as Map)['url'] as String);
+        return installed;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        const MethodChannel('plugins.flutter.io/url_launcher'),
+        null,
+      ),
+    );
+    final tile = find.byKey(const ValueKey('qpay_bank_2'));
+    await tester.ensureVisible(tile);
+    await tester.tap(tile);
+    await tester.pumpAndSettle();
+    expect(launched, ['newbank://q?qPay_QRcode=0002']);
+    expect(find.text(bankAppNotOpenedMessage), findsNothing);
+
+    installed = false;
+    await tester.tap(tile);
+    await tester.pumpAndSettle();
+    expect(find.text(bankAppNotOpenedMessage), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -406,7 +507,7 @@ void main() {
       );
 
       await pumpWith(const ['payments.view']);
-      await _openOption(tester, 'QPAY');
+      await _openQPayView(tester);
       expect(
         (tester.widget<OutlinedButton>(
           find.byKey(const ValueKey('check_qpay')),
@@ -421,7 +522,7 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
 
       await pumpWith(const ['payments.view', 'payments.edit']);
-      await _openOption(tester, 'QPAY');
+      await _openQPayView(tester);
       expect(
         (tester.widget<OutlinedButton>(
           find.byKey(const ValueKey('check_qpay')),
@@ -436,7 +537,7 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
 
       await pumpWith(const ['payments.view', 'payments.delete']);
-      await _openOption(tester, 'QPAY');
+      await _openQPayView(tester);
       expect(
         (tester.widget<OutlinedButton>(
           find.byKey(const ValueKey('check_qpay')),

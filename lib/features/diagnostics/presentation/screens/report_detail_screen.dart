@@ -1,3 +1,4 @@
+import 'package:carservice_business/core/utils/share_origin.dart';
 import 'package:carservice_business/app/shell/shell_chrome.dart';
 
 import 'package:carservice_business/core/utils/vehicle_plate.dart';
@@ -62,6 +63,9 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
   /// modal barrier until it is ready (server-side rendering can take a while).
   bool _exporting = false;
 
+  /// The PDF button: the iPad share popover points at it.
+  final _shareAnchor = GlobalKey();
+
   Future<void> _exportPdf() async {
     if (_exporting) return; // double tap guard
     setState(() => _exporting = true);
@@ -111,6 +115,9 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
               ],
               fileNameOverrides: ['diagnostic-${widget.reportId}.pdf'],
               subject: 'Оношилгооны тайлан',
+              sharePositionOrigin:
+                  shareOriginOf(_shareAnchor.currentContext) ??
+                  shareOriginOf(context),
             ),
           );
         } catch (_) {
@@ -197,17 +204,20 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
         title: Text('Тайлангийн дэлгэрэнгүй'),
         actions: [
           if (_report != null)
-            IconButton(
-              key: const ValueKey('report_pdf_button'),
-              tooltip: 'PDF татах',
-              icon: _exporting
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.picture_as_pdf_outlined),
-              onPressed: _exporting ? null : _exportPdf,
+            KeyedSubtree(
+              key: _shareAnchor,
+              child: IconButton(
+                key: const ValueKey('report_pdf_button'),
+                tooltip: 'PDF татах',
+                icon: _exporting
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.picture_as_pdf_outlined),
+                onPressed: _exporting ? null : _exportPdf,
+              ),
             ),
           if (_report != null && canDelete)
             _deleting

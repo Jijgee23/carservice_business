@@ -1,3 +1,5 @@
+import 'package:carservice_business/core/utils/validators.dart';
+
 // Улсын дугааргүй машин — backend `lib/vehicle-plate.ts` / `lib/vehicles.ts`-тэй
 // яг ижил дүрэм. `Vehicle.plate` заавал талбар тул тусгай тэмдэг илгээнэ;
 // ийм машиныг VIN-ээр ялгана (VIN заавал).
@@ -28,9 +30,19 @@ bool isValidVin(String v) {
   return len >= 9 && len <= 14;
 }
 
-/// Харьцуулахад зориулсан дугаар: зай/зураас хасч, том үсэг болгоно.
-String comparablePlate(String? plate) =>
-    (plate ?? '').toUpperCase().replaceAll(RegExp(r'[\s\-]+'), '');
+/// Харьцуулахад зориулсан дугаар ([normalizePlate]): латин ба кирилл, зай,
+/// зураасаас үл хамааран нэг машин нэг утгатай.
+String comparablePlate(String? plate) => normalizePlate(plate ?? '');
+
+final _plateQueryRx = RegExp(r'^\d{4}[\s\-]*[A-Za-zА-Яа-яЁёӨөҮү]{1,3}$');
+
+/// Хайлтын текст: дугаар шиг (4 цифр + 1–3 үсэг) бол канон дугаар болгоно,
+/// ингэснээр "1234 уба" нь "1234УБА"-г, латин "1234ABC" нь "1234АВС"-г олно.
+/// Нэр, VIN зэрэг бусад текст хэвээр (trim).
+String plateSearchQuery(String query) {
+  final q = query.trim();
+  return _plateQueryRx.hasMatch(q) ? normalizePlate(q) : q;
+}
 
 /// Захиалгын дугаарын snapshot одоогийн машины дугаараас ялгаатай бол хуучин
 /// дугаарыг (trim хийсэн) буцаана; бусад үед `null`.

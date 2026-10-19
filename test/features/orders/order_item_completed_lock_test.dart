@@ -52,7 +52,7 @@ Future<void> _pump(
 bool _enabled(WidgetTester tester, String key) {
   final w = tester.widget(find.byKey(ValueKey(key)));
   if (w is IconButton) return w.onPressed != null;
-  if (w is PopupMenuButton) return w.enabled;
+  if (w is InkWell) return w.onTap != null;
   throw StateError('unexpected $w');
 }
 

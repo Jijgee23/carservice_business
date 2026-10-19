@@ -55,6 +55,13 @@ extension FeatureTheme on BuildContext {
   Color itemKindBackground(ItemKind kind) =>
       itemKindColor(kind).withOpacity(0.1);
 
+  Color itemStatusColor(ServiceItemStatus status) => switch (status) {
+    ServiceItemStatus.PENDING => _ops.mutedText,
+    ServiceItemStatus.IN_PROGRESS => _ops.accent,
+    ServiceItemStatus.COMPLETED => _ops.ok,
+    ServiceItemStatus.CANCELLED => _ops.danger,
+  };
+
   Color diagnosticTypeColor(diagnostic.DiagnosticType type) => switch (type) {
     diagnostic.DiagnosticType.INTAKE => _ops.accent,
     diagnostic.DiagnosticType.POST_SERVICE => _ops.ok,

@@ -4,9 +4,11 @@ import 'package:provider/provider.dart';
 
 import 'package:carservice_business/app/theme/app_theme.dart';
 import 'package:carservice_business/core/utils/async_value.dart';
+import 'package:carservice_business/core/widgets/app_dropdown.dart';
 import 'package:carservice_business/features/orders/domain/order.dart';
 import 'package:carservice_business/features/orders/presentation/controllers/order_item_controller.dart';
 import 'package:carservice_business/features/orders/presentation/feature_theme.dart';
+import 'package:carservice_business/features/orders/presentation/widgets/list/order_list_widgets.dart';
 import 'package:carservice_business/features/orders/presentation/widgets/order_status_prompt.dart';
 
 /// Shown on a COMPLETED service line: the server answers any edit or cancel
@@ -30,6 +32,37 @@ bool isLineStatusLocked(ServiceItem item) =>
     item.kind == ItemKind.DIAGNOSTIC &&
     item.diagnosticReportId != null;
 
+/// A DIAGNOSTIC line can only be completed once its report is filled
+/// (server: 422 `DIAGNOSTIC_REPORT_REQUIRED`).
+bool lineNeedsReport(ServiceItem item) =>
+    item.kind == ItemKind.DIAGNOSTIC && item.diagnosticReportId == null;
+
+/// Lines «complete all» moves: tracked work not yet done, leaving out
+/// diagnostics still waiting for their report.
+List<ServiceItem> completableLines(Iterable<ServiceItem> items) =>
+    progressItems(items)
+        .where(
+          (item) =>
+              item.status != ServiceItemStatus.COMPLETED &&
+              !lineNeedsReport(item),
+        )
+        .toList(growable: false);
+
+/// Diagnostic lines still waiting for their report (not cancelled).
+List<ServiceItem> reportPendingLines(Iterable<ServiceItem> items) => items
+    .where(
+      (item) => item.status != ServiceItemStatus.CANCELLED && lineNeedsReport(item),
+    )
+    .toList(growable: false);
+
+/// Statuses a line's progress menu offers. The server accepts any move
+/// between them; CANCELLED has its own endpoint.
+const changeableItemStatuses = [
+  ServiceItemStatus.PENDING,
+  ServiceItemStatus.IN_PROGRESS,
+  ServiceItemStatus.COMPLETED,
+];
+
 class OrderItemCard extends StatelessWidget {
   const OrderItemCard({
     super.key,
@@ -41,6 +74,8 @@ class OrderItemCard extends StatelessWidget {
     required this.canPrice,
     required this.canStatus,
     required this.diagnosticEditable,
+    this.pendingStatus,
+    this.statusBusy = false,
     this.onEdit,
     this.onCancel,
     this.onStatus,
@@ -60,6 +95,13 @@ class OrderItemCard extends StatelessWidget {
   final bool canPrice;
   final bool canStatus;
   final bool diagnosticEditable;
+
+  /// Status the line is being moved to; shown instead of [item]'s until the
+  /// server answers.
+  final ServiceItemStatus? pendingStatus;
+
+  /// A status change for this line is in flight: its controls are disabled.
+  final bool statusBusy;
   final VoidCallback? onEdit;
   final VoidCallback? onCancel;
   final ValueChanged<ServiceItemStatus>? onStatus;
@@ -76,9 +118,13 @@ class OrderItemCard extends StatelessWidget {
     final qty = item.quantityMoney?.raw ?? item.quantity.toString();
     final price = _money(item.unitPriceMoney, item.unitPrice);
     final total = _money(item.totalMoney, item.total);
+    final status = pendingStatus ?? item.status;
     final actions = <Widget>[];
     final lineLocked = isLineCompletedLocked(item);
     final statusLocked = isLineStatusLocked(item);
+    final statusControls =
+        !locked && canStatus && item.status != ServiceItemStatus.CANCELLED;
+    final next = statusControls && !statusLocked ? _nextStep(status) : null;
     if (!locked && (canEdit || canPrice)) {
       actions.add(
         IconButton(
@@ -87,23 +133,6 @@ class OrderItemCard extends StatelessWidget {
           onPressed: lineLocked ? null : onEdit,
           icon: const Icon(Icons.edit_outlined, size: 18),
           visualDensity: VisualDensity.compact,
-        ),
-      );
-    }
-    if (!locked && canStatus && item.status != ServiceItemStatus.CANCELLED) {
-      actions.add(
-        PopupMenuButton<ServiceItemStatus>(
-          key: const ValueKey('item_status_button'),
-          tooltip: statusLocked ? diagnosticReportLinkedHint : 'Төлөв',
-          enabled: !statusLocked,
-          icon: const Icon(Icons.swap_vert_rounded, size: 19),
-          onSelected: onStatus,
-          itemBuilder: (_) => _nextStatuses(item).map((status) {
-            return PopupMenuItem(
-              value: status,
-              child: Text(_statusLabel(status)),
-            );
-          }).toList(),
         ),
       );
     }
@@ -125,59 +154,102 @@ class OrderItemCard extends StatelessWidget {
       );
     }
 
+    // Controls get the card's full width: next to the total they would be
+    // squeezed on a phone.
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
-            decoration: BoxDecoration(
-              color: accent.withOpacity(.12),
-              borderRadius: BorderRadius.circular(AppDimens.radiusSM),
-            ),
-            child: Text(
-              item.kind.label,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                color: accent,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+                decoration: BoxDecoration(
+                  color: accent.withOpacity(.12),
+                  borderRadius: BorderRadius.circular(AppDimens.radiusSM),
+                ),
+                child: Text(
+                  item.kind.label,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: accent,
+                  ),
+                ),
               ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 4,
-                  crossAxisAlignment: WrapCrossAlignment.center,
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       item.description,
                       style: context.textStyles.captionMedium,
                     ),
-                    _StatusBadge(status: item.status),
+                    const SizedBox(height: 3),
+                    Text('$qty × $price', style: context.textStyles.caption),
+                    if (lineLocked && actions.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        completedLineLockedHint,
+                        key: const ValueKey('item_completed_locked_hint'),
+                        style: context.textStyles.caption,
+                      ),
+                    ],
                   ],
                 ),
-                const SizedBox(height: 3),
-                Text('$qty × $price', style: context.textStyles.caption),
-                if (lineLocked && actions.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    completedLineLockedHint,
-                    key: const ValueKey('item_completed_locked_hint'),
-                    style: context.textStyles.caption,
-                  ),
-                ],
-                if (item.kind == ItemKind.DIAGNOSTIC) ...[
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 4,
-                    children: [
+              ),
+              const SizedBox(width: 8),
+              Text(total, style: context.textStyles.captionMedium),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    if (statusControls)
+                      _ItemStatusMenu(
+                        item: item,
+                        status: status,
+                        busy: statusBusy,
+                        lockedReason: statusLocked
+                            ? diagnosticReportLinkedHint
+                            : null,
+                        onSelect: onStatus,
+                      )
+                    else
+                      _ItemStatusPill(status: status),
+                    if (next != null)
+                      FilledButton.tonalIcon(
+                        key: const ValueKey('item_next_status_button'),
+                        onPressed: statusBusy || onStatus == null
+                            ? null
+                            : () => onStatus!(next),
+                        icon: Icon(
+                          next == ServiceItemStatus.IN_PROGRESS
+                              ? Icons.play_arrow_rounded
+                              : Icons.check_rounded,
+                          size: 16,
+                        ),
+                        label: Text(
+                          next == ServiceItemStatus.IN_PROGRESS
+                              ? 'Эхлүүлэх'
+                              : 'Дуусгах',
+                        ),
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size(0, 32),
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ),
+                    if (item.kind == ItemKind.DIAGNOSTIC)
                       if (item.diagnosticReportId != null)
                         TextButton.icon(
                           onPressed: onDiagnosticView,
@@ -209,18 +281,10 @@ class OrderItemCard extends StatelessWidget {
                             minimumSize: const Size(0, 32),
                           ),
                         ),
-                    ],
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(total, style: context.textStyles.captionMedium),
-              if (actions.isNotEmpty) Wrap(spacing: 0, children: actions),
+                  ],
+                ),
+              ),
+              ...actions,
             ],
           ),
         ],
@@ -228,57 +292,186 @@ class OrderItemCard extends StatelessWidget {
     );
   }
 
-  static List<ServiceItemStatus> _nextStatuses(ServiceItem item) {
-    return switch (item.status) {
-      ServiceItemStatus.PENDING => const [ServiceItemStatus.IN_PROGRESS],
-      ServiceItemStatus.IN_PROGRESS => const [ServiceItemStatus.COMPLETED],
-      // A finished line can be reopened while the order is IN_PROGRESS; edits
-      // and cancel stay locked (ITEM_COMPLETED_LOCKED). A diagnostic line with
-      // a report is excluded upstream (statusLocked).
-      ServiceItemStatus.COMPLETED => const [
-        ServiceItemStatus.IN_PROGRESS,
-        ServiceItemStatus.PENDING,
-      ],
-      ServiceItemStatus.CANCELLED => const [],
-    };
-  }
-
-  static String _statusLabel(ServiceItemStatus status) => switch (status) {
-    ServiceItemStatus.PENDING => 'Хүлээгдэж буй',
-    ServiceItemStatus.IN_PROGRESS => 'Хийгдэж байна',
-    ServiceItemStatus.COMPLETED => 'Дууссан',
-    ServiceItemStatus.CANCELLED => 'Цуцлагдсан',
+  /// The one-tap step forward. A diagnostic line without its report has none:
+  /// its fill/create button is the next step instead.
+  ServiceItemStatus? _nextStep(ServiceItemStatus status) => switch (status) {
+    ServiceItemStatus.PENDING => ServiceItemStatus.IN_PROGRESS,
+    ServiceItemStatus.IN_PROGRESS when !lineNeedsReport(item) =>
+      ServiceItemStatus.COMPLETED,
+    _ => null,
   };
 }
 
-class _StatusBadge extends StatelessWidget {
-  const _StatusBadge({required this.status});
+/// The line's status as a pill; tapping it opens every status the line can
+/// move to, so any move (forward, back, straight to done) is one choice.
+class _ItemStatusMenu extends StatelessWidget {
+  const _ItemStatusMenu({
+    required this.item,
+    required this.status,
+    required this.busy,
+    required this.lockedReason,
+    required this.onSelect,
+  });
+
+  final ServiceItem item;
   final ServiceItemStatus status;
+  final bool busy;
+
+  /// Set when the status can't change at all; shown as the tooltip.
+  final String? lockedReason;
+  final ValueChanged<ServiceItemStatus>? onSelect;
 
   @override
   Widget build(BuildContext context) {
-    final color = switch (status) {
-      ServiceItemStatus.COMPLETED => context.opsGood,
-      ServiceItemStatus.CANCELLED => context.opsDanger,
-      ServiceItemStatus.IN_PROGRESS => context.opsAccent,
-      ServiceItemStatus.PENDING => context.opsTextSecondary,
-    };
+    final interactive = lockedReason == null && !busy && onSelect != null;
+    return MenuAnchor(
+      alignmentOffset: const Offset(0, 4),
+      style: AppDropdown.menuStyle(context),
+      menuChildren: [
+        for (final option in changeableItemStatuses)
+          _ItemStatusMenuItem(
+            key: ValueKey('item_status_option_${option.name}'),
+            status: option,
+            selected: option == status,
+            disabledReason:
+                option == ServiceItemStatus.COMPLETED && lineNeedsReport(item)
+                ? 'Тайлан шаардлагатай'
+                : null,
+            onPressed: () => onSelect?.call(option),
+          ),
+      ],
+      builder: (context, menu, _) {
+        final pill = InkWell(
+          key: const ValueKey('item_status_button'),
+          borderRadius: BorderRadius.circular(AppDimens.radiusFull),
+          onTap: interactive
+              ? () => menu.isOpen ? menu.close() : menu.open()
+              : null,
+          child: _ItemStatusPill(
+            status: status,
+            trailing: busy
+                ? const _PillSpinner()
+                : lockedReason == null
+                ? Icon(
+                    menu.isOpen
+                        ? Icons.expand_less_rounded
+                        : Icons.expand_more_rounded,
+                    size: 16,
+                    color: context.itemStatusColor(status),
+                  )
+                : null,
+          ),
+        );
+        return lockedReason == null
+            ? pill
+            : Tooltip(message: lockedReason, child: pill);
+      },
+    );
+  }
+}
+
+class _ItemStatusMenuItem extends StatelessWidget {
+  const _ItemStatusMenuItem({
+    super.key,
+    required this.status,
+    required this.selected,
+    required this.disabledReason,
+    required this.onPressed,
+  });
+
+  final ServiceItemStatus status;
+  final bool selected;
+  final String? disabledReason;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = context.itemStatusColor(status);
+    return MenuItemButton(
+      onPressed: selected || disabledReason != null ? null : onPressed,
+      style: MenuItemButton.styleFrom(
+        minimumSize: const Size.fromHeight(44),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        // The current status is informational, not greyed out.
+        disabledForegroundColor: selected ? context.opsTextPrimary : null,
+      ),
+      leadingIcon: Container(
+        width: 10,
+        height: 10,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      ),
+      trailingIcon: selected
+          ? Icon(Icons.check_rounded, size: 20, color: context.opsAccent)
+          : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            status.label,
+            style: context.textStyles.bodyMedium.copyWith(
+              fontWeight: selected ? FontWeight.w700 : null,
+            ),
+          ),
+          if (disabledReason case final reason?)
+            Text(reason, style: context.textStyles.caption),
+        ],
+      ),
+    );
+  }
+}
+
+class _ItemStatusPill extends StatelessWidget {
+  const _ItemStatusPill({required this.status, this.trailing});
+  final ServiceItemStatus status;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = context.itemStatusColor(status);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: EdgeInsets.fromLTRB(8, 4, trailing == null ? 8 : 4, 4),
       decoration: BoxDecoration(
         color: color.withOpacity(.1),
         borderRadius: BorderRadius.circular(AppDimens.radiusFull),
       ),
-      child: Text(
-        OrderItemCard._statusLabel(status),
-        style: TextStyle(
-          fontSize: 10,
-          color: color,
-          fontWeight: FontWeight.w600,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: Text(
+              status.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11,
+                color: color,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          if (trailing case final trailing?) ...[
+            const SizedBox(width: 2),
+            trailing,
+          ],
+        ],
       ),
     );
   }
+}
+
+class _PillSpinner extends StatelessWidget {
+  const _PillSpinner();
+
+  @override
+  Widget build(BuildContext context) => const Padding(
+    padding: EdgeInsets.all(3),
+    child: SizedBox(
+      width: 10,
+      height: 10,
+      child: CircularProgressIndicator(strokeWidth: 1.5),
+    ),
+  );
 }
 
 class OrderItemHistorySheet extends StatefulWidget {

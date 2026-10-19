@@ -263,7 +263,9 @@ void main() {
         );
         expect(controller.statusFilter, AppointmentStatus.CANCELLED);
         expect(controller.statusGroup, isNull);
-        expect(controller.filtered.map((a) => a.id), ['a2', 'a3']);
+        // The default every-date list is newest first: the server's
+        // ascending page, reversed.
+        expect(controller.filtered.map((a) => a.id), ['a3', 'a2']);
         controller.dispose();
       },
     );
@@ -636,7 +638,8 @@ void main() {
           repo: repo,
           searchDebounce: Duration.zero,
         );
-        await controller.loadAppointments();
+        // A picked day pages by `defaultPageSize`.
+        await controller.setDate(DateTime.now());
         expect(controller.hasNext, isTrue);
         expect(
           controller.filtered,
@@ -653,5 +656,99 @@ void main() {
         controller.dispose();
       },
     );
+  });
+
+  group('AppointmentListController — default every-date list', () {
+    // `d0` is today and `d<i>` is i days ago, seeded oldest first — the
+    // order `GET /appointments` returns.
+    List<AppointmentSummary> daysAgo(
+      int count, {
+      AppointmentStatus Function(int i)? status,
+    }) => [
+      for (var i = count - 1; i >= 0; i--)
+        _appt(
+          'd$i',
+          status: status?.call(i) ?? AppointmentStatus.PENDING,
+          requestedAt: DateTime.now().subtract(Duration(days: i)),
+        ),
+    ];
+
+    List<String> ids(AppointmentListController c) =>
+        c.filtered.map((a) => a.id).toList();
+
+    test('pages every date newest first, 10 at a time', () async {
+      final controller = AppointmentListController(
+        repo: FakeAppointmentRepository(seed: daysAgo(25)),
+        searchDebounce: Duration.zero,
+      );
+      await controller.loadAppointments();
+
+      expect(controller.allDates, isTrue);
+      expect(controller.total, 25);
+      expect(controller.hasNext, isTrue);
+      expect(ids(controller), [for (var i = 0; i < 10; i++) 'd$i']);
+
+      await controller.loadMore();
+      expect(ids(controller), [for (var i = 0; i < 20; i++) 'd$i']);
+
+      await controller.loadMore();
+      expect(ids(controller), [for (var i = 0; i < 25; i++) 'd$i']);
+      expect(controller.hasNext, isFalse);
+      controller.dispose();
+    });
+
+    test('a status group merges its statuses newest first, paged', () async {
+      final controller = AppointmentListController(
+        repo: FakeAppointmentRepository(
+          seed: daysAgo(
+            30,
+            status: (i) => switch (i % 3) {
+              0 => AppointmentStatus.CONFIRMED,
+              1 => AppointmentStatus.PENDING,
+              _ => AppointmentStatus.CANCELLED,
+            },
+          ),
+        ),
+        searchDebounce: Duration.zero,
+      );
+      await controller.applyFilters(
+        branchId: null,
+        status: null,
+        statusGroup: const {
+          AppointmentStatus.PENDING,
+          AppointmentStatus.CONFIRMED,
+        },
+      );
+      final open = [
+        for (var i = 0; i < 30; i++)
+          if (i % 3 != 2) 'd$i',
+      ];
+
+      expect(controller.total, 20);
+      expect(ids(controller), open.take(10));
+      expect(controller.hasNext, isTrue);
+
+      await controller.loadMore();
+      expect(ids(controller), open);
+      expect(controller.hasNext, isFalse);
+      controller.dispose();
+    });
+
+    test('a picked day lists only that day; showAllDates returns', () async {
+      final controller = AppointmentListController(
+        repo: FakeAppointmentRepository(seed: daysAgo(12)),
+        searchDebounce: Duration.zero,
+      );
+      await controller.loadAppointments();
+
+      await controller.setDate(DateTime.now().subtract(const Duration(days: 3)));
+      expect(controller.allDates, isFalse);
+      expect(ids(controller), ['d3']);
+
+      await controller.showAllDates();
+      expect(controller.allDates, isTrue);
+      expect(ids(controller), [for (var i = 0; i < 10; i++) 'd$i']);
+      controller.dispose();
+    });
   });
 }

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'package:carservice_business/app/router.dart';
 import 'package:carservice_business/app/theme/app_theme.dart';
@@ -12,6 +13,7 @@ import 'package:carservice_business/core/domain/user.dart';
 import 'package:carservice_business/core/services/auth_storage.dart';
 import 'package:carservice_business/core/utils/async_value.dart';
 import 'package:carservice_business/core/utils/result.dart';
+import 'package:carservice_business/core/utils/vehicle_plate.dart';
 import 'package:carservice_business/core/widgets/dialogs/confirm_sheet.dart';
 import 'package:carservice_business/core/widgets/dialogs/message.dart';
 import 'package:carservice_business/core/widgets/date_picker/app_date_picker.dart';
@@ -20,6 +22,7 @@ import 'package:carservice_business/features/appointments/domain/appointments_re
 import 'package:carservice_business/features/appointments/presentation/controllers/appointment_detail_controller.dart';
 import 'package:carservice_business/features/appointments/domain/appointment_error_codes.dart';
 import 'package:carservice_business/features/appointments/domain/assignee_access.dart';
+import 'package:carservice_business/features/appointments/presentation/widgets/appointment_detail_widgets.dart';
 import 'package:carservice_business/features/appointments/presentation/widgets/appointment_payment_widgets.dart';
 import 'package:carservice_business/features/appointments/presentation/widgets/assignee_sheet.dart';
 import 'package:carservice_business/features/orders/data/order_repository.dart';
@@ -507,143 +510,106 @@ class _DetailContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final status = appointment.status;
-    final dateFmt = DateFormat('yyyy-MM-dd HH:mm');
     final busy = controller.mutating;
+    final vehicle = appointment.displayVehicle;
+    final plate = vehicle?.plate?.trim() ?? '';
+    final model = vehicle?.displayName ?? '';
+    final note = appointment.note?.trim() ?? '';
+    final canConvert =
+        canCreateOrder &&
+        appointment.serviceOrder == null &&
+        appointment.branch != null &&
+        appointment.customer?.id != null;
 
+    final workRows = <Widget>[
+      _AssigneeRow(
+        name:
+            appointment.assigneeName ??
+            (appointment.assignedToId != null ? 'Оноогдсон' : null),
+        // The master can be changed, never cleared (server 422).
+        onChange:
+            canEdit &&
+                canAssign &&
+                !busy &&
+                AppointmentDetailController.canChangeAssignee(status)
+            ? onChangeAssignee
+            : null,
+      ),
+      if (appointment.serviceOrder != null && canViewOrders)
+        _LinkedOrderRow(
+          order: appointment.serviceOrder!,
+          onTap: () =>
+              AppNav.push(appointmentOrderRoute(appointment.serviceOrder!.id)),
+        ),
+      if (controller.arrived == true)
+        const _InfoRow(label: 'Ирсэн эсэх', value: 'Ирсэн'),
+      if (appointment.createdAt != null)
+        _InfoRow(
+          label: 'Бүртгэсэн',
+          value: _dateTimeFmt.format(appointment.createdAt!),
+        ),
+    ];
+
+    const gap = SizedBox(height: AppDimens.paddingSM + 4);
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (controller.refreshError != null)
+        if (controller.refreshError != null) ...[
           _RefreshWarning(
             message: controller.refreshError!.display,
             onRetry: controller.refresh,
           ),
-        if (controller.refreshError != null)
-          const SizedBox(height: AppDimens.paddingSM),
-        Container(
-          padding: const EdgeInsets.all(AppDimens.paddingMD),
-          decoration: BoxDecoration(
-            color: context.opsCardBg,
-            borderRadius: BorderRadius.circular(AppDimens.radiusMD),
-            border: Border.all(color: context.opsDivider),
+          gap,
+        ],
+        _ScheduleCard(appointment: appointment),
+        gap,
+        AppointmentDetailSection(
+          title: 'Үйлчлүүлэгч',
+          child: _CustomerRow(
+            name: appointment.displayName,
+            phone: appointment.displayPhone,
           ),
+        ),
+        if (plate.isNotEmpty || model.isNotEmpty) ...[
+          gap,
+          AppointmentDetailSection(
+            title: 'Тээврийн хэрэгсэл',
+            child: _VehicleRow(plate: plate, model: model),
+          ),
+        ],
+        gap,
+        AppointmentDetailSection(
+          title: 'Ажлын мэдээлэл',
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      appointment.displayName,
-                      style: context.textStyles.h3,
-                    ),
-                  ),
-                  _StatusChip(status: status),
-                ],
-              ),
-              const SizedBox(height: AppDimens.paddingXS),
-              Text(appointment.displayPhone, style: context.textStyles.caption),
-              const SizedBox(height: AppDimens.paddingSM),
-              if (appointment.requestedAt != null)
-                _InfoRow(
-                  icon: Icons.event_outlined,
-                  label: 'Хүсэлт гаргасан цаг',
-                  value: dateFmt.format(appointment.requestedAt!),
-                ),
-              if (appointment.branch?.name != null)
-                _InfoRow(
-                  icon: Icons.store_outlined,
-                  label: 'Салбар',
-                  value: appointment.branch!.name!,
-                ),
-              if (appointment.category?.name != null)
-                _InfoRow(
-                  icon: Icons.build_outlined,
-                  label: 'Ажлын төрөл',
-                  value: appointment.category!.name!,
-                ),
-              if (appointment.displayVehicle?.displayName.isNotEmpty == true)
-                _InfoRow(
-                  icon: Icons.directions_car_outlined,
-                  label: 'Тээврийн хэрэгсэл',
-                  value: appointment.displayVehicle!.displayName,
-                ),
-              _AssigneeRow(
-                name:
-                    appointment.assigneeName ??
-                    (appointment.assignedToId != null ? 'Оноогдсон' : null),
-                // The master can be changed, never cleared (server 422).
-                onChange:
-                    canEdit &&
-                        canAssign &&
-                        !busy &&
-                        AppointmentDetailController.canChangeAssignee(status)
-                    ? onChangeAssignee
-                    : null,
-              ),
-              if (appointment.note != null && appointment.note!.isNotEmpty)
-                _InfoRow(
-                  icon: Icons.notes_outlined,
-                  label: 'Тэмдэглэл',
-                  value: appointment.note!,
-                ),
-              if (appointment.serviceOrder != null && canViewOrders)
-                _LinkedOrderRow(
-                  order: appointment.serviceOrder!,
-                  onTap: () => AppNav.push(
-                    appointmentOrderRoute(appointment.serviceOrder!.id),
-                  ),
-                ),
-              if (controller.arrived == true)
-                const _InfoRow(
-                  icon: Icons.check_circle_outline,
-                  label: 'Ирсэн эсэх',
-                  value: 'Ирсэн',
-                ),
+              for (var i = 0; i < workRows.length; i++) ...[
+                if (i > 0) Divider(height: 1, color: context.opsDivider),
+                workRows[i],
+              ],
+              if (note.isNotEmpty) ...[
+                Divider(height: 1, color: context.opsDivider),
+                _NoteBlock(note: note),
+              ],
             ],
           ),
         ),
-        const SizedBox(height: AppDimens.paddingMD),
-        if (canEdit)
-          _LifecycleActions(
-            status: status,
-            overdue: appointment.isOverdue,
-            hasLinkedOrder: appointment.serviceOrder != null,
-            arrived: controller.arrived,
-            busy: busy,
-            onConfirm: onConfirm,
-            onReject: onReject,
-            onArrived: onArrived,
-            onNoShow: onNoShow,
-            onCancel: onCancel,
-            onReschedule: onReschedule,
-          ),
-        if (controller.confirmBlockedReason != null) ...[
-          Text(
-            controller.confirmBlockedReason!,
-            key: const ValueKey('appointment_confirm_blocked_reason'),
-            style: context.textStyles.caption.copyWith(
-              color: context.opsDanger,
-            ),
-          ),
-          const SizedBox(height: AppDimens.paddingMD),
-        ],
-        if (canEdit) const SizedBox(height: AppDimens.paddingMD),
-        if (canCreateOrder &&
-            appointment.serviceOrder == null &&
-            appointment.branch != null &&
-            appointment.customer?.id != null)
-          FilledButton.icon(
-            key: const ValueKey('appointment_convert_order_button'),
-            onPressed: busy ? null : onConvertToOrder,
-            icon: const Icon(Icons.receipt_long_outlined, size: 18),
-            label: const Text('Засварын хуудас үүсгэх'),
-          ),
-        if (canCreateOrder &&
-            appointment.serviceOrder == null &&
-            appointment.branch != null &&
-            appointment.customer?.id != null)
-          const SizedBox(height: AppDimens.paddingMD),
+        _ActionsSection(
+          status: status,
+          overdue: appointment.isOverdue,
+          hasLinkedOrder: appointment.serviceOrder != null,
+          arrived: controller.arrived,
+          busy: busy,
+          showLifecycle: canEdit,
+          blockedReason: controller.confirmBlockedReason,
+          onConfirm: onConfirm,
+          onReject: onReject,
+          onArrived: onArrived,
+          onNoShow: onNoShow,
+          onCancel: onCancel,
+          onReschedule: onReschedule,
+          onConvertToOrder: canConvert ? onConvertToOrder : null,
+        ),
         // Веб dashboard-тай адил: хураамж шаардаагүй цагт төлбөрийн хэсэг
         // харагдахгүй. Энэ дэлгэц дээр буцаалт хийсний дараа (мөн
         // NOT_REQUIRED болдог) үр дүнгийн мессежийг харуулахаар үлдээнэ.
@@ -651,7 +617,8 @@ class _DetailContent extends StatelessWidget {
             (controller.paymentStatus !=
                     AppointmentBookingPaymentStatus.NOT_REQUIRED ||
                 controller.lastRefund != null ||
-                controller.lastPaymentRetry != null))
+                controller.lastPaymentRetry != null)) ...[
+          gap,
           AppointmentPaymentPanel(
             status: controller.paymentStatus,
             busy: busy,
@@ -664,7 +631,276 @@ class _DetailContent extends StatelessWidget {
             onRetry: canEditPayments ? onRetryPayment : null,
             onRefund: canRefund ? onRefund : null,
           ),
+        ],
       ],
+    );
+  }
+
+  static final _dateTimeFmt = DateFormat('yyyy/MM/dd HH:mm');
+}
+
+/// When and what: status, the booked time set large, then work type and
+/// branch — the facts staff scan for first.
+class _ScheduleCard extends StatelessWidget {
+  const _ScheduleCard({required this.appointment});
+
+  final AppointmentSummary appointment;
+
+  static const _weekdays = [
+    'Даваа',
+    'Мягмар',
+    'Лхагва',
+    'Пүрэв',
+    'Баасан',
+    'Бямба',
+    'Ням',
+  ];
+  static final _timeFmt = DateFormat('HH:mm');
+  static final _dateFmt = DateFormat('yyyy/MM/dd');
+
+  @override
+  Widget build(BuildContext context) {
+    final at = appointment.requestedAt;
+    final category = appointment.category?.name;
+    final branch = appointment.branch?.name;
+    final overdue =
+        appointment.isOverdue &&
+        AppointmentDetailController.canReject(appointment.status);
+    return AppointmentDetailSection(
+      title: 'Товлосон цаг',
+      trailing: _StatusChip(status: appointment.status),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            at == null ? '—' : _timeFmt.format(at),
+            style: context.textStyles.h1.copyWith(
+              fontSize: 32,
+              height: 1.15,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+          if (at != null)
+            Text(
+              '${_dateFmt.format(at)} · ${_weekdays[at.weekday - 1]} гараг',
+              style: context.textStyles.body.copyWith(
+                color: context.opsTextSecondary,
+              ),
+            ),
+          if (overdue) ...[
+            const SizedBox(height: AppDimens.paddingSM),
+            Row(
+              children: [
+                Icon(
+                  Icons.error_outline,
+                  size: AppDimens.iconSM,
+                  color: context.opsDanger,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'Хугацаа хэтэрсэн',
+                  key: const ValueKey('appointment_overdue_label'),
+                  style: context.textStyles.bodyMedium.copyWith(
+                    color: context.opsDanger,
+                  ),
+                ),
+              ],
+            ),
+          ],
+          if (category != null || branch != null) ...[
+            const SizedBox(height: AppDimens.paddingMD),
+            Divider(height: 1, color: context.opsDivider),
+            const SizedBox(height: AppDimens.paddingSM + 4),
+            Wrap(
+              spacing: AppDimens.paddingMD,
+              runSpacing: AppDimens.paddingSM,
+              children: [
+                if (category != null)
+                  _Meta(icon: Icons.build_outlined, text: category),
+                if (branch != null)
+                  _Meta(icon: Icons.store_outlined, text: branch),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _Meta extends StatelessWidget {
+  const _Meta({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: AppDimens.iconSM, color: context.opsTextSecondary),
+        const SizedBox(width: 6),
+        Flexible(child: Text(text, style: context.textStyles.bodyMedium)),
+      ],
+    );
+  }
+}
+
+class _CustomerRow extends StatelessWidget {
+  const _CustomerRow({required this.name, required this.phone});
+
+  final String name;
+  final String phone;
+
+  bool get _hasPhone => phone.trim().isNotEmpty && phone != '—';
+
+  String get _initials {
+    final parts = name.trim().split(RegExp(r'\s+'));
+    final letters = [
+      for (final p in parts.take(2))
+        if (p.isNotEmpty) p.characters.first,
+    ];
+    return letters.isEmpty ? '?' : letters.join().toUpperCase();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        CircleAvatar(
+          radius: 22,
+          backgroundColor: context.opsAccent.withValues(alpha: 0.12),
+          child: Text(
+            _initials,
+            style: context.textStyles.bodyMedium.copyWith(
+              color: context.opsAccent,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        const SizedBox(width: AppDimens.paddingSM + 4),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(name, style: context.textStyles.h3),
+              const SizedBox(height: 2),
+              Text(
+                phone,
+                style: context.textStyles.body.copyWith(
+                  color: context.opsTextSecondary,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (_hasPhone)
+          IconButton.filledTonal(
+            key: const ValueKey('appointment_call_button'),
+            tooltip: 'Залгах',
+            onPressed: () => launchUrl(Uri(scheme: 'tel', path: phone.trim())),
+            icon: const Icon(Icons.call_outlined),
+          ),
+      ],
+    );
+  }
+}
+
+class _VehicleRow extends StatelessWidget {
+  const _VehicleRow({required this.plate, required this.model});
+
+  final String plate;
+  final String model;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        if (plate.isNotEmpty) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: context.opsSurface,
+              borderRadius: BorderRadius.circular(AppDimens.radiusSM),
+              border: Border.all(color: context.opsTextSecondary, width: 1.5),
+            ),
+            child: Text(
+              plateLabel(plate),
+              style: context.textStyles.bodyMedium.copyWith(
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+          const SizedBox(width: AppDimens.paddingSM + 4),
+        ],
+        if (model.isNotEmpty)
+          Expanded(child: Text(model, style: context.textStyles.bodyMedium)),
+      ],
+    );
+  }
+}
+
+/// A label on the left, its value on the right, an optional action after.
+/// When both do not fit one line (narrow screen, large text) the value moves
+/// under the label rather than squeezing either into broken words.
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({
+    required this.label,
+    required this.value,
+    this.valueKey,
+    this.valueStyle,
+    this.trailing,
+  });
+
+  final String label;
+  final String value;
+  final Key? valueKey;
+  final TextStyle? valueStyle;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 48),
+      child: Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: AppDimens.paddingMD,
+            runSpacing: 2,
+            children: [
+              Text(
+                label,
+                style: context.textStyles.body.copyWith(
+                  color: context.opsTextSecondary,
+                ),
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      value,
+                      key: valueKey,
+                      textAlign: TextAlign.end,
+                      style: valueStyle ?? context.textStyles.bodyMedium,
+                    ),
+                  ),
+                  ?trailing,
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -677,38 +913,26 @@ class _AssigneeRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: AppDimens.paddingSM),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.engineering_outlined,
-            size: AppDimens.iconSM,
-            color: context.opsTextSecondary,
-          ),
-          const SizedBox(width: AppDimens.paddingSM),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Хариуцах мастер', style: context.textStyles.caption),
-                Text(
-                  name ?? 'Оноогоогүй',
-                  key: const ValueKey('appointment_assignee_value'),
-                  style: context.textStyles.bodyMedium,
+    return _InfoRow(
+      label: 'Хариуцах мастер',
+      value: name ?? 'Оноогоогүй',
+      valueKey: const ValueKey('appointment_assignee_value'),
+      valueStyle: name == null
+          ? context.textStyles.body.copyWith(color: context.opsTextHint)
+          : null,
+      trailing: onChange == null
+          ? null
+          : Padding(
+              padding: const EdgeInsets.only(left: AppDimens.paddingXS),
+              child: TextButton(
+                key: const ValueKey('appointment_change_assignee_button'),
+                onPressed: onChange,
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
                 ),
-              ],
+                child: const Text('Солих'),
+              ),
             ),
-          ),
-          if (onChange != null)
-            TextButton(
-              key: const ValueKey('appointment_change_assignee_button'),
-              onPressed: onChange,
-              child: const Text('Солих'),
-            ),
-        ],
-      ),
     );
   }
 }
@@ -722,67 +946,73 @@ class _LinkedOrderRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final value = order.number != null ? '#${order.number}' : order.id;
-    return Padding(
-      padding: const EdgeInsets.only(top: AppDimens.paddingSM),
-      child: InkWell(
-        key: const ValueKey('appointment_linked_order_button'),
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(AppDimens.radiusSM),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                Icons.receipt_long_outlined,
-                size: AppDimens.iconSM,
-                color: context.opsAccent,
-              ),
-              const SizedBox(width: AppDimens.paddingSM),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Холбогдох засварын хуудас',
-                      style: context.textStyles.caption,
-                    ),
-                    Text(
-                      value,
-                      style: context.textStyles.bodyMedium.copyWith(
-                        color: context.opsAccent,
-                        decoration: TextDecoration.underline,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(
-                Icons.open_in_new,
-                size: AppDimens.iconSM,
-                color: context.opsAccent,
-              ),
-            ],
-          ),
+    return InkWell(
+      key: const ValueKey('appointment_linked_order_button'),
+      onTap: onTap,
+      child: _InfoRow(
+        label: 'Холбогдох засварын хуудас',
+        value: value,
+        valueStyle: context.textStyles.bodyMedium.copyWith(
+          color: context.opsAccent,
+          fontWeight: FontWeight.w600,
         ),
+        trailing: Icon(Icons.chevron_right_rounded, color: context.opsAccent),
       ),
     );
   }
 }
 
-class _LifecycleActions extends StatelessWidget {
-  const _LifecycleActions({
+class _NoteBlock extends StatelessWidget {
+  const _NoteBlock({required this.note});
+
+  final String note;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Тэмдэглэл',
+            style: context.textStyles.body.copyWith(
+              color: context.opsTextSecondary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.all(AppDimens.paddingSM + 4),
+            decoration: BoxDecoration(
+              color: context.opsCardBg,
+              borderRadius: BorderRadius.circular(AppDimens.radiusMD),
+            ),
+            child: Text(note, style: context.textStyles.body),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Every action in one block: the next step full width, the other moves in
+/// an even grid, destructive ones apart at the bottom.
+class _ActionsSection extends StatelessWidget {
+  const _ActionsSection({
     required this.status,
-    this.overdue = false,
+    required this.overdue,
     required this.hasLinkedOrder,
     required this.arrived,
     required this.busy,
+    required this.showLifecycle,
+    required this.blockedReason,
     required this.onConfirm,
     required this.onReject,
     required this.onArrived,
     required this.onNoShow,
     required this.onCancel,
     required this.onReschedule,
+    required this.onConvertToOrder,
   });
 
   final AppointmentStatus status;
@@ -797,88 +1027,140 @@ class _LifecycleActions extends StatelessWidget {
   final bool hasLinkedOrder;
   final bool? arrived;
   final bool busy;
+
+  /// `appointments.edit`: the lifecycle buttons. Creating a repair sheet is
+  /// gated separately, through [onConvertToOrder].
+  final bool showLifecycle;
+  final String? blockedReason;
   final VoidCallback onConfirm;
   final VoidCallback onReject;
   final VoidCallback onArrived;
   final VoidCallback onNoShow;
   final VoidCallback onCancel;
   final VoidCallback onReschedule;
+  final VoidCallback? onConvertToOrder;
 
   @override
   Widget build(BuildContext context) {
     // `unknown` never offers any action — by design it carries no
     // `nextStatuses`, and the arrived/reschedule preconditions below both
     // require an exact CONFIRMED match, so `unknown` falls through to none.
-    return Wrap(
-      spacing: AppDimens.paddingSM,
-      runSpacing: AppDimens.paddingSM,
-      children: [
-        if (overdue && AppointmentDetailController.canReject(status))
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: Text(
-              'Хугацаа хэтэрсэн',
-              key: const ValueKey('appointment_overdue_label'),
-              style: context.textStyles.bodyMedium.copyWith(
-                color: context.opsDanger,
-                fontWeight: FontWeight.w600,
+    final edit = showLifecycle;
+    final open = edit && !hasLinkedOrder;
+    final danger = appointmentOutlinedButtonStyle(context, danger: true);
+    final outlined = appointmentOutlinedButtonStyle(context);
+    final filled = appointmentFilledButtonStyle();
+
+    final primary = <Widget>[
+      if (edit && AppointmentDetailController.canConfirm(status, overdue: overdue))
+        FilledButton.icon(
+          key: const ValueKey('appointment_confirm_button'),
+          style: filled,
+          onPressed: busy ? null : onConfirm,
+          icon: const Icon(Icons.check, size: 18),
+          label: const Text('Баталгаажуулах'),
+        ),
+      if (onConvertToOrder != null)
+        FilledButton.icon(
+          key: const ValueKey('appointment_convert_order_button'),
+          style: filled,
+          onPressed: busy ? null : onConvertToOrder,
+          icon: const Icon(Icons.receipt_long_outlined, size: 18),
+          label: const Text('Засварын хуудас үүсгэх'),
+        ),
+    ];
+    final secondary = <Widget>[
+      if (open && AppointmentDetailController.canMarkArrived(status, arrived))
+        OutlinedButton.icon(
+          key: const ValueKey('appointment_arrived_button'),
+          style: outlined,
+          onPressed: busy ? null : onArrived,
+          icon: const Icon(Icons.login, size: 18),
+          label: const Text('Ирсэн'),
+        ),
+      if (open && AppointmentDetailController.canMarkNoShow(status, arrived))
+        OutlinedButton.icon(
+          key: const ValueKey('appointment_no_show_button'),
+          style: outlined,
+          onPressed: busy ? null : onNoShow,
+          icon: const Icon(Icons.person_off_outlined, size: 18),
+          label: const Text('Ирээгүй'),
+        ),
+      if (open && AppointmentDetailController.canReschedule(status))
+        OutlinedButton.icon(
+          key: const ValueKey('appointment_reschedule_button'),
+          style: outlined,
+          onPressed: busy ? null : onReschedule,
+          icon: const Icon(Icons.schedule, size: 18),
+          label: const Text('Цаг шилжүүлэх'),
+        ),
+    ];
+    final destructive = <Widget>[
+      if (edit && AppointmentDetailController.canReject(status))
+        OutlinedButton.icon(
+          key: const ValueKey('appointment_reject_button'),
+          style: danger,
+          onPressed: busy ? null : onReject,
+          icon: const Icon(Icons.close, size: 18),
+          label: const Text('Татгалзах'),
+        ),
+      if (open && AppointmentDetailController.canCancel(status))
+        OutlinedButton.icon(
+          key: const ValueKey('appointment_cancel_button'),
+          style: danger,
+          onPressed: busy ? null : onCancel,
+          icon: const Icon(Icons.event_busy_outlined, size: 18),
+          label: const Text('Цуцлах'),
+        ),
+    ];
+    final reason = blockedReason;
+    if (primary.isEmpty &&
+        secondary.isEmpty &&
+        destructive.isEmpty &&
+        reason == null) {
+      return const SizedBox.shrink();
+    }
+
+    const gap = SizedBox(height: AppDimens.paddingSM);
+    return Padding(
+      padding: const EdgeInsets.only(top: AppDimens.paddingSM + 4),
+      child: AppointmentDetailSection(
+        title: 'Үйлдэл',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (var i = 0; i < primary.length; i++) ...[
+              if (i > 0) gap,
+              primary[i],
+            ],
+            if (secondary.isNotEmpty) ...[
+              if (primary.isNotEmpty) gap,
+              AppointmentButtonGrid(buttons: secondary),
+            ],
+            if (destructive.isNotEmpty) ...[
+              if (primary.isNotEmpty || secondary.isNotEmpty) ...[
+                const SizedBox(height: AppDimens.paddingSM + 4),
+                Divider(height: 1, color: context.opsDivider),
+                const SizedBox(height: AppDimens.paddingSM + 4),
+              ],
+              AppointmentButtonGrid(buttons: destructive),
+            ],
+            if (reason != null) ...[
+              if (primary.isNotEmpty ||
+                  secondary.isNotEmpty ||
+                  destructive.isNotEmpty)
+                gap,
+              Text(
+                reason,
+                key: const ValueKey('appointment_confirm_blocked_reason'),
+                style: context.textStyles.caption.copyWith(
+                  color: context.opsDanger,
+                ),
               ),
-            ),
-          ),
-        if (AppointmentDetailController.canConfirm(status, overdue: overdue))
-          FilledButton.icon(
-            key: const ValueKey('appointment_confirm_button'),
-            onPressed: busy ? null : onConfirm,
-            icon: const Icon(Icons.check, size: 18),
-            label: const Text('Баталгаажуулах'),
-          ),
-        if (AppointmentDetailController.canReject(status))
-          OutlinedButton.icon(
-            key: const ValueKey('appointment_reject_button'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: context.opsDanger,
-              side: BorderSide(color: context.opsDanger),
-            ),
-            onPressed: busy ? null : onReject,
-            icon: const Icon(Icons.close, size: 18),
-            label: const Text('Татгалзах'),
-          ),
-        if (!hasLinkedOrder &&
-            AppointmentDetailController.canMarkArrived(status, arrived))
-          OutlinedButton.icon(
-            key: const ValueKey('appointment_arrived_button'),
-            onPressed: busy ? null : onArrived,
-            icon: const Icon(Icons.login, size: 18),
-            label: const Text('Ирсэн'),
-          ),
-        if (!hasLinkedOrder &&
-            AppointmentDetailController.canMarkNoShow(status, arrived))
-          OutlinedButton.icon(
-            key: const ValueKey('appointment_no_show_button'),
-            onPressed: busy ? null : onNoShow,
-            icon: const Icon(Icons.person_off_outlined, size: 18),
-            label: const Text('Ирээгүй'),
-          ),
-        if (!hasLinkedOrder &&
-            AppointmentDetailController.canReschedule(status))
-          OutlinedButton.icon(
-            key: const ValueKey('appointment_reschedule_button'),
-            onPressed: busy ? null : onReschedule,
-            icon: const Icon(Icons.schedule, size: 18),
-            label: const Text('Цаг шилжүүлэх'),
-          ),
-        if (!hasLinkedOrder && AppointmentDetailController.canCancel(status))
-          OutlinedButton.icon(
-            key: const ValueKey('appointment_cancel_button'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: context.opsDanger,
-              side: BorderSide(color: context.opsDanger),
-            ),
-            onPressed: busy ? null : onCancel,
-            icon: const Icon(Icons.event_busy_outlined, size: 18),
-            label: const Text('Цуцлах'),
-          ),
-      ],
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
@@ -904,41 +1186,6 @@ class _StatusChip extends StatelessWidget {
           color: color,
           fontWeight: FontWeight.w600,
         ),
-      ),
-    );
-  }
-}
-
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: AppDimens.paddingSM),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: AppDimens.iconSM, color: context.opsTextSecondary),
-          const SizedBox(width: AppDimens.paddingSM),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label, style: context.textStyles.caption),
-                Text(value, style: context.textStyles.bodyMedium),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }

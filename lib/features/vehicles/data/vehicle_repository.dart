@@ -1,3 +1,4 @@
+import 'package:carservice_business/core/utils/vehicle_plate.dart';
 import 'package:carservice_business/core/domain/pagination.dart';
 import 'package:carservice_business/core/errors/app_error.dart';
 import 'package:carservice_business/core/utils/result.dart';
@@ -186,7 +187,9 @@ Map<String, dynamic> _listQuery(VehicleListQuery query) => {
   'pageSize': query.pageSize,
   // Trimmed, and omitted entirely when empty/whitespace-only — an empty `q`
   // is a vacuous parameter on the wire.
-  if (query.q != null && query.q!.trim().isNotEmpty) 'q': query.q!.trim(),
+  // A plate-shaped search is sent canonical, as plates are stored.
+  if (query.q != null && query.q!.trim().isNotEmpty)
+    'q': plateSearchQuery(query.q!),
   if (query.customerId != null) 'customerId': query.customerId,
   if (query.assigned != null) 'assigned': query.assigned! ? 'yes' : 'no',
   if (query.postpaid != null) 'postpaid': query.postpaid! ? 'yes' : 'no',

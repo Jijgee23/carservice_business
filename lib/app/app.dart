@@ -43,7 +43,7 @@ class _CarserviceAppState extends State<CarserviceApp> {
       providers: Configs.providers(_authController),
       child: Consumer<ThemeProvider>(
         builder: (context, value, child) => GetMaterialApp.router(
-          title: 'carservice.mn',
+          title: 'Carservice Business',
           debugShowCheckedModeBanner: false,
           enableLog: false,
           theme: AppTheme.light,

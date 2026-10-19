@@ -6,6 +6,8 @@ import 'package:carservice_business/app/theme/app_theme.dart';
 import 'package:carservice_business/features/orders/domain/order.dart';
 import 'package:carservice_business/features/orders/presentation/feature_theme.dart';
 
+/// Lines that count toward work progress: PART lines have no progress and
+/// cancelled lines no longer count.
 List<ServiceItem> progressItems(Iterable<ServiceItem> items) => items
     .where(
       (item) =>
@@ -13,15 +15,6 @@ List<ServiceItem> progressItems(Iterable<ServiceItem> items) => items
           item.status != ServiceItemStatus.CANCELLED,
     )
     .toList(growable: false);
-
-double progressFraction(Iterable<ServiceItem> items) {
-  final active = progressItems(items);
-  if (active.isEmpty) return 0;
-  final completed = active
-      .where((item) => item.status == ServiceItemStatus.COMPLETED)
-      .length;
-  return completed / active.length;
-}
 
 class OrderStatusChip extends StatelessWidget {
   const OrderStatusChip({super.key, required this.status});

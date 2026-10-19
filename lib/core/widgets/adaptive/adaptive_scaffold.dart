@@ -124,7 +124,11 @@ class AdaptiveScaffold extends StatelessWidget {
                     ),
                   ),
                 ),
-              Expanded(child: SafeArea(left: false, child: content)),
+              // A pushed screen's own app bar pads itself under the status
+              // bar; insetting it here too left a background strip above it.
+              Expanded(
+                child: SafeArea(left: false, top: showHeader, child: content),
+              ),
             ],
           ),
           bottomNavigationBar: rail

@@ -1,12 +1,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
 
+    <!-- No backup or device-to-device transfer: the signed-in session
+         (tokens in Hive) must not leave the device. -->
     <application
         android:label="Carservice Business"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -37,7 +41,7 @@
             android:value="carservice_default" />
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
-            android:resource="@mipmap/ic_launcher" />
+            android:resource="@drawable/ic_stat_notification" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
@@ -49,30 +53,15 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
-        <!-- QPay bank app deep links -->
+        <!-- QPay bank app deep links. Mirrors qpayBankSchemes in
+             order_payment_screen.dart (a test keeps them in step). -->
         <intent>
             <action android:name="android.intent.action.VIEW"/>
-            <data android:scheme="khanbank"/>
+            <data android:scheme="ardapp"/>
         </intent>
         <intent>
             <action android:name="android.intent.action.VIEW"/>
-            <data android:scheme="golomtbank"/>
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.VIEW"/>
-            <data android:scheme="tdbbank"/>
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.VIEW"/>
-            <data android:scheme="statebank"/>
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.VIEW"/>
-            <data android:scheme="monpay"/>
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.VIEW"/>
-            <data android:scheme="socialpay"/>
+            <data android:scheme="arigbank"/>
         </intent>
         <intent>
             <action android:name="android.intent.action.VIEW"/>
@@ -80,11 +69,91 @@
         </intent>
         <intent>
             <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="candypay"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="capitalbank"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="capitronbank"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="chinggis"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="ckbank"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="golomtbank"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="khanbank"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="mbank"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="monpay"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="most"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="mostmoney"/>
         </intent>
         <intent>
             <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="nibank"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="pocket"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="qpay"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="qpaywallet"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="socialpay"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="statebank"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="statebankmongolia"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="tdbbank"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="toki"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="transbank"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="xacbank"/>
         </intent>
     </queries>
 </manifest>

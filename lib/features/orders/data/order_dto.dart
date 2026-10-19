@@ -1,5 +1,5 @@
 import 'package:carservice_business/core/domain/pagination.dart';
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:carservice_business/core/domain/diagnostic.dart';
 import 'package:carservice_business/features/orders/domain/order.dart';
 
@@ -222,6 +222,11 @@ ServiceOrderSummary _summary(Object? raw) {
         ? null
         : _requiredInt(json, 'estimatedDurationMinutes'),
     progress: _optionalProgress(json),
+    // The first open work lines (GET /orders); lenient, it is display-only.
+    servicePreview: switch (json['servicePreview']) {
+      final List values => values.whereType<String>().toList(growable: false),
+      _ => const <String>[],
+    },
     notes: _optionalString(json, 'notes'),
     createdAt: _requiredDate(json, 'createdAt'),
     customer: _customer(json['customer']),
@@ -362,7 +367,7 @@ OrderIntake? _intake(Object? raw) {
           : null,
     );
   } on OrderParseException catch (e) {
-    debugPrint('intake parse skipped: $e');
+    if (kDebugMode) debugPrint('intake parse skipped: $e');
     return null;
   }
 }

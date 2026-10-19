@@ -36,7 +36,7 @@ class AppShell extends StatelessWidget {
     AdaptiveNavigationDestination(
       icon: Icons.receipt_long_outlined,
       selectedIcon: Icons.receipt_long_rounded,
-      label: 'Засвар',
+      label: 'Захиалга',
     ),
     AdaptiveNavigationDestination(
       icon: Icons.event_outlined,
@@ -371,8 +371,9 @@ class MoreScreen extends StatelessWidget {
                     // Back from the list, the badge above shows what is left.
                     onTap: () =>
                         AppNav.toNamed<void>(AppPages.notifications).then((_) {
-                          if (context.mounted)
+                          if (context.mounted) {
                             context.read<NotificationController>().load();
+                          }
                         }),
                   ),
                   _MoreTile(

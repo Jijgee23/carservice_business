@@ -4,6 +4,8 @@ import 'package:carservice_business/core/network/api_client.dart';
 import 'package:carservice_business/core/services/auth_storage.dart';
 import 'package:carservice_business/core/services/branch_service.dart';
 import 'package:carservice_business/core/services/device_service.dart';
+import 'package:carservice_business/core/services/network_status.dart';
+import 'package:carservice_business/core/services/pending_logout_store.dart';
 import 'package:carservice_business/core/services/saved_login_store.dart';
 import 'package:carservice_business/core/services/subscription_service.dart';
 import 'package:carservice_business/core/domain/user.dart';
@@ -34,15 +36,9 @@ class AuthResponse {
   String? get error => data['error'] as String?;
 }
 
-typedef AuthTransport = Future<AuthResponse> Function(
-  String path,
-  Map<String, dynamic> body,
-);
+typedef AuthTransport = Future<AuthResponse> Function(String path, Map<String, dynamic> body);
 
-Future<AuthResponse> _dioTransport(
-  String path,
-  Map<String, dynamic> body,
-) async {
+Future<AuthResponse> _dioTransport(String path, Map<String, dynamic> body) async {
   final res = await ApiService.instance.dio.post<dynamic>(
     path,
     data: body,
@@ -72,10 +68,14 @@ class AuthController extends ChangeNotifier {
     SavedLoginStore? savedLogins,
     Future<void> Function()? onSignedIn,
     Future<Map<String, Object>> Function()? deviceFields,
+    PendingLogoutStore? pendingLogouts,
+    NetworkStatus? network,
   }) : _post = transport ?? _dioTransport,
        _savedLogins = savedLogins ?? HiveSavedLoginStore.instance,
        _onSignedIn = onSignedIn ?? _noSignedInHook,
-       _deviceFields = deviceFields ?? DeviceService.instance.loginFields;
+       _deviceFields = deviceFields ?? DeviceService.instance.loginFields,
+       _pendingLogouts = pendingLogouts ?? HivePendingLogoutStore.instance,
+       _network = network ?? DeviceNetworkStatus.instance;
 
   // The server registers the push device during `auth/login` /
   // `auth/activate` itself — nothing extra to call after sign-in.
@@ -90,6 +90,18 @@ class AuthController extends ChangeNotifier {
   /// Device fields (`type`, `fcm`, `model`, `os`, `deviceId`) sent with
   /// `auth/login` / `auth/activate`; injectable for tests.
   final Future<Map<String, Object>> Function() _deviceFields;
+
+  /// Sign-outs made offline, sent once the network is back.
+  final PendingLogoutStore _pendingLogouts;
+  final NetworkStatus _network;
+
+  /// How long sign-out waits for `auth/logout` before queueing it instead —
+  /// a network without internet reads as online but never answers.
+  static const logoutTimeout = Duration(seconds: 5);
+
+  /// Watches the network while queued sign-outs wait for it.
+  StreamSubscription<bool>? _networkSub;
+  bool _syncingLogouts = false;
 
   /// Last account that signed in on this device (no secrets) — prefills the
   /// identifier on the login page, including right after logout.
@@ -136,6 +148,7 @@ class AuthController extends ChangeNotifier {
   @override
   void dispose() {
     _resendTimer?.cancel();
+    _stopWatchingNetwork();
     identifierCtrl.dispose();
     passwordCtrl.dispose();
     otpCtrl.dispose();
@@ -186,8 +199,7 @@ class AuthController extends ChangeNotifier {
     try {
       final res = await _post(path, body);
       if (res.status == 429 && res.error == null) {
-        errorText =
-            'Хэт олон хүсэлт илгээлээ. Түр хүлээгээд дахин оролдоно уу.';
+        errorText = 'Хэт олон хүсэлт илгээлээ. Түр хүлээгээд дахин оролдоно уу.';
       } else if (res.status >= 500) {
         errorText = 'Серверийн алдаа гарлаа. Дахин оролдоно уу.';
       }
@@ -225,6 +237,8 @@ class AuthController extends ChangeNotifier {
   Future<void> loadUser() async {
     Authenticator.onUnauthorized = logout;
     Authenticator.onAccountClosed = handleRemoteAccountClosed;
+    // Sign-outs made offline last time reach the server now, or once online.
+    unawaited(syncPendingLogouts());
     final user = Authenticator.user;
     if (user != null) {
       setAuthState(AuthState.authorized);
@@ -242,23 +256,20 @@ class AuthController extends ChangeNotifier {
     // must never block local sign-out. After a forced 401 logout the session
     // is already gone, so there is nothing to send.
     if (serverCleanup && Authenticator.user != null) {
-      try {
-        // One call: the server revokes this session's refresh token and drops
-        // the push device this login registered (no separate DELETE /devices).
-        final refreshToken = Authenticator.user?.refreshToken;
-        if (refreshToken != null && refreshToken.isNotEmpty) {
-          final res = await api(
-            Api.post,
-            'auth/logout',
-            body: {'refreshToken': refreshToken},
-          );
-          debugPrint(
-            res != null && res.statusCode == 200
-                ? 'Logout successful, device removed: ${res.data?['deviceRemoved']}'
-                : 'Logout failed',
-          );
+      // One call: the server revokes this session's refresh token and drops
+      // the push device this login registered (no separate DELETE /devices).
+      final refreshToken = Authenticator.user?.refreshToken;
+      if (refreshToken != null && refreshToken.isNotEmpty) {
+        final pending = PendingLogout(
+          refreshToken: refreshToken,
+          loggedOutAt: DateTime.now(),
+        );
+        // Offline, or no answer in time: no call to wait on. The sign-out
+        // and its time are kept and sent once the network is back.
+        if (!await _network.isOnline() || !await _sendLogout(pending)) {
+          await _queueLogout(pending);
         }
-      } catch (_) {}
+      }
     }
 
     // Always — forced logouts too — so the next account on this device never
@@ -294,9 +305,78 @@ class AuthController extends ChangeNotifier {
     if (Authenticator.accountClosureInFlight) return;
     if (Authenticator.user == null) return;
     await logout(serverCleanup: false);
-    messageComplete(
-      deleted ? 'Бүртгэл тань устгагдсан' : 'Бүртгэл тань идэвхгүй болсон',
-    );
+    messageComplete(deleted ? 'Бүртгэл тань устгагдсан' : 'Бүртгэл тань идэвхгүй болсон');
+  }
+
+  // ─── Offline sign-out ──────────────────────────────────────────────────────
+
+  /// Sends one sign-out. True once the server has answered for good
+  /// (revoked, or a 4xx: nothing to retry); false keeps it for later (no
+  /// network, no answer in [logoutTimeout], a 5xx).
+  Future<bool> _sendLogout(PendingLogout logout) async {
+    try {
+      final res = await _post('auth/logout', {
+        'refreshToken': logout.refreshToken,
+        // When the user signed out; later than the request for one queued
+        // while offline.
+        'loggedOutAt': logout.loggedOutAt.toUtc().toIso8601String(),
+      }).timeout(logoutTimeout);
+      return res.status < 500;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _queueLogout(PendingLogout logout) async {
+    final queue = await _pendingLogouts.read();
+    await _pendingLogouts.write([...queue, logout]);
+    _watchNetwork();
+  }
+
+  /// Sends the sign-outs queued while offline: at app start, after a sign-in
+  /// and whenever the network comes back. Those still failing stay queued;
+  /// stale ones (their refresh token long expired) are dropped.
+  Future<void> syncPendingLogouts() async {
+    if (_syncingLogouts) return;
+    _syncingLogouts = true;
+    try {
+      final now = DateTime.now();
+      final queue = await _pendingLogouts.read();
+      final due = queue.where((p) => !p.isStale(now)).toList();
+      if (due.isEmpty) {
+        if (queue.isNotEmpty) await _pendingLogouts.write(const []);
+        _stopWatchingNetwork();
+        return;
+      }
+      if (!await _network.isOnline()) {
+        _watchNetwork();
+        return;
+      }
+      final failed = <PendingLogout>[];
+      for (final pending in due) {
+        if (!await _sendLogout(pending)) failed.add(pending);
+      }
+      // A sign-out may have been queued while these were being sent.
+      final queuedMeanwhile = (await _pendingLogouts.read()).where(
+        (p) => !queue.any((q) => q.refreshToken == p.refreshToken),
+      );
+      final left = [...failed, ...queuedMeanwhile];
+      await _pendingLogouts.write(left);
+      left.isEmpty ? _stopWatchingNetwork() : _watchNetwork();
+    } finally {
+      _syncingLogouts = false;
+    }
+  }
+
+  void _watchNetwork() {
+    _networkSub ??= _network.changes
+        .where((online) => online)
+        .listen((_) => unawaited(syncPendingLogouts()), onError: (_) {});
+  }
+
+  void _stopWatchingNetwork() {
+    _networkSub?.cancel();
+    _networkSub = null;
   }
 
   void _clearSessionCaches() {
@@ -425,8 +505,7 @@ class AuthController extends ChangeNotifier {
     _clearSecrets();
     _stopCooldown();
     messageComplete(
-      res.data['message'] as String? ??
-          'Нууц үг шинэчлэгдлээ. Шинэ нууц үгээрээ нэвтэрнэ үү.',
+      res.data['message'] as String? ?? 'Нууц үг шинэчлэгдлээ. Шинэ нууц үгээрээ нэвтэрнэ үү.',
     );
     notifyListeners();
   }
@@ -516,5 +595,7 @@ class AuthController extends ChangeNotifier {
       messageComplete('Бүртгэл тань сэргээгдлээ');
     }
     unawaited(_onSignedIn());
+    // Just reached the server: a good moment for any queued sign-outs.
+    unawaited(syncPendingLogouts());
   }
 }
