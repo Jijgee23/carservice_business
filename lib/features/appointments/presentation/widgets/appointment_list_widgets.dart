@@ -85,13 +85,19 @@ class AppointmentPhoneCard extends StatelessWidget {
     required this.appointment,
     required this.selected,
     required this.selectionMode,
+    this.showDate = false,
   });
 
   final AppointmentSummary appointment;
   final bool selected;
   final bool selectionMode;
 
+  /// Adds the day above the time — the every-date list spans many days.
+  final bool showDate;
+
   static final _timeFmt = DateFormat('HH:mm');
+  static final _dayFmt = DateFormat('MM/dd');
+  static final _yearDayFmt = DateFormat('yy/MM/dd');
 
   @override
   Widget build(BuildContext context) {
@@ -124,16 +130,39 @@ class AppointmentPhoneCard extends StatelessWidget {
                 child: Center(
                   child: FittedBox(
                     fit: BoxFit.scaleDown,
-                    child: Text(
-                      requestedAt == null ? '—' : _timeFmt.format(requestedAt),
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        color: context.appointmentStatusColor(
-                          appointment.status,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (showDate && requestedAt != null)
+                          Text(
+                            requestedAt.year == DateTime.now().year
+                                ? _dayFmt.format(requestedAt)
+                                : _yearDayFmt.format(requestedAt),
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: context.appointmentStatusColor(
+                                appointment.status,
+                              ),
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
+                            ),
+                          ),
+                        Text(
+                          requestedAt == null
+                              ? '—'
+                              : _timeFmt.format(requestedAt),
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            color: context.appointmentStatusColor(
+                              appointment.status,
+                            ),
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
                         ),
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
+                      ],
                     ),
                   ),
                 ),

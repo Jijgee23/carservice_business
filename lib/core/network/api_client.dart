@@ -134,7 +134,9 @@ void _handleDioError(DioException e) {
       break;
 
     default:
-      messageError('Алдаа гарлаа: ${e.message}');
+      // The raw Dio text is for developers; staff get a plain message.
+      _debugLog(e.message);
+      messageError('Алдаа гарлаа. Дахин оролдоно уу.');
   }
 }
 

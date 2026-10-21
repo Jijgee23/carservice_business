@@ -425,6 +425,7 @@ void main() {
           'type': 'BANK_ACCOUNT',
           'method': 'BANK_TRANSFER',
           'name': 'Хаан банк',
+          'accountNumber': '5000125678',
           'accountNumberMasked': '••••5678',
           'terminalId': null,
           'merchantId': null,
@@ -448,6 +449,8 @@ void main() {
     final banks = await repository.getBanks();
     final settings = (banks as Ok<BankSettings>).value;
     expect(settings.accounts.map((b) => b.id), ['a1', 'p1']);
+    expect(settings.transferAccounts.single.accountNumber, '5000125678');
+    expect(settings.transferAccounts.single.displayNumber, '5000125678');
     expect(settings.transferAccounts.single.maskedNumber, '••••5678');
     expect(settings.posAccounts.single.terminalId, 'TID001');
     expect(settings.posAccounts.single.isTest, isTrue);

@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import 'package:carservice_business/core/utils/validators.dart';
+import 'package:carservice_business/core/utils/vehicle_plate.dart';
 import 'package:carservice_business/core/errors/app_error.dart';
 import 'package:carservice_business/core/utils/result.dart';
 import 'package:carservice_business/core/domain/pagination.dart';
@@ -702,10 +704,12 @@ Map<String, dynamic> _listQuery(OrderListQuery query) => {
   if (query.internal != null) 'internal': query.internal! ? 'yes' : 'no',
   if (query.dateFrom != null) 'dateFrom': _dateOnly(query.dateFrom!),
   if (query.dateTo != null) 'dateTo': _dateOnly(query.dateTo!),
-  if (query.q != null && query.q!.isNotEmpty) 'q': query.q,
+  // A plate-shaped search is sent canonical, as plates are stored.
+  if (query.q != null && query.q!.isNotEmpty) 'q': plateSearchQuery(query.q!),
   if (query.vehicleId != null) 'vehicleId': query.vehicleId,
   if (query.customerId != null) 'customerId': query.customerId,
-  if (query.plate != null && query.plate!.isNotEmpty) 'plate': query.plate,
+  if (query.plate != null && query.plate!.isNotEmpty)
+    'plate': normalizePlate(query.plate!),
 };
 
 Map<String, dynamic> _postpaidQuery(PostpaidQuery query) => {

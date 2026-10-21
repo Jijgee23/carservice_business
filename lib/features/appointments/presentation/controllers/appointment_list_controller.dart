@@ -33,6 +33,9 @@ class AppointmentListController extends ChangeNotifier {
 
   static const int defaultPageSize = 50;
 
+  /// Page size of the default every-date list ([allDates]).
+  static const int allDatesPageSize = 10;
+
   /// Matches `OrderListController.searchDebounce` — the same debounce window
   /// the Orders precedent uses for `q`.
   static const Duration defaultSearchDebounce = Duration(milliseconds: 350);
@@ -66,7 +69,10 @@ class AppointmentListController extends ChangeNotifier {
   int _page = 1;
   int _total = 0;
 
-  DateTime _selectedDate = _today();
+  /// `null` is the default mode: every date, newest `requestedAt` first,
+  /// [allDatesPageSize] rows per page (see [_ReverseCursor]). A picked day
+  /// switches to that day's list in the server's ascending order.
+  DateTime? _selectedDate;
   AppointmentStatus? _statusFilter;
   String? selectedBranchId;
   String _query = '';
@@ -89,6 +95,10 @@ class AppointmentListController extends ChangeNotifier {
 
   static const int _groupPageSize = 200;
 
+  /// The every-date list's paging state: one cursor per status (a single
+  /// one when no status group is active), merged newest-first.
+  List<_ReverseCursor> _cursors = const [];
+
   // ─── Touch-native selection ─────────────────────────────────────────────
   //
   // Entry is discoverable via long-press on a row (widget-driven — see
@@ -106,7 +116,8 @@ class AppointmentListController extends ChangeNotifier {
   bool rangeSelectArmed = false;
   AppointmentBulkResult? lastBulkResult;
 
-  DateTime get selectedDate => _selectedDate;
+  DateTime? get selectedDate => _selectedDate;
+  bool get allDates => _selectedDate == null;
   AppointmentStatus? get statusFilter => _statusFilter;
   Set<AppointmentStatus>? get statusGroup => _statusGroup;
   String get query => _query;
@@ -130,13 +141,22 @@ class AppointmentListController extends ChangeNotifier {
   }
 
   Future<void> prevDay() =>
-      setDate(_selectedDate.subtract(const Duration(days: 1)));
-  Future<void> nextDay() => setDate(_selectedDate.add(const Duration(days: 1)));
+      setDate((_selectedDate ?? _today()).subtract(const Duration(days: 1)));
+  Future<void> nextDay() =>
+      setDate((_selectedDate ?? _today()).add(const Duration(days: 1)));
 
   Future<void> goToday() {
     final today = _today();
     if (_selectedDate == today) return Future.value();
     return setDate(today);
+  }
+
+  /// Back to the default every-date list.
+  Future<void> showAllDates() {
+    if (_selectedDate == null) return Future.value();
+    _selectedDate = null;
+    _exitSelection();
+    return loadAppointments();
   }
 
   // ─── Server-side filters ─────────────────────────────────────────────────
@@ -212,6 +232,24 @@ class AppointmentListController extends ChangeNotifier {
     listState = const AsyncLoading();
     notifyListeners();
 
+    if (allDates) {
+      final cursors = _cursors = [
+        for (final status in _statusGroup ?? {_statusFilter})
+          _ReverseCursor((page) => _fetchAllDatesPage(status, page)),
+      ];
+      final result = await _takeNewest(cursors, allDatesPageSize);
+      if (_disposed || requestGeneration != _generation) return;
+      switch (result) {
+        case Ok(:final value):
+          _applyCursors(cursors);
+          listState = AsyncData(_appendUnique(const [], value));
+        case Err(:final error):
+          listState = AsyncError(error);
+      }
+      notifyListeners();
+      return;
+    }
+
     final group = _statusGroup;
     final result = group == null
         ? await _fetchPage(1)
@@ -232,14 +270,34 @@ class AppointmentListController extends ChangeNotifier {
   Future<void> refresh() => loadAppointments();
 
   Future<void> loadMore() async {
-    // No cursor to advance in merged status-group mode — see [_statusGroup].
-    if (_statusGroup != null) return;
+    // No cursor to advance in a day's merged status-group mode — see
+    // [_statusGroup]. The every-date list keeps one cursor per status.
+    if (_statusGroup != null && !allDates) return;
     if (_disposed || loadingMore || !_hasNext) return;
     final requestGeneration = _generation;
     final nextPage = _page + 1;
     loadingMore = true;
     loadMoreError = null;
     notifyListeners();
+
+    if (allDates) {
+      final cursors = _cursors;
+      final result = await _takeNewest(cursors, allDatesPageSize);
+      if (_disposed || requestGeneration != _generation) return;
+      switch (result) {
+        case Ok(:final value):
+          final current = listState.valueOrNull ?? const <AppointmentSummary>[];
+          _applyCursors(cursors);
+          _page = nextPage;
+          listState = AsyncData(_appendUnique(current, value));
+        case Err(:final error):
+          // The cursors keep what they already fetched, so a retry resumes.
+          loadMoreError = error;
+      }
+      loadingMore = false;
+      notifyListeners();
+      return;
+    }
 
     final result = await _fetchPage(nextPage);
     if (_disposed || requestGeneration != _generation) return;
@@ -397,6 +455,70 @@ class AppointmentListController extends ChangeNotifier {
   Future<Result<PagedResult<AppointmentSummary>>> _fetchPage(int page) =>
       _repo.getAppointments(query: _queryFor(page));
 
+  Future<Result<PagedResult<AppointmentSummary>>> _fetchAllDatesPage(
+    AppointmentStatus? status,
+    int page,
+  ) => _repo.getAppointments(
+    query: AppointmentListQuery(
+      status: status,
+      branchId: selectedBranchId,
+      q: _query.isEmpty ? null : _query,
+      page: page,
+      pageSize: allDatesPageSize,
+    ),
+  );
+
+  /// Takes the [count] newest rows across [cursors]. Each cursor is first
+  /// filled to [count] rows (or until it runs out), so a cursor's unfetched
+  /// rows — all older than its buffered ones — can never be newer than a
+  /// row taken here.
+  static Future<Result<List<AppointmentSummary>>> _takeNewest(
+    List<_ReverseCursor> cursors,
+    int count,
+  ) async {
+    final errors = await Future.wait([for (final c in cursors) c.fill(count)]);
+    final error = errors.nonNulls.firstOrNull;
+    if (error != null) return Err(error);
+    final taken = <AppointmentSummary>[];
+    while (taken.length < count) {
+      _ReverseCursor? next;
+      for (final c in cursors) {
+        if (c.buffer.isEmpty) continue;
+        if (next == null ||
+            _newestFirst(c.buffer.first, next.buffer.first) < 0) {
+          next = c;
+        }
+      }
+      if (next == null) break;
+      taken.add(next.buffer.removeAt(0));
+    }
+    return Ok(taken);
+  }
+
+  void _applyCursors(List<_ReverseCursor> cursors) {
+    _hasNext = cursors.any((c) => c.hasMore);
+    _total = cursors.fold(0, (sum, c) => sum + c.total);
+  }
+
+  /// Rows can shift between server pages while paging (a booking added or
+  /// cancelled meanwhile), so a row may come back twice — keep the first.
+  static List<AppointmentSummary> _appendUnique(
+    List<AppointmentSummary> current,
+    List<AppointmentSummary> more,
+  ) {
+    final seen = {for (final a in current) a.id};
+    return [...current, ...more.where((a) => seen.add(a.id))];
+  }
+
+  static int _newestFirst(AppointmentSummary a, AppointmentSummary b) {
+    final da = a.requestedAt;
+    final db = b.requestedAt;
+    if (da == null && db == null) return 0;
+    if (da == null) return 1;
+    if (db == null) return -1;
+    return db.compareTo(da);
+  }
+
   /// Issues one request per status in [statuses] (see [_statusGroup]) and
   /// merges the results, sorted by `requestedAt` ascending (nulls last,
   /// matching the server's own day-list ordering). The first request-level
@@ -475,5 +597,56 @@ class AppointmentListController extends ChangeNotifier {
   static DateTime _today() {
     final now = DateTime.now();
     return DateTime(now.year, now.month, now.day);
+  }
+}
+
+/// Pages one list query newest-first. `GET /appointments` only sorts by
+/// `requestedAt` ascending, so this learns the page count from page 1, then
+/// walks the pages from the last one backwards, reversing each.
+class _ReverseCursor {
+  _ReverseCursor(this._fetch);
+
+  final Future<Result<PagedResult<AppointmentSummary>>> Function(int page)
+  _fetch;
+
+  /// Fetched rows not yet shown, newest first.
+  final buffer = <AppointmentSummary>[];
+  int total = 0;
+
+  /// Next ascending page to fetch: `null` before the first fill, `0` once
+  /// every page has been fetched.
+  int? _nextPage;
+
+  bool get hasMore => buffer.isNotEmpty || _nextPage != 0;
+
+  /// Fetches until [buffer] holds at least [count] rows or the query runs
+  /// out. On error the rows fetched so far stay, so a retry resumes.
+  Future<AppError?> fill(int count) async {
+    if (_nextPage == null) {
+      switch (await _fetch(1)) {
+        case Err(:final error):
+          return error;
+        case Ok(:final value):
+          total = value.pagination.total;
+          final lastPage = value.pagination.totalPages;
+          if (lastPage <= 1) {
+            buffer.addAll(value.items.reversed);
+            _nextPage = 0;
+          } else {
+            _nextPage = lastPage;
+          }
+      }
+    }
+    while (buffer.length < count && _nextPage! > 0) {
+      switch (await _fetch(_nextPage!)) {
+        case Err(:final error):
+          return error;
+        case Ok(:final value):
+          total = value.pagination.total;
+          buffer.addAll(value.items.reversed);
+          _nextPage = _nextPage! - 1;
+      }
+    }
+    return null;
   }
 }

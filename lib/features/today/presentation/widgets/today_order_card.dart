@@ -7,8 +7,9 @@ import 'package:carservice_business/features/orders/domain/order.dart';
 import 'package:carservice_business/features/orders/presentation/feature_theme.dart';
 import 'package:carservice_business/features/orders/presentation/widgets/list/order_list_widgets.dart';
 
-/// The one primary action a card offers for its order's state.
-enum TodayCardAction { start, complete, pay }
+/// The one primary action a card offers: the next step its order needs.
+/// [finishWork] completes the open work lines, [complete] the order itself.
+enum TodayCardAction { start, finishWork, pay, complete }
 
 /// A work card for the Today board. The plate is the largest text because
 /// that is how workshop staff identify a car at a glance.
@@ -20,6 +21,7 @@ class TodayOrderCard extends StatelessWidget {
     required this.onTap,
     this.action,
     this.onAction,
+    this.onMore,
     this.busy = false,
   });
 
@@ -28,6 +30,9 @@ class TodayOrderCard extends StatelessWidget {
   final VoidCallback onTap;
   final TodayCardAction? action;
   final VoidCallback? onAction;
+
+  /// Opens the card's other actions; null hides the ⋯ button.
+  final VoidCallback? onMore;
   final bool busy;
 
   @override
@@ -116,17 +121,37 @@ class TodayOrderCard extends StatelessWidget {
                 const SizedBox(height: 10),
                 OrderProgressView(progress: order.progress),
               ],
-              if (action != null) ...[
+              if (action != null || onMore != null) ...[
                 const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: _ActionButton(
-                    action: action!,
-                    busy: busy,
-                    onPressed: busy ? null : onAction,
-                    orderId: order.id,
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    if (action case final action?)
+                      Expanded(
+                        child: SizedBox(
+                          height: 48,
+                          child: _ActionButton(
+                            action: action,
+                            busy: busy,
+                            onPressed: busy ? null : onAction,
+                            orderId: order.id,
+                            openWork: order.unfinishedWorkCount ?? 0,
+                          ),
+                        ),
+                      ),
+                    if (onMore != null) ...[
+                      if (action != null) const SizedBox(width: 8),
+                      IconButton.outlined(
+                        key: ValueKey('today_more_${order.id}'),
+                        tooltip: 'Бусад үйлдэл',
+                        style: IconButton.styleFrom(
+                          minimumSize: const Size.square(48),
+                        ),
+                        onPressed: busy ? null : onMore,
+                        icon: const Icon(Icons.more_horiz_rounded),
+                      ),
+                    ],
+                  ],
                 ),
               ],
             ],
@@ -250,6 +275,7 @@ class _ActionButton extends StatelessWidget {
     required this.busy,
     required this.onPressed,
     required this.orderId,
+    required this.openWork,
   });
 
   final TodayCardAction action;
@@ -257,10 +283,17 @@ class _ActionButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final String orderId;
 
+  /// Open work lines, shown on [TodayCardAction.finishWork].
+  final int openWork;
+
   @override
   Widget build(BuildContext context) {
     final (label, icon) = switch (action) {
       TodayCardAction.start => ('Эхлүүлэх', Icons.play_arrow_rounded),
+      TodayCardAction.finishWork => (
+        openWork > 0 ? 'Ажлуудыг дуусгах ($openWork)' : 'Ажлуудыг дуусгах',
+        Icons.done_all_rounded,
+      ),
       TodayCardAction.complete => ('Дуусгах', Icons.check_rounded),
       TodayCardAction.pay => ('Төлбөр', Icons.payments_outlined),
     };
@@ -278,7 +311,7 @@ class _ActionButton extends StatelessWidget {
         key: key,
         onPressed: onPressed,
         icon: child,
-        label: Text(label),
+        label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
       );
     }
     return FilledButton.icon(
@@ -288,7 +321,7 @@ class _ActionButton extends StatelessWidget {
           : null,
       onPressed: onPressed,
       icon: child,
-      label: Text(label),
+      label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
     );
   }
 }

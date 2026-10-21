@@ -190,8 +190,7 @@ void main() {
       expect(_warning, findsNothing);
       await tester.tap(find.byKey(const ValueKey('open_payment_sheet')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('pay_opt_CASH')));
-      await tester.pumpAndSettle();
+      // Cash is the form's starting method.
       expect(_warning, findsOneWidget);
       expect(
         tester
@@ -202,13 +201,22 @@ void main() {
         isNull,
       );
 
-      await tester.tap(find.byKey(const ValueKey('pay_sheet_back')));
+      // Picking another method keeps the warning and the block.
+      await tester.tap(find.byKey(const ValueKey('pay_method_select')));
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.byKey(const ValueKey('pay_opt_OTHER')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('pay_opt_OTHER')));
       await tester.pumpAndSettle();
       expect(_warning, findsOneWidget);
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.byKey(const ValueKey('create_manual_payment')),
+            )
+            .onPressed,
+        isNull,
+      );
     });
   });
 }

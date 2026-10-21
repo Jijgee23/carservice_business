@@ -24,22 +24,42 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
-		<string>khanbank</string>
-		<string>golomtbank</string>
-		<string>tdbbank</string>
-		<string>statebank</string>
-		<string>monpay</string>
-		<string>socialpay</string>
+		<string>ardapp</string>
+		<string>arigbank</string>
 		<string>bogdbank</string>
+		<string>candypay</string>
 		<string>capitalbank</string>
-		<string>transbank</string>
+		<string>capitronbank</string>
+		<string>chinggis</string>
+		<string>ckbank</string>
+		<string>golomtbank</string>
+		<string>khanbank</string>
+		<string>mbank</string>
+		<string>monpay</string>
+		<string>most</string>
 		<string>mostmoney</string>
+		<string>nibank</string>
+		<string>pocket</string>
 		<string>qpay</string>
+		<string>qpaywallet</string>
+		<string>socialpay</string>
+		<string>statebank</string>
+		<string>statebankmongolia</string>
+		<string>tdbbank</string>
+		<string>toki</string>
+		<string>transbank</string>
+		<string>xacbank</string>
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Засварын хуудасны хүлээн авалт болон оношилгоонд машины зураг авахад камер ашиглана.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Засварын хуудас, оношилгоо болон санал хүсэлтэд зураг хавсаргахад зургийн сан ашиглана.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

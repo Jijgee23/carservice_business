@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:carservice_business/app/theme/app_theme.dart';
 import 'package:carservice_business/core/navigation/app_nav.dart';
@@ -40,7 +41,8 @@ class AppErrorScreen extends StatelessWidget {
                   style: context.textStyles.body,
                   textAlign: TextAlign.center,
                 ),
-                if (details != null) ...[
+                // The exception text is for developers, never for staff.
+                if (kDebugMode && details != null) ...[
                   const SizedBox(height: 16),
                   _DebugDetails(details: details!),
                 ],
@@ -54,6 +56,83 @@ class AppErrorScreen extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// What a widget that failed to build shows in release ([ErrorWidget.builder]):
+/// fits whatever space the failed widget had (a list row, a card) instead of
+/// a full screen, which would break the layout around it.
+class AppErrorBox extends StatelessWidget {
+  const AppErrorBox({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      type: MaterialType.transparency,
+      child: Center(
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.warning_amber_rounded,
+                  size: 18,
+                  color: context.colors.danger,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'Энэ хэсгийг харуулж чадсангүй',
+                  style: context.textStyles.caption,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown when the app can't start (config, storage or Firebase failed to
+/// initialise): nothing else can run, so say so instead of a stuck splash.
+class StartupFailedApp extends StatelessWidget {
+  const StartupFailedApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: EdgeInsets.all(32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.error_outline_rounded, size: 48),
+                  SizedBox(height: 16),
+                  Text(
+                    'Апп эхлүүлэхэд алдаа гарлаа',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'Аппаа бүрэн хаагаад дахин нээнэ үү. Алдаа давтагдвал '
+                    'аппаа шинэчилнэ үү.',
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
             ),
           ),
         ),

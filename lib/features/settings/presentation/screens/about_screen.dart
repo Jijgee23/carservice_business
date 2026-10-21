@@ -1,3 +1,4 @@
+import 'package:carservice_business/core/services/app_version.dart';
 import 'package:carservice_business/app/theme/app_theme.dart';
 import 'package:carservice_business/core/widgets/common/common_widgets.dart';
 import 'package:flutter/material.dart';
@@ -35,9 +36,13 @@ class AboutScreen extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Center(
-            child: Text(
-              'Хувилбар 1.0.0 (1)',
-              style: context.textStyles.caption,
+            child: FutureBuilder<String?>(
+              future: appVersionLabel(),
+              builder: (context, snapshot) => Text(
+                snapshot.data == null ? '' : 'Хувилбар ${snapshot.data}',
+                key: const ValueKey('about_version'),
+                style: context.textStyles.caption,
+              ),
             ),
           ),
           const SizedBox(height: 20),

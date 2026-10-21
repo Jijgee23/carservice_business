@@ -101,23 +101,9 @@ class _SettlementFlowScreenState extends State<SettlementFlowScreen> {
   }
 
   Future<void> _confirm() async {
-    // CARD goes through the (simulated) POS terminal before the settlement;
-    // an unsubmittable draft never reaches it.
+    // Card (POS) is only the method: no terminal is connected, so it is
+    // recorded like the others.
     if (!_c.canSubmit) return;
-    if (_c.method == OrderPaymentMethod.CARD) {
-      final terminalId = _c.accounts
-          .where((a) => a.id == _c.bankId)
-          .map((a) => a.terminalId)
-          .firstOrNull;
-      final paid = await PosSimulator.confirm(
-        context,
-        bankLabel:
-            '${paymentBankLabelIn(_c.accounts, _c.bankId)}'
-            '${terminalId == null ? '' : ' · TID $terminalId'}',
-        amount: _c.total,
-      );
-      if (!paid || !mounted) return;
-    }
     final saved = await _c.submit();
     if (saved != null && mounted) Navigator.of(context).pop(saved);
   }

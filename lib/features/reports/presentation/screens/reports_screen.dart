@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import 'package:carservice_business/core/utils/share_origin.dart';
 import 'package:carservice_business/app/theme/app_theme.dart';
 import 'package:carservice_business/core/domain/user.dart';
 import 'package:carservice_business/core/services/auth_storage.dart';
@@ -52,6 +53,9 @@ class _Body extends StatefulWidget {
 }
 
 class _BodyState extends State<_Body> {
+  /// The Excel button: the iPad share popover points at it.
+  final _shareAnchor = GlobalKey();
+
   User? get _user => widget.user ?? Authenticator.user;
 
   Future<void> _openFilters(ReportController controller) async {
@@ -104,6 +108,9 @@ class _BodyState extends State<_Body> {
           ],
           fileNameOverrides: [file.filename],
           subject: 'Тайлан',
+          sharePositionOrigin:
+              shareOriginOf(_shareAnchor.currentContext) ??
+              shareOriginOf(context),
         ),
       );
     } catch (_) {
@@ -134,6 +141,7 @@ class _BodyState extends State<_Body> {
             onPressed: () => _openFilters(controller),
           ),
           IconButton(
+            key: _shareAnchor,
             tooltip: 'Excel татах',
             icon: controller.exporting
                 ? const SizedBox(

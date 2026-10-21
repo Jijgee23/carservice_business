@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:carservice_business/app/theme/app_theme.dart';
 import 'package:carservice_business/features/appointments/domain/appointment.dart';
 import 'package:carservice_business/features/orders/presentation/feature_theme.dart';
+import 'package:carservice_business/features/appointments/presentation/widgets/appointment_detail_widgets.dart';
 
 /// Payment-section widgets for the appointment detail screen — P2-F5.
 ///
@@ -56,11 +57,13 @@ class AppointmentPaymentStatusChip extends StatelessWidget {
         children: [
           Icon(appointmentPaymentStatusIcon(status), size: 14, color: color),
           const SizedBox(width: 4),
-          Text(
-            status.label,
-            style: context.textStyles.caption.copyWith(
-              color: color,
-              fontWeight: FontWeight.w600,
+          Flexible(
+            child: Text(
+              status.label,
+              style: context.textStyles.caption.copyWith(
+                color: color,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],
@@ -92,63 +95,48 @@ class AppointmentPaymentPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final buttons = <Widget>[
+      if (onCheck != null)
+        OutlinedButton.icon(
+          key: const ValueKey('appointment_payment_check_button'),
+          style: appointmentOutlinedButtonStyle(context),
+          onPressed: busy ? null : onCheck,
+          icon: const Icon(Icons.refresh, size: 18),
+          label: const Text('Төлбөр шалгах'),
+        ),
+      if (onRetry != null)
+        OutlinedButton.icon(
+          key: const ValueKey('appointment_payment_retry_button'),
+          style: appointmentOutlinedButtonStyle(context),
+          onPressed: busy ? null : onRetry,
+          icon: const Icon(Icons.replay, size: 18),
+          label: const Text('Дахин үүсгэх'),
+        ),
+      if (onRefund != null)
+        OutlinedButton.icon(
+          key: const ValueKey('appointment_payment_refund_button'),
+          style: appointmentOutlinedButtonStyle(context, danger: true),
+          onPressed: busy ? null : onRefund,
+          icon: const Icon(Icons.undo, size: 18),
+          label: const Text('Буцаах'),
+        ),
+    ];
+    // A refunded fee is terminal: no check / retry / refund is offered.
+    final showButtons =
+        status != AppointmentBookingPaymentStatus.REFUNDED &&
+        buttons.isNotEmpty;
+    return AppointmentDetailSection(
       key: const ValueKey('appointment_payment_panel'),
-      padding: const EdgeInsets.all(AppDimens.paddingMD),
-      decoration: BoxDecoration(
-        color: context.opsCardBg,
-        borderRadius: BorderRadius.circular(AppDimens.radiusMD),
-        border: Border.all(color: context.opsDivider),
-      ),
+      title: 'Төлбөр',
+      trailing: AppointmentPaymentStatusChip(status: status),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Text('Төлбөр', style: context.textStyles.bodyMedium),
-              const Spacer(),
-              AppointmentPaymentStatusChip(status: status),
-            ],
-          ),
-          if (detailMessage != null) ...[
-            const SizedBox(height: AppDimens.paddingXS),
+          if (detailMessage != null)
             Text(detailMessage!, style: context.textStyles.caption),
-          ],
-          // A refunded fee is terminal: no check / retry / refund is offered.
-          if (status != AppointmentBookingPaymentStatus.REFUNDED) ...[
+          if (detailMessage != null && showButtons)
             const SizedBox(height: AppDimens.paddingSM),
-            Wrap(
-              spacing: AppDimens.paddingSM,
-              runSpacing: AppDimens.paddingSM,
-              children: [
-                if (onCheck != null)
-                  OutlinedButton.icon(
-                    key: const ValueKey('appointment_payment_check_button'),
-                    onPressed: busy ? null : onCheck,
-                    icon: const Icon(Icons.refresh, size: 18),
-                    label: const Text('Төлбөр шалгах'),
-                  ),
-                if (onRetry != null)
-                  OutlinedButton.icon(
-                    key: const ValueKey('appointment_payment_retry_button'),
-                    onPressed: busy ? null : onRetry,
-                    icon: const Icon(Icons.replay, size: 18),
-                    label: const Text('Дахин үүсгэх'),
-                  ),
-                if (onRefund != null)
-                  OutlinedButton.icon(
-                    key: const ValueKey('appointment_payment_refund_button'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: context.opsDanger,
-                      side: BorderSide(color: context.opsDanger),
-                    ),
-                    onPressed: busy ? null : onRefund,
-                    icon: const Icon(Icons.undo, size: 18),
-                    label: const Text('Буцаах'),
-                  ),
-              ],
-            ),
-          ],
+          if (showButtons) AppointmentButtonGrid(buttons: buttons),
         ],
       ),
     );

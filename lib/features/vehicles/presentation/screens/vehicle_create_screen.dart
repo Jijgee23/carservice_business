@@ -21,6 +21,7 @@ import 'package:carservice_business/features/vehicles/domain/vehicle.dart';
 import 'package:carservice_business/features/vehicles/domain/vehicle_lookup.dart';
 import 'package:carservice_business/features/vehicles/domain/vehicles_repository.dart';
 import 'package:flutter/material.dart';
+import 'package:carservice_business/core/widgets/plate/plate_field.dart';
 import 'package:flutter/services.dart';
 
 // Return type — vehicle + resolved customer
@@ -534,22 +535,16 @@ class _VehicleCreateScreenState extends State<VehicleCreateScreen> {
         : (_isStandardPlate ? null : 'Жишээ: 1234УБА');
     return _LabelField(
       label: 'Улсын дугаар *',
-      child: TextFormField(
-        key: const Key('vehicleCreate.plate'),
+      // Digits then Cyrillic letters from its own keypad; kept canonical.
+      child: PlateField(
+        fieldKey: const Key('vehicleCreate.plate'),
         controller: _plateCtrl,
-        textCapitalization: TextCapitalization.characters,
-        maxLength: 12,
-        inputFormatters: [
-          FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9А-Яа-яЁёӨөҮү]')),
-          const UpperCaseTextFormatter(),
-        ],
         onChanged: _onPlateChanged,
         validator: (v) =>
             (v == null || v.trim().isEmpty) ? 'Улсын дугаар оруулна уу' : null,
         style: context.textStyles.body,
         decoration: InputDecoration(
           hintText: '1234ҮНА',
-          counterText: '',
           helperText: helper,
           helperMaxLines: 2,
           errorText: _fieldErrors['plate'],

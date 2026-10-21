@@ -59,7 +59,7 @@ class DeviceService {
       final token = await NotificationService.instance.getToken();
       if (token != null && token.isNotEmpty) fields['fcm'] = token;
     } catch (e) {
-      debugPrint('DeviceService.loginFields fcm error: $e');
+      if (kDebugMode) debugPrint('DeviceService.loginFields fcm error: $e');
     }
     try {
       final info = DeviceInfoPlugin();
@@ -73,7 +73,7 @@ class DeviceService {
         fields['os'] = '${i.systemName} ${i.systemVersion}';
       }
     } catch (e) {
-      debugPrint('DeviceService.loginFields device info error: $e');
+      if (kDebugMode) debugPrint('DeviceService.loginFields device info error: $e');
     }
     return fields;
   }
@@ -98,7 +98,7 @@ class DeviceService {
         body: {'deviceId': _deviceId, 'platform': _platform, 'firebaseToken': ?fcmToken},
       );
     } catch (e) {
-      debugPrint('DeviceService.registerAfterLogin error: $e');
+      if (kDebugMode) debugPrint('DeviceService.registerAfterLogin error: $e');
     }
   }
 }

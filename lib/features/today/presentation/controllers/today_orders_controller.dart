@@ -8,6 +8,7 @@ import 'package:carservice_business/core/utils/async_value.dart';
 import 'package:carservice_business/core/utils/result.dart';
 import 'package:carservice_business/features/orders/domain/order.dart';
 import 'package:carservice_business/features/orders/domain/orders_repository.dart';
+import 'package:carservice_business/features/orders/presentation/controllers/order_item_controller.dart';
 
 /// The three lanes of the Today board.
 enum TodayLane {
@@ -91,6 +92,9 @@ class TodayOrdersController extends ChangeNotifier {
   DateTime now() => _clock();
   bool isBusy(String orderId) => _busy.contains(orderId);
 
+  /// The board's repository, for screens opened from a card.
+  OrdersRepository get repository => _repo;
+
   /// First load; also starts the periodic refresh that keeps a shared
   /// front-desk tablet from going stale.
   Future<void> start() async {
@@ -160,6 +164,45 @@ class TodayOrdersController extends ChangeNotifier {
         _notify();
         return error;
     }
+  }
+
+  /// The order's full detail (its work lines), for a card action. The card
+  /// shows busy while it loads.
+  Future<Result<ServiceOrderDetail>> detail(String orderId) async {
+    _busy.add(orderId);
+    _notify();
+    final result = await _repo.getOrderDetail(orderId);
+    if (_disposed) return result;
+    _busy.remove(orderId);
+    _notify();
+    return result;
+  }
+
+  /// Marks the order's [itemIds] COMPLETED, one request at a time. Once any
+  /// line moved the board reloads, so its progress is the server's.
+  Future<BulkStatusResult> completeLines(
+    ServiceOrderSummary order,
+    List<String> itemIds,
+  ) async {
+    if (_busy.contains(order.id)) {
+      return (done: 0, failed: 0, firstError: null);
+    }
+    _busy.add(order.id);
+    _notify();
+    final result = await completeItems(
+      _repo,
+      order.id,
+      itemIds,
+      stop: () => _disposed,
+    );
+    if (_disposed) return result;
+    _busy.remove(order.id);
+    if (result.done > 0) {
+      await load();
+    } else {
+      _notify();
+    }
+    return result;
   }
 
   Future<Result<PagedResult<ServiceOrderSummary>>> _fetch(

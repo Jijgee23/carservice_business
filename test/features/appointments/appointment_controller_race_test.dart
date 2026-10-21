@@ -179,7 +179,8 @@ void main() {
       final repository = _QueuedAppointmentsRepository();
       final controller = AppointmentListController(repo: repository);
 
-      final firstLoad = controller.loadAppointments();
+      // A picked day: its list pages forward from page 1.
+      final firstLoad = controller.setDate(DateTime.now());
       repository.pendingLists[0].complete(
         Ok(
           PagedResult(

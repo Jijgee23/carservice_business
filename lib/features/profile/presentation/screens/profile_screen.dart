@@ -1,3 +1,4 @@
+import 'package:carservice_business/core/services/app_version.dart';
 import 'package:carservice_business/core/services/branch_service.dart';
 import 'package:carservice_business/core/services/subscription_service.dart';
 import 'package:carservice_business/app/theme/app_theme.dart';
@@ -33,11 +34,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _loading = true;
   String? _branchName;
   SubscriptionStatus? _sub;
+  String? _version;
 
   @override
   void initState() {
     super.initState();
     _load();
+    appVersionLabel().then((v) {
+      if (mounted && v != null) setState(() => _version = v);
+    });
   }
 
   Future<void> _load() async {
@@ -129,7 +134,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 14),
                   _InfoCard(
                     title: 'Аппликейшн',
-                    rows: const [('Хувилбар', '1.0.0 (1)')],
+                    rows: [('Хувилбар', _version ?? '—')],
                   ),
                   const SizedBox(height: 14),
                   AppCard(

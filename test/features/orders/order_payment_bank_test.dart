@@ -89,11 +89,29 @@ Future<void> _pump(
   await tester.pump(const Duration(milliseconds: 50));
 }
 
-Future<void> _openOption(WidgetTester tester, String optionKey) async {
+/// Opens the payment form and its method list. Without [settle] (a spinner
+/// never settles) each sheet gets a start frame and a finished frame.
+Future<void> _openMethods(WidgetTester tester, {bool settle = true}) async {
+  Future<void> wait() async {
+    if (settle) {
+      await tester.pumpAndSettle();
+      return;
+    }
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+  }
+
   final open = find.byKey(const ValueKey('open_payment_sheet'));
   await tester.ensureVisible(open);
   await tester.tap(open);
-  await tester.pumpAndSettle();
+  await wait();
+  await tester.tap(find.byKey(const ValueKey('pay_method_select')));
+  await wait();
+}
+
+/// Opens the payment form with [optionKey] picked from its method list.
+Future<void> _openOption(WidgetTester tester, String optionKey) async {
+  await _openMethods(tester);
   final row = find.byKey(ValueKey('pay_opt_$optionKey'));
   await tester.ensureVisible(row);
   await tester.tap(row);
@@ -129,6 +147,29 @@ void main() {
       expect(transfer.map((o) => o.choice.bank), ['a1']);
       expect(card.map((o) => o.choice.bank), ['p1']);
       expect(card.single.label.contains('Туршилт'), isTrue);
+    });
+
+    test('a CASH account is not offered as a bank transfer', () {
+      final cash = PaymentBank.fromJson({
+        'id': 'c1',
+        'type': 'CASH',
+        'name': 'Бэлнээр',
+        'accountNumberMasked': null,
+        'terminalId': null,
+        'isTest': false,
+      });
+      expect(cash.isCash, isTrue);
+      expect(cash.isTransfer, isFalse);
+      final accounts = [cash, ..._domainAccounts];
+      final options = buildPaymentOptions(banks: accounts, includeQPay: false);
+      expect(options.where((o) => o.choice.bank == 'c1'), isEmpty);
+      expect(
+        options.where((o) => o.group == kTransferGroup).map((o) => o.bank),
+        ['a1'],
+      );
+      // The built-in cash row stays.
+      expect(options.first.choice, const PaymentChoice(OrderPaymentMethod.CASH));
+      expect(BankSettings(accounts).transferAccounts.map((a) => a.id), ['a1']);
     });
 
     test('empty accounts leave only cash and other', () {
@@ -171,6 +212,22 @@ void main() {
       expect(bank.terminalId, 'TID001');
       expect(bank.isTest, isTrue);
       expect(bank.maskedNumber, '');
+      expect(bank.displayNumber, isNull);
+    });
+
+    test('a transfer account shows its full number, masked only as fallback', () {
+      Map<String, Object?> json({String? full}) => {
+        'id': 'a1',
+        'type': 'BANK_ACCOUNT',
+        'name': 'Хаан банк',
+        'accountNumber': full,
+        'accountNumberMasked': '••••5678',
+        'terminalId': null,
+        'isTest': false,
+      };
+      expect(PaymentBank.fromJson(json(full: '5000125678')).displayNumber, '5000125678');
+      // An older server sends only the masked number.
+      expect(PaymentBank.fromJson(json()).displayNumber, '••••5678');
     });
   });
 
@@ -238,22 +295,20 @@ void main() {
   });
 
   group('screen', () {
-    testWidgets('list: groups and order, QPay only when enabled', (
+    testWidgets('list: groups and order; QPay is its own button', (
       tester,
     ) async {
       final repo = FakeOrderRepository(seedOrders: [_order()])
         ..accounts = _twoAccounts;
       await _pump(tester, repo, _user(_perms));
-      final open = find.byKey(const ValueKey('open_payment_sheet'));
-      await tester.ensureVisible(open);
-      await tester.tap(open);
-      await tester.pumpAndSettle();
+      await _openMethods(tester);
 
       expect(find.textContaining('Төлбөр бүртгэх'), findsWidgets);
+      expect(find.byKey(const ValueKey('pay_opt_QPAY')), findsNothing);
+      expect(find.byKey(const ValueKey('create_qpay')), findsOneWidget);
       double y(String key) => tester.getTopLeft(find.byKey(ValueKey(key))).dy;
       final order = [
         y('pay_opt_CASH'),
-        y('pay_opt_QPAY'),
         y('pay_group_$kTransferGroup'),
         y('pay_opt_BANK_TRANSFER_acc-khan'),
         y('pay_opt_BANK_TRANSFER_acc-tdb'),
@@ -274,10 +329,7 @@ void main() {
     ) async {
       final repo = _SlowBanksRepo();
       await _pump(tester, repo, _user(_perms));
-      final open = find.byKey(const ValueKey('open_payment_sheet'));
-      await tester.ensureVisible(open);
-      await tester.tap(open);
-      await tester.pump(const Duration(milliseconds: 300));
+      await _openMethods(tester, settle: false);
       expect(find.byKey(const ValueKey('pay_banks_loading')), findsOneWidget);
       expect(find.byKey(const ValueKey('pay_opt_CARD_pos-khan')), findsNothing);
 
@@ -293,10 +345,7 @@ void main() {
     ) async {
       final repo = _SlowBanksRepo();
       await _pump(tester, repo, _user(_perms));
-      final open = find.byKey(const ValueKey('open_payment_sheet'));
-      await tester.ensureVisible(open);
-      await tester.tap(open);
-      await tester.pump(const Duration(milliseconds: 300));
+      await _openMethods(tester, settle: false);
       expect(find.byKey(const ValueKey('pay_opt_CARD_pos-khan')), findsNothing);
 
       repo.gate.complete(const Ok(BankSettings(_twoAccounts)));
@@ -314,16 +363,16 @@ void main() {
 
       await tester.tap(find.byKey(const ValueKey('pay_opt_CARD_pos-khan')));
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('pos_start')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('create_manual_payment')),
+        findsOneWidget,
+      );
     });
 
     testWidgets('no accounts: empty-state row before «Бусад»', (tester) async {
       final repo = FakeOrderRepository(seedOrders: [_order()])..accounts = [];
       await _pump(tester, repo, _user(_perms));
-      final open = find.byKey(const ValueKey('open_payment_sheet'));
-      await tester.ensureVisible(open);
-      await tester.tap(open);
-      await tester.pumpAndSettle();
+      await _openMethods(tester);
       expect(find.byKey(const ValueKey('pay_banks_empty')), findsOneWidget);
       expect(find.text('Төлбөрийн сонголт бүртгээгүй байна'), findsOneWidget);
       expect(
@@ -350,7 +399,7 @@ void main() {
       expect(find.byKey(const ValueKey('pay_sheet_title')), findsNothing);
     });
 
-    testWidgets('card: simulator Амжилттай records CARD + bank', (
+    testWidgets('card (POS) records CARD + account directly, no terminal', (
       tester,
     ) async {
       final repo = FakeOrderRepository(seedOrders: [_order()]);
@@ -360,33 +409,14 @@ void main() {
         find.byKey(const ValueKey('payment_amount_input')),
         '40',
       );
-      await tester.tap(find.byKey(const ValueKey('pos_start')));
-      await tester.pump(const Duration(milliseconds: 100));
-      expect(find.text('Туршилтын POS'), findsOneWidget);
-      expect(find.textContaining('Хаан банк POS · 40₮'), findsOneWidget);
-      expect(await _saved(repo), isEmpty);
+      await tester.tap(find.byKey(const ValueKey('create_manual_payment')));
+      await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const ValueKey('pos_success')));
-      await tester.pump(const Duration(milliseconds: 100));
-      await tester.pump(const Duration(milliseconds: 500));
-
+      expect(find.text('Туршилтын POS'), findsNothing);
       final saved = await _saved(repo);
       expect(saved.single.method, OrderPaymentMethod.CARD);
       expect(saved.single.bankId, 'pos-khan');
-    });
-
-    testWidgets('card: simulator Цуцлах records nothing', (tester) async {
-      final repo = FakeOrderRepository(seedOrders: [_order()]);
-      await _pump(tester, repo, _user(_perms));
-      await _openOption(tester, 'CARD_pos-khan');
-      await tester.tap(find.byKey(const ValueKey('pos_start')));
-      await tester.pump(const Duration(milliseconds: 100));
-      await tester.tap(find.byKey(const ValueKey('pos_cancel')));
-      await tester.pump(const Duration(milliseconds: 100));
-
-      expect(await _saved(repo), isEmpty);
-      expect(find.byKey(const ValueKey('pos_simulator')), findsNothing);
-      expect(find.byKey(const ValueKey('pos_start')), findsOneWidget);
+      expect(find.byKey(const ValueKey('pay_sheet_title')), findsNothing);
     });
 
     testWidgets('cash records CASH without a bank', (tester) async {

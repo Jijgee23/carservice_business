@@ -138,7 +138,8 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
     );
     if (result != null && mounted) {
       final requestedAt = result.requestedAt;
-      if (requestedAt != null) {
+      // The every-date list stays put; a day view follows the new booking.
+      if (requestedAt != null && !ctrl.allDates) {
         await ctrl.setDate(requestedAt);
       } else {
         await ctrl.refresh();
@@ -381,6 +382,8 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
       AsyncData(:final value) when value.isEmpty => EmptyState(
         message: filter.activeCount > 0
             ? 'Шүүлтэд тохирох цаг захиалга байхгүй'
+            : ctrl.allDates
+            ? 'Цаг захиалга байхгүй'
             : 'Энэ өдөр цаг захиалга байхгүй',
         icon: Icons.event_busy_outlined,
       ),
@@ -420,7 +423,8 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
 // ─── Day switcher ────────────────────────────────────────────────────────────
 
 /// ‹ day › in a flat panel: tap the date to pick one, the calendar button
-/// opens the day's time grid. Off today, a "Өнөөдөр" chip jumps back.
+/// opens the day's time grid, and "Бүгд" returns to the default every-date
+/// list. In that list the bar offers the date picker and an "Өнөөдөр" chip.
 class _DayBar extends StatelessWidget {
   const _DayBar({required this.ctrl, required this.onCalendar});
 
@@ -441,9 +445,6 @@ class _DayBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final d = ctrl.selectedDate;
-    final now = DateTime.now();
-    final isToday =
-        d.year == now.year && d.month == now.month && d.day == now.day;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
       child: Material(
@@ -456,11 +457,12 @@ class _DayBar extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
           child: Row(
             children: [
-              IconButton(
-                tooltip: 'Өмнөх өдөр',
-                icon: const Icon(Icons.chevron_left_rounded),
-                onPressed: ctrl.prevDay,
-              ),
+              if (d != null)
+                IconButton(
+                  tooltip: 'Өмнөх өдөр',
+                  icon: const Icon(Icons.chevron_left_rounded),
+                  onPressed: ctrl.prevDay,
+                ),
               Expanded(
                 child: InkWell(
                   key: const ValueKey('appointments_date_picker'),
@@ -471,7 +473,7 @@ class _DayBar extends StatelessWidget {
                     child: Column(
                       children: [
                         Text(
-                          _fmt.format(d),
+                          d == null ? 'Бүх цаг захиалга' : _fmt.format(d),
                           maxLines: 1,
                           style: context.textStyles.h3.copyWith(
                             fontFeatures: const [FontFeature.tabularFigures()],
@@ -479,7 +481,9 @@ class _DayBar extends StatelessWidget {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          '${_weekdays[d.weekday - 1]} гараг',
+                          d == null
+                              ? 'Сүүлийнх нь эхэндээ'
+                              : '${_weekdays[d.weekday - 1]} гараг',
                           maxLines: 1,
                           style: context.textStyles.caption,
                         ),
@@ -488,20 +492,28 @@ class _DayBar extends StatelessWidget {
                   ),
                 ),
               ),
-              IconButton(
-                tooltip: 'Дараах өдөр',
-                icon: const Icon(Icons.chevron_right_rounded),
-                onPressed: ctrl.nextDay,
-              ),
-              if (!isToday)
-                Padding(
-                  padding: const EdgeInsets.only(right: 4),
-                  child: ActionChip(
-                    label: const Text('Өнөөдөр'),
-                    onPressed: ctrl.goToday,
-                    visualDensity: VisualDensity.compact,
-                  ),
+              if (d != null)
+                IconButton(
+                  tooltip: 'Дараах өдөр',
+                  icon: const Icon(Icons.chevron_right_rounded),
+                  onPressed: ctrl.nextDay,
                 ),
+              Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: d == null
+                    ? ActionChip(
+                        key: const ValueKey('appointments_today_chip'),
+                        label: const Text('Өнөөдөр'),
+                        onPressed: ctrl.goToday,
+                        visualDensity: VisualDensity.compact,
+                      )
+                    : ActionChip(
+                        key: const ValueKey('appointments_all_dates_chip'),
+                        label: const Text('Бүгд'),
+                        onPressed: ctrl.showAllDates,
+                        visualDensity: VisualDensity.compact,
+                      ),
+              ),
               Container(width: 1, height: 28, color: context.opsDivider),
               IconButton(
                 key: const ValueKey('appointments_calendar_button'),
@@ -519,7 +531,7 @@ class _DayBar extends StatelessWidget {
   Future<void> _pickDate(BuildContext context) async {
     final picked = await AppDatePicker.single(
       context,
-      initial: ctrl.selectedDate,
+      initial: ctrl.selectedDate ?? DateTime.now(),
       firstDate: DateTime.now().subtract(const Duration(days: 365)),
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
@@ -570,6 +582,7 @@ class _PhoneAppointments extends StatelessWidget {
             appointment: appt,
             selected: ctrl.isSelected(appt.id),
             selectionMode: ctrl.selectionMode,
+            showDate: ctrl.allDates,
           ),
         );
       },
@@ -603,6 +616,7 @@ class _TabletAppointmentsView extends StatelessWidget {
   final ValueChanged<int> onSort;
 
   static final _timeFmt = DateFormat('HH:mm');
+  static final _dateTimeFmt = DateFormat('yyyy/MM/dd HH:mm');
 
   List<AppointmentSummary> _sorted() {
     if (sortColumnIndex == null) return appointments;
@@ -629,10 +643,14 @@ class _TabletAppointmentsView extends StatelessWidget {
 
   List<RecordColumn<AppointmentSummary>> get _columns => [
     RecordColumn(
-      label: 'Цаг',
-      flex: 1,
+      label: ctrl.allDates ? 'Огноо' : 'Цаг',
+      flex: ctrl.allDates ? 2 : 1,
       builder: (context, appt) => Text(
-        appt.requestedAt == null ? '—' : _timeFmt.format(appt.requestedAt!),
+        appt.requestedAt == null
+            ? '—'
+            : (ctrl.allDates ? _dateTimeFmt : _timeFmt).format(
+                appt.requestedAt!,
+              ),
         style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()]),
       ),
     ),
@@ -690,7 +708,9 @@ class _TabletAppointmentsView extends StatelessWidget {
                   ? null
                   : (appt) => ctrl.enterSelectionMode(appt.id),
               empty: EmptyState(
-                message: 'Энэ өдөр цаг захиалга байхгүй',
+                message: ctrl.allDates
+                    ? 'Цаг захиалга байхгүй'
+                    : 'Энэ өдөр цаг захиалга байхгүй',
                 icon: Icons.event_busy_outlined,
               ),
             ),

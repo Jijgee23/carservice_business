@@ -1,3 +1,4 @@
+import 'package:carservice_business/core/utils/vehicle_plate.dart';
 import 'package:carservice_business/core/network/api_client.dart';
 import 'package:carservice_business/core/domain/diagnostic.dart';
 
@@ -7,7 +8,8 @@ class DiagnosticService {
   // ─── Vehicles ──────────────────────────────────────────────────────────────
 
   static Future<List<VehicleSummary>> searchVehicles(String q) async {
-    final encoded = Uri.encodeQueryComponent(q);
+    // A plate-shaped search is sent canonical, as plates are stored.
+    final encoded = Uri.encodeQueryComponent(plateSearchQuery(q));
     final res = await api(Api.get, 'vehicles?q=$encoded&limit=20');
     if (res == null) return [];
     final list = res.data['vehicles'] as List;

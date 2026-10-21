@@ -8,6 +8,14 @@ import 'package:carservice_business/app/router.dart';
 import 'package:carservice_business/app/theme/app_theme.dart';
 import 'package:carservice_business/core/domain/subscription.dart';
 import 'package:carservice_business/core/domain/user.dart';
+import 'package:carservice_business/core/utils/result.dart';
+import 'package:carservice_business/core/widgets/dialogs/confirm_sheet.dart';
+import 'package:carservice_business/features/diagnostics/presentation/screens/report_detail_screen.dart';
+import 'package:carservice_business/features/orders/domain/postpaid_settlement.dart';
+import 'package:carservice_business/features/orders/presentation/screens/order_payment_screen.dart';
+import 'package:carservice_business/features/orders/presentation/widgets/detail/order_item_widgets.dart';
+import 'package:carservice_business/features/orders/presentation/widgets/diagnostic_template_picker_sheet.dart';
+import 'package:carservice_business/features/today/presentation/widgets/today_order_actions_sheet.dart';
 import 'package:carservice_business/core/services/auth_storage.dart';
 import 'package:carservice_business/core/services/subscription_service.dart';
 import 'package:carservice_business/core/utils/async_value.dart';
@@ -28,8 +36,10 @@ import 'package:carservice_business/features/today/presentation/widgets/today_or
 import 'package:carservice_business/core/navigation/app_nav.dart';
 
 /// The work-first home: today's orders grouped by lane, each card carrying
-/// its single next action. Tablets (≥840dp) show all three lanes side by
-/// side; narrower screens switch lanes with a segmented control.
+/// its order's next step (start, finish the work, take payment, complete)
+/// and a ⋯ sheet with the rest (diagnostics, reports, payment). Tablets
+/// (≥840dp) show all three lanes side by side; narrower screens switch
+/// lanes with a segmented control.
 class TodayScreen extends StatefulWidget {
   const TodayScreen({
     super.key,
@@ -37,6 +47,7 @@ class TodayScreen extends StatefulWidget {
     this.appointmentsController,
     this.user,
     this.loadSubscription,
+    this.sessionOpenLookup,
   });
 
   /// Test seam. When null the screen owns a controller built on the app's
@@ -52,6 +63,10 @@ class TodayScreen extends StatefulWidget {
 
   /// Test seam; defaults to [SubscriptionService.getStatus].
   final Future<SubscriptionStatus?> Function()? loadSubscription;
+
+  /// Test seam for the payment screen's cash-drawer flag; defaults to the
+  /// cash API.
+  final Future<Result<bool>> Function(String branchId)? sessionOpenLookup;
 
   @override
   State<TodayScreen> createState() => _TodayScreenState();
@@ -81,6 +96,9 @@ class _TodayScreenState extends State<TodayScreen> {
   bool get _canViewPayments => _has('payments.view');
   bool get _canViewAppointments => _has('appointments.view');
   bool get _canEditAppointments => _has('appointments.edit');
+  bool get _canItemStatus => _has('orders.itemStatus');
+  bool get _canFillDiagnostics => _has('diagnostics.create');
+  bool get _canViewReports => _has('diagnostics.view');
 
   bool _canEdit(ServiceOrderSummary order) =>
       _has('orders.edit') ||
@@ -106,11 +124,22 @@ class _TodayScreenState extends State<TodayScreen> {
     super.dispose();
   }
 
+  /// The card's next step. An in-progress order finishes its work first,
+  /// then takes payment, then completes: the order the server checks
+  /// before «Дуусгах» (`ITEMS_NOT_COMPLETED`, `PAYMENT_INCOMPLETE`).
   TodayCardAction? _actionFor(ServiceOrderSummary order) {
     switch (order.status) {
       case OrderStatus.SCHEDULED:
         return _canEdit(order) ? TodayCardAction.start : null;
       case OrderStatus.IN_PROGRESS:
+        if ((order.unfinishedWorkCount ?? 0) > 0 &&
+            _canEdit(order) &&
+            _canItemStatus) {
+          return TodayCardAction.finishWork;
+        }
+        if (_unpaidBlocksCompletion(order) && _canViewPayments) {
+          return TodayCardAction.pay;
+        }
         return _canEdit(order) ? TodayCardAction.complete : null;
       case OrderStatus.COMPLETED:
         return _canViewPayments && order.paymentStatus != PaymentStatus.PAID
@@ -120,6 +149,21 @@ class _TodayScreenState extends State<TodayScreen> {
         return null;
     }
   }
+
+  /// The balance stops «Дуусгах» (see [ServiceOrderSummary.completionBlocker]).
+  bool _unpaidBlocksCompletion(ServiceOrderSummary order) {
+    final balance = order.unpaidBalance;
+    if (order.isInternal || balance == null || balance <= 0.004) return false;
+    return !order.isPostpaid || !userCanSettlePostpaid(_user);
+  }
+
+  /// Whether the card's ⋯ sheet has anything beyond opening the detail.
+  bool _hasMore(ServiceOrderSummary order) =>
+      order.status == OrderStatus.IN_PROGRESS ||
+      (order.status != OrderStatus.CANCELLED &&
+          _canViewPayments &&
+          !order.isInternal &&
+          order.paymentStatus != PaymentStatus.PAID);
 
   /// Full-screen, above the bottom navigation, like the Orders list cards.
   Future<void> _open(ServiceOrderSummary order) async {
@@ -138,10 +182,14 @@ class _TodayScreenState extends State<TodayScreen> {
     ServiceOrderSummary order,
     TodayCardAction action,
   ) async {
-    if (action == TodayCardAction.pay) {
-      // Payment lives on the order detail screen (QPay, partial payments).
-      await _open(order);
-      return;
+    switch (action) {
+      case TodayCardAction.pay:
+        return _pay(order);
+      case TodayCardAction.finishWork:
+        return _finishWork(order);
+      case TodayCardAction.start:
+      case TodayCardAction.complete:
+        break;
     }
     final status = action == TodayCardAction.start
         ? OrderStatus.IN_PROGRESS
@@ -171,6 +219,141 @@ class _TodayScreenState extends State<TodayScreen> {
         '${plateLabel(order.vehicle.plate, order.vehicle.vin)} дууслаа',
       );
     }
+  }
+
+  /// Opens the order's ⋯ sheet and runs what was picked.
+  Future<void> _openMenu(ServiceOrderSummary order) async {
+    final choice = await AppNav.sheet<TodayMenuChoice>(
+      TodayOrderActionsSheet(
+        order: order,
+        access: TodayMenuAccess(
+          lines: _canEdit(order) && _canItemStatus,
+          diagnostics: _canEdit(order) && _canFillDiagnostics,
+          reports: _canViewReports,
+          payments: _canViewPayments,
+          complete: _canEdit(order),
+        ),
+        load: () => _controller.repository.getOrderDetail(order.id),
+      ),
+    );
+    if (choice == null || !mounted) return;
+    switch (choice) {
+      case TodayFinishWork(:final detail):
+        await _finishWork(order, detail: detail);
+      case TodayFillDiagnostic(:final detail, :final item):
+        await _fillDiagnostic(detail, item);
+      case TodayViewReport(:final item):
+        await AppNav.to<void>(
+          ReportDetailScreen(
+            reportId: item.diagnosticReportId!,
+            deleteLocked: isLineCompletedLocked(item),
+          ),
+        );
+        if (mounted) await _controller.load();
+      case TodayPay():
+        await _pay(order);
+      case TodayCompleteOrder():
+        await _runAction(order, TodayCardAction.complete);
+      case TodayOpenDetail():
+        await _open(order);
+    }
+  }
+
+  /// The payment screen with «Төлбөр бүртгэх» already open.
+  Future<void> _pay(ServiceOrderSummary order) async {
+    await OrderPaymentScreen.open(
+      context,
+      orderId: order.id,
+      user: widget.user,
+      openRecord: true,
+      repo: _controller.repository,
+      sessionOpenLookup: widget.sessionOpenLookup,
+    );
+    if (mounted) await _controller.load();
+  }
+
+  /// Completes the order's open work lines. Diagnostics still waiting for
+  /// their report are left out; when only those remain, offers to fill one.
+  Future<void> _finishWork(
+    ServiceOrderSummary order, {
+    ServiceOrderDetail? detail,
+  }) async {
+    final loaded = detail ?? await _loadDetail(order);
+    if (loaded == null || !mounted) return;
+    final lines = completableLines(loaded.items);
+    final pending = reportPendingLines(loaded.items);
+    final plate = plateLabel(order.vehicle.plate, order.vehicle.vin);
+    if (lines.isEmpty) {
+      if (pending.isNotEmpty && _canFillDiagnostics) {
+        final fill = await ConfirmSheet.show(
+          context,
+          title: 'Оношилгоо бөглөх шаардлагатай',
+          message:
+              '«${pending.first.description}» оношилгооны тайланг бөглөсний '
+              'дараа ажил дуусна.',
+          confirmLabel: 'Бөглөх',
+          icon: Icons.fact_check_outlined,
+          iconColor: context.opsAccent,
+        );
+        if (fill && mounted) await _fillDiagnostic(loaded, pending.first);
+      } else {
+        messageComplete('$plate · дуусгах ажил үлдээгүй');
+        await _controller.load();
+      }
+      return;
+    }
+    final ok = await ConfirmSheet.show(
+      context,
+      title: 'Бүх ажлыг дуусгах уу?',
+      message: [
+        '${lines.length} ажлын мөрийг "Дууссан" болгоно.',
+        if (pending.isNotEmpty)
+          '${pending.length} оношилгооны мөр тайлангүй тул алгасна.',
+      ].join('\n'),
+      confirmLabel: 'Дуусгах',
+      icon: Icons.done_all_rounded,
+      iconColor: context.opsGood,
+    );
+    if (!ok || !mounted) return;
+    final result = await _controller.completeLines(order, [
+      for (final line in lines) line.id,
+    ]);
+    if (!mounted) return;
+    if (result.firstError case final error?) {
+      messageError(
+        result.done > 0
+            ? '${result.done}/${lines.length} мөр дууссан. ${error.display}'
+            : error.display,
+      );
+    } else {
+      messageComplete('$plate · ${result.done} ажил дууслаа');
+    }
+  }
+
+  Future<ServiceOrderDetail?> _loadDetail(ServiceOrderSummary order) async {
+    final result = await _controller.detail(order.id);
+    switch (result) {
+      case Ok(:final value):
+        return value;
+      case Err(:final error):
+        if (mounted) messageError(error.display);
+        return null;
+    }
+  }
+
+  /// The diagnostic form for [item]; the board reloads after it.
+  Future<void> _fillDiagnostic(
+    ServiceOrderDetail detail,
+    ServiceItem item,
+  ) async {
+    await openOrderDiagnostic(
+      context,
+      orderId: detail.id,
+      item: item,
+      vehicle: detail.vehicle,
+      customer: detail.customer,
+    );
+    if (mounted) await _controller.load();
   }
 
   Future<void> _create() async {
@@ -351,6 +534,7 @@ class _TodayScreenState extends State<TodayScreen> {
       action: action,
       busy: _controller.isBusy(order.id),
       onAction: action == null ? null : () => _runAction(order, action),
+      onMore: _hasMore(order) ? () => _openMenu(order) : null,
     );
   }
 }
@@ -905,7 +1089,10 @@ class _SectionSelector extends StatelessWidget {
           key: const ValueKey('today_section_selector'),
           showSelectedIcon: false,
           segments: const [
-            ButtonSegment(value: _TodaySection.orders, label: Text('Засварын хуудас')),
+            ButtonSegment(
+              value: _TodaySection.orders,
+              label: Text('Засварын хуудас'),
+            ),
             ButtonSegment(
               value: _TodaySection.appointments,
               label: Text('Цаг'),

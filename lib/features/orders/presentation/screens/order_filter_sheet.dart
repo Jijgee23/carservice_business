@@ -5,6 +5,9 @@ import 'package:carservice_business/core/domain/branch.dart';
 import 'package:carservice_business/core/services/branch_service.dart';
 import 'package:carservice_business/features/orders/domain/order.dart';
 import 'package:flutter/material.dart';
+
+import 'package:carservice_business/core/utils/validators.dart';
+import 'package:carservice_business/core/widgets/plate/plate_field.dart';
 import 'package:carservice_business/features/orders/presentation/feature_theme.dart';
 import 'package:carservice_business/features/orders/presentation/widgets/assignee_avatar.dart';
 import 'package:intl/intl.dart';
@@ -278,22 +281,9 @@ class OrderFilterFormBody extends StatelessWidget {
       children: [
         if (onBranch != null)
           _BranchSection(selectedId: branchId, onChanged: onBranch),
-        TextFormField(
-          key: const ValueKey('order_filter_plate'),
-          initialValue: filter.plate,
-          textCapitalization: TextCapitalization.characters,
-          decoration: const InputDecoration(
-            labelText: 'Улсын дугаар',
-            hintText: 'Жишээ: 1234УБА',
-            prefixIcon: Icon(Icons.directions_car_outlined),
-            border: OutlineInputBorder(),
-          ),
-          onChanged: (value) => onChanged(
-            _withFilter(
-              filter,
-              plate: value.trim().isEmpty ? null : value.trim(),
-            ),
-          ),
+        _PlateFilterField(
+          value: filter.plate,
+          onChanged: (plate) => onChanged(_withFilter(filter, plate: plate)),
         ),
         const SizedBox(height: 20),
         // Нэгдсэн төлбөрийн нөхцөл: Энгийн = дараа тооцоо ч биш, дотоод ч биш.
@@ -845,6 +835,52 @@ class _OrderFilterSheetState extends State<_OrderFilterSheet> {
 /// "Салбар" chips, formerly the list's inline `BranchFilterBar`. Loads the
 /// tenant's branches itself ([BranchService] caches them) and renders
 /// nothing — no gap either — until there are at least two to choose from.
+/// The plate filter with the plate keypad; its value is canonical
+/// ([normalizePlate]) so it matches the stored plates.
+class _PlateFilterField extends StatefulWidget {
+  const _PlateFilterField({required this.value, required this.onChanged});
+
+  final String? value;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  State<_PlateFilterField> createState() => _PlateFilterFieldState();
+}
+
+class _PlateFilterFieldState extends State<_PlateFilterField> {
+  late final _ctrl = TextEditingController(text: widget.value ?? '');
+
+  @override
+  void didUpdateWidget(_PlateFilterField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Follow a reset from outside, not the field's own edits.
+    final value = widget.value ?? '';
+    if (normalizePlate(_ctrl.text) != value) _ctrl.text = value;
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => PlateField(
+    fieldKey: const ValueKey('order_filter_plate'),
+    controller: _ctrl,
+    decoration: const InputDecoration(
+      labelText: 'Улсын дугаар',
+      hintText: 'Жишээ: 1234УБА',
+      prefixIcon: Icon(Icons.directions_car_outlined),
+      border: OutlineInputBorder(),
+    ),
+    onChanged: (value) {
+      final plate = normalizePlate(value);
+      widget.onChanged(plate.isEmpty ? null : plate);
+    },
+  );
+}
+
 class _BranchSection extends StatefulWidget {
   const _BranchSection({required this.selectedId, required this.onChanged});
 

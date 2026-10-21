@@ -72,6 +72,55 @@ class ItemMoneyValidation {
   }
 }
 
+/// Outcome of [OrderItemController.completeAll]: how many lines the server
+/// completed, how many it refused, and the first refusal to show.
+typedef BulkStatusResult = ({int done, int failed, AppError? firstError});
+
+const _alreadyRunning = AppError(
+  ErrorKind.unknown,
+  'Энэ үйлдэл аль хэдийн хийгдэж байна.',
+);
+
+/// Marks [itemIds] COMPLETED one request at a time (each is its own order
+/// transaction on the server). A line the server refuses does not stop the
+/// rest; [stop] ends the run early, e.g. once the screen is gone.
+Future<BulkStatusResult> completeItems(
+  OrdersRepository repo,
+  String orderId,
+  List<String> itemIds, {
+  bool Function()? stop,
+}) async {
+  var done = 0;
+  var failed = 0;
+  AppError? firstError;
+  for (final id in itemIds) {
+    if (stop?.call() ?? false) break;
+    final result = await _attempt(
+      () => repo.changeItemStatus(orderId, id, ServiceItemStatus.COMPLETED),
+    );
+    if (result case Err(:final error)) {
+      failed++;
+      firstError ??= error;
+    } else {
+      done++;
+    }
+  }
+  return (done: done, failed: failed, firstError: firstError);
+}
+
+/// Runs [action], turning a thrown error into an [Err].
+Future<Result<T>> _attempt<T>(Future<Result<T>> Function() action) async {
+  try {
+    return await action();
+  } catch (error) {
+    return Err(
+      error is AppError
+          ? error
+          : const AppError(ErrorKind.unknown, 'Мөрийн үйлдэл амжилтгүй.'),
+    );
+  }
+}
+
 /// Owns item mutations for one order. The server remains the only source of
 /// truth: this controller never patches an item into a local detail snapshot.
 /// Every completed request, including a failed request, is followed by a
@@ -97,10 +146,20 @@ class OrderItemController extends ChangeNotifier {
   int _generation = 0;
   bool _disposed = false;
   final Set<String> _inFlight = <String>{};
+
+  /// Status a line is being moved to while its request and the reload after
+  /// it are in flight. The screen shows it in place of the server status so a
+  /// tap answers at once. It is dropped after the authoritative reload, so a
+  /// refused change falls back to whatever the server says.
+  final Map<String, ServiceItemStatus> _pendingStatus = {};
   Future<Result<OrderItemHistoryPage>>? _nextHistoryRequest;
 
   bool get isLoadingHistory => historyState is AsyncLoading;
   bool get isLoadingNextHistory => _nextHistoryRequest != null;
+
+  ServiceItemStatus? pendingStatusOf(String itemId) => _pendingStatus[itemId];
+
+  bool isStatusBusy(String itemId) => _pendingStatus.containsKey(itemId);
 
   /// True when the last successful [add] returned a line that already existed
   /// on the order: the server merged the quantity into it instead of creating
@@ -164,10 +223,46 @@ class OrderItemController extends ChangeNotifier {
   Future<Result<ServiceItem>> changeStatus(
     String itemId,
     ServiceItemStatus status,
-  ) => _runItem(
-    'status:$itemId:${status.name}',
-    () => repo.changeItemStatus(orderId, itemId, status),
-  );
+  ) async {
+    if (_disposed) return _disposedError<ServiceItem>();
+    if (isStatusBusy(itemId)) return const Err(_alreadyRunning);
+    _setPending([itemId], status);
+    try {
+      return await _runItem(
+        'status:$itemId',
+        () => repo.changeItemStatus(orderId, itemId, status),
+      );
+    } finally {
+      _clearPending([itemId]);
+    }
+  }
+
+  /// Marks every line in [itemIds] COMPLETED ([completeItems]), then reloads
+  /// once. Lines already changing are left to their own request.
+  Future<BulkStatusResult> completeAll(List<String> itemIds) async {
+    if (_disposed) {
+      return (done: 0, failed: 0, firstError: _disposedError<void>().error);
+    }
+    if (!_inFlight.add('status:bulk')) {
+      return (done: 0, failed: 0, firstError: _alreadyRunning);
+    }
+    final ids = itemIds.where((id) => !isStatusBusy(id)).toList();
+    final generation = _generation;
+    _setPending(ids, ServiceItemStatus.COMPLETED);
+    try {
+      final result = await completeItems(
+        repo,
+        orderId,
+        ids,
+        stop: () => _disposed,
+      );
+      await _reloadAuthoritative(generation);
+      return result;
+    } finally {
+      _inFlight.remove('status:bulk');
+      _clearPending(ids);
+    }
+  }
 
   Future<Result<void>> cancel(String itemId) =>
       _runVoid('cancel:$itemId', () => repo.cancelItem(orderId, itemId));
@@ -254,23 +349,10 @@ class OrderItemController extends ChangeNotifier {
     Future<Result<T>> Function() action,
   ) async {
     if (_disposed) return _disposedError<T>();
-    if (!_inFlight.add(key)) {
-      return const Err(
-        AppError(ErrorKind.unknown, 'Энэ үйлдэл аль хэдийн хийгдэж байна.'),
-      );
-    }
+    if (!_inFlight.add(key)) return const Err(_alreadyRunning);
     final generation = _generation;
     try {
-      late final Result<T> result;
-      try {
-        result = await action();
-      } catch (error) {
-        result = Err(
-          error is AppError
-              ? error
-              : const AppError(ErrorKind.unknown, 'Мөрийн үйлдэл амжилтгүй.'),
-        );
-      }
+      final result = await _attempt(action);
       await _reloadAuthoritative(generation);
       return result;
     } finally {
@@ -281,30 +363,21 @@ class OrderItemController extends ChangeNotifier {
   Future<Result<void>> _runVoid(
     String key,
     Future<Result<void>> Function() action,
-  ) async {
-    if (_disposed) return _disposedError<void>();
-    if (!_inFlight.add(key)) {
-      return const Err(
-        AppError(ErrorKind.unknown, 'Энэ үйлдэл аль хэдийн хийгдэж байна.'),
-      );
+  ) => _runItem<void>(key, action);
+
+  void _setPending(Iterable<String> ids, ServiceItemStatus status) {
+    for (final id in ids) {
+      _pendingStatus[id] = status;
     }
-    final generation = _generation;
-    try {
-      late final Result<void> result;
-      try {
-        result = await action();
-      } catch (error) {
-        result = Err(
-          error is AppError
-              ? error
-              : const AppError(ErrorKind.unknown, 'Мөрийн үйлдэл амжилтгүй.'),
-        );
-      }
-      await _reloadAuthoritative(generation);
-      return result;
-    } finally {
-      _inFlight.remove(key);
+    notifyListeners();
+  }
+
+  void _clearPending(Iterable<String> ids) {
+    if (_disposed) return;
+    for (final id in ids) {
+      _pendingStatus.remove(id);
     }
+    notifyListeners();
   }
 
   Future<void> _reloadAuthoritative(int generation) async {
@@ -322,6 +395,7 @@ class OrderItemController extends ChangeNotifier {
     _disposed = true;
     _generation++;
     _inFlight.clear();
+    _pendingStatus.clear();
     super.dispose();
   }
 }
