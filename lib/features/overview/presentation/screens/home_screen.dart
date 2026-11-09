@@ -416,7 +416,7 @@ class _StatCard extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       decoration: BoxDecoration(
         color: context.colors.cardBg,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppDimens.radiusLG),
         boxShadow: [
           BoxShadow(
             color: context.colors.textPrimary.withOpacity(0.05),
@@ -432,7 +432,7 @@ class _StatCard extends StatelessWidget {
             height: 44,
             decoration: BoxDecoration(
               color: bgColor,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(AppDimens.radiusMD),
             ),
             child: Icon(icon, color: color, size: 22),
           ),
@@ -503,7 +503,7 @@ class _MenuSection extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: context.colors.cardBg,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppDimens.radiusLG),
         boxShadow: [
           BoxShadow(
             color: context.colors.textPrimary.withOpacity(0.05),
@@ -521,8 +521,8 @@ class _MenuSection extends StatelessWidget {
               InkWell(
                 onTap: item.onTap,
                 borderRadius: BorderRadius.vertical(
-                  top: i == 0 ? const Radius.circular(16) : Radius.zero,
-                  bottom: isLast ? const Radius.circular(16) : Radius.zero,
+                  top: i == 0 ? const Radius.circular(AppDimens.radiusLG) : Radius.zero,
+                  bottom: isLast ? const Radius.circular(AppDimens.radiusLG) : Radius.zero,
                 ),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
@@ -536,7 +536,7 @@ class _MenuSection extends StatelessWidget {
                         height: 40,
                         decoration: BoxDecoration(
                           color: item.color.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(AppDimens.radiusMD),
                         ),
                         child: Icon(item.icon, color: item.color, size: 20),
                       ),

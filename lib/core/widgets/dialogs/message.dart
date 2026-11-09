@@ -163,7 +163,7 @@ class _ToastWidgetState extends State<_ToastWidget>
               child: GestureDetector(
                 onTap: _dismiss,
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppDimens.radiusLG),
                   child: BackdropFilter(
                     filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
                     child: Container(
@@ -175,7 +175,7 @@ class _ToastWidgetState extends State<_ToastWidget>
                         color: isDark
                             ? context.colors.surface.withAlpha(20)
                             : context.colors.surface.withAlpha(220),
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(AppDimens.radiusLG),
                         border: Border.all(
                           color: isDark
                               ? context.colors.divider.withAlpha(30)
@@ -203,7 +203,7 @@ class _ToastWidgetState extends State<_ToastWidget>
                             padding: const EdgeInsets.all(6),
                             decoration: BoxDecoration(
                               color: tintColor.withAlpha(30),
-                              borderRadius: BorderRadius.circular(10),
+                              borderRadius: BorderRadius.circular(AppDimens.radiusMD),
                             ),
                             child: Icon(icon, color: tintColor, size: 18),
                           ),

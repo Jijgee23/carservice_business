@@ -288,7 +288,7 @@ class _WeekView extends StatelessWidget {
                     ),
                     decoration: BoxDecoration(
                       color: theme.accent.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(999),
+                      borderRadius: BorderRadius.circular(AppDimens.radiusFull),
                     ),
                     child: Text(
                       '$count',
@@ -403,7 +403,7 @@ class _MonthCountDot extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
           decoration: BoxDecoration(
             color: theme.accent.withValues(alpha: 0.14),
-            borderRadius: BorderRadius.circular(999),
+            borderRadius: BorderRadius.circular(AppDimens.radiusFull),
           ),
           child: Text(
             '$count',

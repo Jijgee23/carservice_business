@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:carservice_business/app/theme/app_theme.dart';
 
 /// Гарын үсгийн цэгүүдийг цагаан дэвсгэртэй PNG болгон экспортлоно.
 /// Зураас байхгүй бол `null`.
@@ -110,7 +111,7 @@ class SignaturePadState extends State<SignaturePad> {
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(AppDimens.radiusSM),
       child: Container(
         key: _boxKey,
         height: widget.height,

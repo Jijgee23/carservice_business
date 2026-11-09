@@ -11,9 +11,9 @@ extension DiagnosticTypePresentation on DiagnosticType {
   Color colorFor(BuildContext context) {
     final theme = CarserviceTheme.of(context);
     return switch (this) {
-      DiagnosticType.INTAKE => theme.accentHi,
+      DiagnosticType.INTAKE => theme.info,
       DiagnosticType.POST_SERVICE => theme.ok,
-      DiagnosticType.ROUTINE => theme.accent,
+      DiagnosticType.ROUTINE => theme.mutedText,
       DiagnosticType.DAMAGE_REPORT => theme.warn,
     };
   }

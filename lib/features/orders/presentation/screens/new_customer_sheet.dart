@@ -130,7 +130,7 @@ class _NewCustomerSheetState extends State<_NewCustomerSheet>
     return Container(
       decoration: BoxDecoration(
         color: context.opsSurface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppDimens.radiusXL)),
       ),
       padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + bottom),
       child: Form(

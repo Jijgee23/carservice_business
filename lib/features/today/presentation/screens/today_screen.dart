@@ -830,7 +830,7 @@ class _CollapsibleAppointments extends StatelessWidget {
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: context.opsSurface,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(AppDimens.radiusLG),
           border: Border.all(color: context.opsDivider),
         ),
         child: Column(
@@ -839,7 +839,7 @@ class _CollapsibleAppointments extends StatelessWidget {
             InkWell(
               key: const ValueKey('today_appointments_toggle'),
               onTap: onToggle,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(AppDimens.radiusLG),
               child: Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 14,
@@ -903,7 +903,7 @@ class _LaneColumn extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: context.opsSurface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppDimens.radiusLG),
         border: Border.all(color: context.opsDivider),
       ),
       child: Column(
@@ -1176,7 +1176,7 @@ class _CountBadge extends StatelessWidget {
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
     decoration: BoxDecoration(
       color: context.opsCardBg,
-      borderRadius: BorderRadius.circular(99),
+      borderRadius: BorderRadius.circular(AppDimens.radiusFull),
     ),
     child: Text(
       '$count',

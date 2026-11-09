@@ -718,7 +718,7 @@ class _OrderFilterSheetState extends State<_OrderFilterSheet> {
     return Container(
       decoration: BoxDecoration(
         color: context.opsSurface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppDimens.radiusXL)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,

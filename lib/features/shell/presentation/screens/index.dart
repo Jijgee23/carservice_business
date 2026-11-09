@@ -150,7 +150,7 @@ class _AppDrawer extends StatelessWidget {
                 //       ),
                 //       selected: isActive,
                 //       selectedTileColor: context.colors.accent.withOpacity(0.08),
-                //       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                //       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppDimens.radiusMD)),
                 //       onTap: () => onTap(item.index),
                 //     ),
                 //   );
@@ -185,7 +185,7 @@ class _AppDrawer extends StatelessWidget {
                           ? _Badge(count: unreadCount)
                           : null,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(AppDimens.radiusMD),
                       ),
                       onTap: () => _onSettingsTap(context, item.label),
                     ),
@@ -205,7 +205,7 @@ class _AppDrawer extends StatelessWidget {
                 style: TextStyle(color: context.colors.danger),
               ),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(AppDimens.radiusMD),
               ),
               onTap: () async {
                 final ok = await ConfirmSheet.show(
@@ -334,7 +334,7 @@ class _UserHeader extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: CarserviceTheme.of(context).onAccent
                         .withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(AppDimens.radiusMD),
                   ),
                   child: Text(
                     user.role?.name ??

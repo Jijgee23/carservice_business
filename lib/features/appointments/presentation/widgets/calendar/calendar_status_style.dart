@@ -17,7 +17,7 @@ Color calendarStatusColor(BuildContext context, AppointmentStatus? status) {
   return switch (status) {
     null => theme.mutedText2,
     AppointmentStatus.PENDING => theme.warn,
-    AppointmentStatus.CONFIRMED => theme.accent,
+    AppointmentStatus.CONFIRMED => theme.ok,
     AppointmentStatus.REJECTED => theme.danger,
     AppointmentStatus.CANCELLED => theme.mutedText3,
     AppointmentStatus.NO_SHOW => theme.danger,

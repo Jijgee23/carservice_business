@@ -8,9 +8,9 @@ import 'package:carservice_business/features/diagnostics/domain/diagnostic.dart'
 Color templateTypeColor(BuildContext context, DiagnosticType type) {
   final theme = CarserviceTheme.of(context);
   return switch (type) {
-    DiagnosticType.INTAKE => theme.accentHi,
+    DiagnosticType.INTAKE => theme.info,
     DiagnosticType.POST_SERVICE => theme.ok,
-    DiagnosticType.ROUTINE => theme.accent,
+    DiagnosticType.ROUTINE => theme.mutedText,
     DiagnosticType.DAMAGE_REPORT => theme.warn,
     DiagnosticType.unknown => theme.mutedText2,
   };

@@ -123,7 +123,7 @@ class _CustomerEditSheetState extends State<CustomerEditSheet> {
       child: Container(
         decoration: BoxDecoration(
           color: context.colors.surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(AppDimens.radiusXL)),
         ),
         padding: EdgeInsets.fromLTRB(
           20,

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:carservice_business/core/domain/working_branch_scope.dart';
 import 'package:carservice_business/core/widgets/dialogs/message.dart';
 import 'package:carservice_business/features/shell/presentation/controllers/working_branch_controller.dart';
+import 'package:carservice_business/app/theme/app_theme.dart';
 
 /// Post-login working-branch picker (web `/page/choose-branch` parity).
 ///
@@ -114,7 +115,7 @@ class _BranchCard extends StatelessWidget {
         elevation: 0,
         color: accent ? scheme.primary.withValues(alpha: 0.05) : null,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(AppDimens.radiusMD),
           side: BorderSide(
             color: accent
                 ? scheme.primary.withValues(alpha: 0.4)

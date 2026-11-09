@@ -15,7 +15,7 @@ class NoCashSessionWarning extends StatelessWidget {
     padding: const EdgeInsets.all(10),
     decoration: BoxDecoration(
       color: context.colors.warningBg,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(AppDimens.radiusSM),
     ),
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,

@@ -507,7 +507,7 @@ class _Cell extends StatelessWidget {
               : working
               ? context.colors.goodBg
               : context.colors.background,
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(AppDimens.radiusSM),
           border: Border.all(
             color: selected ? context.colors.accent : context.colors.divider,
           ),

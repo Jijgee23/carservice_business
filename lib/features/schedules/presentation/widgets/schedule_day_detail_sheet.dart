@@ -45,7 +45,7 @@ class ScheduleDayDetailSheet extends StatelessWidget {
     final statusColor = working ? colors.good : colors.textSecondary;
     return Material(
       color: colors.surface,
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(AppDimens.radiusXL)),
       clipBehavior: Clip.antiAlias,
       child: SafeArea(
         top: false,
@@ -181,7 +181,7 @@ class _SegmentCard extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: colors.background,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppDimens.radiusMD),
         border: Border.all(color: colors.divider),
       ),
       child: Row(
@@ -191,7 +191,7 @@ class _SegmentCard extends StatelessWidget {
             height: 36,
             decoration: BoxDecoration(
               color: colors.accent.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(AppDimens.radiusMD),
             ),
             child: Icon(Icons.schedule_rounded, size: 18, color: colors.accent),
           ),

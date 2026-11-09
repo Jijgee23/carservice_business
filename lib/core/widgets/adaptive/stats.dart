@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:carservice_business/app/theme/app_theme.dart';
 
 class StatGrid extends StatelessWidget {
   const StatGrid({
@@ -52,7 +53,7 @@ class StatCell extends StatelessWidget {
     return Card(
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppDimens.radiusMD),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(

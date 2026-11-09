@@ -289,7 +289,7 @@ class _CreateServiceBodyState extends State<_CreateServiceBody> {
                                                         .withValues(alpha: 0.12)
                                                   : context.colors.surface,
                                               borderRadius:
-                                                  BorderRadius.circular(12),
+                                                  BorderRadius.circular(AppDimens.radiusMD),
                                               border: Border.all(
                                                 color: active
                                                     ? context.colors.accent
@@ -539,7 +539,7 @@ class _CreateServiceBodyState extends State<_CreateServiceBody> {
                           backgroundColor: context.colors.accent,
                           foregroundColor: CarserviceTheme.of(context).onAccent,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
+                            borderRadius: BorderRadius.circular(AppDimens.radiusMD),
                           ),
                         ),
                         child: ctrl.submitting
@@ -575,7 +575,7 @@ class _KindReadOnly extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: context.colors.background,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppDimens.radiusMD),
         border: Border.all(color: context.colors.divider),
       ),
       child: Row(
@@ -604,7 +604,7 @@ class _LockedStockNotice extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: context.colors.background,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppDimens.radiusMD),
         border: Border.all(color: context.colors.divider),
       ),
       child: Row(
@@ -660,7 +660,7 @@ class _PickerTile extends StatelessWidget {
             ),
             decoration: BoxDecoration(
               color: context.colors.background,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(AppDimens.radiusMD),
               border: Border.all(
                 color: hasError
                     ? context.colors.danger
@@ -736,7 +736,7 @@ class _Section extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: context.colors.cardBg,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppDimens.radiusLG),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -796,7 +796,7 @@ class _Field extends StatelessWidget {
         errorText: errorText,
         filled: true,
         fillColor: context.colors.background,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppDimens.radiusMD)),
       ),
     );
   }

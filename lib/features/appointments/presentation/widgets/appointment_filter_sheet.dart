@@ -130,7 +130,7 @@ class _AppointmentFilterSheetState extends State<_AppointmentFilterSheet> {
     return Container(
       decoration: BoxDecoration(
         color: context.opsSurface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(AppDimens.radiusXL)),
       ),
       child: SafeArea(
         top: false,

@@ -160,7 +160,7 @@ class _LoadingSkeleton extends StatelessWidget {
         height: 84,
         decoration: BoxDecoration(
           color: context.opsCardBg,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(AppDimens.radiusMD),
         ),
       ),
     );
@@ -382,7 +382,7 @@ class _TimelineRow extends StatelessWidget {
         key: ValueKey('today_appt_${appointment.id}'),
         decoration: BoxDecoration(
           color: context.opsSurface,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(AppDimens.radiusMD),
           border: Border.all(
             color: isNext ? context.opsAccent : context.opsDivider,
             width: isNext ? 1.5 : 1,
@@ -538,7 +538,7 @@ class _StatusChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(99),
+        borderRadius: BorderRadius.circular(AppDimens.radiusFull),
       ),
       child: Text(
         label,

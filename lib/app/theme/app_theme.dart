@@ -11,8 +11,9 @@ import 'package:hive_flutter/hive_flutter.dart';
 // The web dashboard's "Ops Console" palette, for both brightnesses.
 //
 // Source of truth: `carservice.mn/app/globals.css`, the `.landing-ops` block
-// (dark) and its `html.light .landing-ops` override (light), read
-// 2026-09-28. Every `--oc-*` value in [OpsColors] is copied from there,
+// (dark) and its `html.light .landing-ops` override (light), re-read
+// 2026-11-09 ("Midnight + Alizarin": navy base, #e74c3c accent). Every
+// `--oc-*` value in [OpsColors] is copied from there,
 // including the per-brightness `--oc-on-accent`.
 //
 // Everything Material draws on its own — bottom navigation, sheets, menus,
@@ -139,18 +140,6 @@ abstract final class AppFonts {
   static const mono = 'IBM Plex Mono';
 }
 
-/// Legacy, brightness-agnostic palette. Every field name below is unchanged
-/// from the pre-P0-F3 navy/blue theme — over 300 call sites across 40+
-/// feature files (read-only for this slice) reference these as literal
-/// `Color` constants, not through `Theme.of(context)`, so renaming or
-/// removing any of them would break compilation in files this slice must
-/// not touch. What changed is only the *value* each name maps to: every
-/// entry now carries the Ops Console token it plays the equivalent role
-/// for (see the class-level comment above for the source line range).
-///
-/// Because these are static consts, not `Theme.of(context)` lookups, they
-/// can react to [ThemeMode] through the runtime palette and typography
-/// accessors below.
 /// Runtime aliases for the legacy palette names used by the pre-parity
 /// widgets. Unlike [AppColors], these resolve through the active
 /// [CarserviceTheme] so switching brightness updates existing presentation code.
@@ -200,45 +189,48 @@ extension ThemePaletteContext on BuildContext {
 /// `.landing-ops` blocks of `carservice.mn/app/globals.css` (`--oc-*` custom
 /// properties). [AppTheme] builds `ThemeData`/[CarserviceTheme] from these.
 abstract final class OpsColors {
-  static const darkCarbon = Color(0xFF0B0D10); // --oc-carbon
-  static const darkPanel = Color(0xFF0E1116); // --oc-panel
-  static const darkPanel2 = Color(0xFF101318); // --oc-panel2
-  static const darkLine = Color(0xFF23272E); // --oc-line
-  static const darkLine2 = Color(0xFF191D23); // --oc-line2
-  static const darkInk = Color(0xFFF4F5F7); // --oc-ink
-  static const darkInk2 = Color(0xFFEDEEF0); // --oc-ink2
-  static const darkMuted = Color(0xFFA7ADB6); // --oc-muted
-  static const darkMuted2 = Color(0xFF8A8F98); // --oc-muted2
-  static const darkMuted3 = Color(0xFF6E747E); // --oc-muted3
-  static const darkMuted4 = Color(0xFF4A4D54); // --oc-muted4
-  static const darkAccent = Color(0xFF22D3EE); // --oc-accent
-  static const darkAccentHi = Color(0xFF67E8F9); // --oc-accent-hi
-  static const darkOk = Color(0xFF3DDC97); // --oc-ok
-  static const darkWarn = Color(0xFFDC7F4F); // --oc-warn
-  // Plan §5.1 "Danger" dark row; not an --oc-* token.
-  static const darkDanger = Color(0xFFEF4444);
-  // Content on accent fills — dark on the light cyan accent.
-  static const darkOnAccent = Color(0xFF14120C); // --oc-on-accent
+  static const darkCarbon = Color(0xFF1E2B38); // --oc-carbon
+  static const darkPanel = Color(0xFF2C3E50); // --oc-panel
+  static const darkPanel2 = Color(0xFF26374A); // --oc-panel2
+  static const darkLine = Color(0xFF3B5167); // --oc-line
+  static const darkLine2 = Color(0xFF314559); // --oc-line2
+  static const darkInk = Color(0xFFECF0F1); // --oc-ink
+  static const darkInk2 = Color(0xFFDDE3E6); // --oc-ink2
+  static const darkMuted = Color(0xFFBDC6C8); // --oc-muted
+  static const darkMuted2 = Color(0xFFA9B4B6); // --oc-muted2
+  static const darkMuted3 = Color(0xFF95A5A6); // --oc-muted3
+  static const darkMuted4 = Color(0xFF5D6D7E); // --oc-muted4
+  static const darkAccent = Color(0xFFE74C3C); // --oc-accent
+  static const darkAccentHi = Color(0xFFF1948A); // --oc-accent-hi
+  static const darkOk = Color(0xFF58D68D); // --oc-ok
+  static const darkWarn = Color(0xFFF7C948); // --oc-warn
+  // Web status red (Tailwind red-400); not an --oc-* token.
+  static const darkDanger = Color(0xFFFF6467);
+  // Content on accent fills — white on the Alizarin accent.
+  static const darkOnAccent = Color(0xFFFFFFFF); // --oc-on-accent
+  // In-progress / informational blue — --oc-b6.
+  static const darkInfo = Color(0xFF5DADE2); // --oc-b6
 
-  static const lightCarbon = Color(0xFFF6F5F2); // --oc-carbon (light)
+  static const lightCarbon = Color(0xFFECF0F1); // --oc-carbon (light)
   static const lightPanel = Color(0xFFFFFFFF); // --oc-panel (light)
-  static const lightPanel2 = Color(0xFFFAF9F8); // --oc-panel2 (light)
-  static const lightLine = Color(0xFFE3E0DA); // --oc-line (light)
-  static const lightLine2 = Color(0xFFEAE7E1); // --oc-line2 (light)
-  static const lightInk = Color(0xFF16171B); // --oc-ink (light)
-  static const lightInk2 = Color(0xFF1E1F24); // --oc-ink2 (light)
-  static const lightMuted = Color(0xFF5C6067); // --oc-muted (light)
-  static const lightMuted2 = Color(0xFF74787F); // --oc-muted2 (light)
-  static const lightMuted3 = Color(0xFF90949B); // --oc-muted3 (light)
-  static const lightMuted4 = Color(0xFFB7BABF); // --oc-muted4 (light)
-  static const lightAccent = Color(0xFF0E7490); // --oc-accent (light)
-  static const lightAccentHi = Color(0xFF0891B2); // --oc-accent-hi (light)
-  static const lightOk = Color(0xFF1E9F6E); // --oc-ok (light)
-  static const lightWarn = Color(0xFFB45309); // --oc-warn (light)
-  // Plan §5.1 "Danger" light row; not an --oc-* token.
-  static const lightDanger = Color(0xFFDC2626);
-  // Content on accent fills — white on the dark teal accent.
+  static const lightPanel2 = Color(0xFFF4F6F7); // --oc-panel2 (light)
+  static const lightLine = Color(0xFFD5DCDF); // --oc-line (light)
+  static const lightLine2 = Color(0xFFE1E6E8); // --oc-line2 (light)
+  static const lightInk = Color(0xFF2C3E50); // --oc-ink (light)
+  static const lightInk2 = Color(0xFF34495E); // --oc-ink2 (light)
+  static const lightMuted = Color(0xFF5F6B6D); // --oc-muted (light)
+  static const lightMuted2 = Color(0xFF6B777A); // --oc-muted2 (light)
+  static const lightMuted3 = Color(0xFF7F8C8D); // --oc-muted3 (light)
+  static const lightMuted4 = Color(0xFFA9B4B6); // --oc-muted4 (light)
+  static const lightAccent = Color(0xFFC0392B); // --oc-accent (light)
+  static const lightAccentHi = Color(0xFFE74C3C); // --oc-accent-hi (light)
+  static const lightOk = Color(0xFF1E8449); // --oc-ok (light)
+  static const lightWarn = Color(0xFF9A6700); // --oc-warn (light)
+  // Web status red (Tailwind red-700); not an --oc-* token.
+  static const lightDanger = Color(0xFFC10007);
+  // Content on accent fills — white on the deep Alizarin accent.
   static const lightOnAccent = Color(0xFFFFFFFF); // --oc-on-accent (light)
+  static const lightInfo = Color(0xFF2471A3); // --oc-b6 (light)
 }
 
 /// Ops Console geometry (slice spec): 10px on panels (web's `rounded-[10px]`),
@@ -267,6 +259,7 @@ class CarserviceTheme extends ThemeExtension<CarserviceTheme> {
     required this.ok,
     required this.warn,
     required this.danger,
+    required this.info,
     required this.monoFontFamily,
   });
 
@@ -286,6 +279,10 @@ class CarserviceTheme extends ThemeExtension<CarserviceTheme> {
   final Color ok;
   final Color warn;
   final Color danger;
+
+  /// In-progress / informational status blue (`--oc-b6`), kept apart from
+  /// the red accent so "working on it" never reads as an error.
+  final Color info;
 
   /// Order numbers, plate numbers, money — anything tabular. Read this
   /// instead of hardcoding `'IBM Plex Mono'` in a widget.
@@ -319,6 +316,7 @@ class CarserviceTheme extends ThemeExtension<CarserviceTheme> {
       ok: scheme.tertiary,
       warn: scheme.secondary,
       danger: scheme.error,
+      info: scheme.secondary,
       monoFontFamily: AppFonts.mono,
     );
   }
@@ -341,6 +339,7 @@ class CarserviceTheme extends ThemeExtension<CarserviceTheme> {
     Color? ok,
     Color? warn,
     Color? danger,
+    Color? info,
     String? monoFontFamily,
   }) => CarserviceTheme(
     shellBackground: shellBackground ?? this.shellBackground,
@@ -359,6 +358,7 @@ class CarserviceTheme extends ThemeExtension<CarserviceTheme> {
     ok: ok ?? this.ok,
     warn: warn ?? this.warn,
     danger: danger ?? this.danger,
+    info: info ?? this.info,
     monoFontFamily: monoFontFamily ?? this.monoFontFamily,
   );
 
@@ -382,6 +382,7 @@ class CarserviceTheme extends ThemeExtension<CarserviceTheme> {
       ok: Color.lerp(ok, other.ok, t)!,
       warn: Color.lerp(warn, other.warn, t)!,
       danger: Color.lerp(danger, other.danger, t)!,
+      info: Color.lerp(info, other.info, t)!,
       // Not interpolable — snap over at the halfway point like other
       // discrete (non-Color) ThemeExtension fields conventionally do.
       monoFontFamily: t < 0.5 ? monoFontFamily : other.monoFontFamily,
@@ -911,6 +912,7 @@ class _Palette {
     required this.ok,
     required this.warn,
     required this.danger,
+    required this.info,
   });
 
   factory _Palette.of(Brightness brightness) =>
@@ -934,6 +936,7 @@ class _Palette {
     ok: OpsColors.darkOk,
     warn: OpsColors.darkWarn,
     danger: OpsColors.darkDanger,
+    info: OpsColors.darkInfo,
   );
 
   static const _light = _Palette._(
@@ -954,6 +957,7 @@ class _Palette {
     ok: OpsColors.lightOk,
     warn: OpsColors.lightWarn,
     danger: OpsColors.lightDanger,
+    info: OpsColors.lightInfo,
   );
 
   final Brightness brightness;
@@ -973,13 +977,14 @@ class _Palette {
   final Color ok;
   final Color warn;
   final Color danger;
+  final Color info;
 
   bool get isDark => brightness == Brightness.dark;
 
   /// Selected nav item, chip or option — `--filter-active-bg`: the accent at
-  /// 18% (dark) / 14% (light), flattened onto a panel.
+  /// 20% (dark) / 12% (light), flattened onto a panel.
   Color get selected =>
-      Color.alphaBlend(accent.withValues(alpha: isDark ? 0.18 : 0.14), panel);
+      Color.alphaBlend(accent.withValues(alpha: isDark ? 0.20 : 0.12), panel);
 
   CarserviceTheme get extension => CarserviceTheme(
     shellBackground: carbon,
@@ -998,6 +1003,7 @@ class _Palette {
     ok: ok,
     warn: warn,
     danger: danger,
+    info: info,
     monoFontFamily: AppFonts.mono,
   );
 }

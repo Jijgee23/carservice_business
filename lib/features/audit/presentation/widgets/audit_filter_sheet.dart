@@ -142,7 +142,7 @@ class _AuditFilterSheetState extends State<AuditFilterSheet> {
     return Container(
       decoration: BoxDecoration(
         color: context.colors.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(AppDimens.radiusXL)),
       ),
       child: SafeArea(
         top: false,

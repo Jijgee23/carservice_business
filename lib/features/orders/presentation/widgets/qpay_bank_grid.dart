@@ -130,7 +130,7 @@ class _BankLogo extends StatelessWidget {
       width: size,
       height: size,
       alignment: Alignment.center,
-      decoration: BoxDecoration(color: context.opsDivider, borderRadius: BorderRadius.circular(6)),
+      decoration: BoxDecoration(color: context.opsDivider, borderRadius: BorderRadius.circular(AppDimens.radiusSM)),
       child: Text(
         name.isEmpty ? '?' : name.characters.first.toUpperCase(),
         style: context.textStyles.caption,
@@ -138,7 +138,7 @@ class _BankLogo extends StatelessWidget {
     );
     if (!bank.logo.startsWith('https://')) return fallback;
     return ClipRRect(
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(AppDimens.radiusSM),
       child: Image.network(
         bank.logo,
         width: size,

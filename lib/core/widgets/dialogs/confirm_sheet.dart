@@ -172,7 +172,7 @@ class _ConfirmSheetWidgetState extends State<_ConfirmSheetWidget> {
     return Container(
       decoration: BoxDecoration(
         color: context.colors.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppDimens.radiusXL)),
       ),
       padding: EdgeInsets.fromLTRB(
         24,
@@ -366,7 +366,7 @@ class _StepDots extends StatelessWidget {
                 : active
                 ? context.colors.accent
                 : context.colors.divider,
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: BorderRadius.circular(AppDimens.radiusXS),
           ),
           child: done
               ? Icon(
@@ -398,7 +398,7 @@ class _CancelButton extends StatelessWidget {
           foregroundColor: context.colors.textSecondary,
           side: BorderSide(color: context.colors.divider),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(AppDimens.radiusMD),
           ),
         ),
         child: Text(
@@ -440,7 +440,7 @@ class _ConfirmButton extends StatelessWidget {
           foregroundColor: CarserviceTheme.of(context).onAccent,
           elevation: 0,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(AppDimens.radiusMD),
           ),
         ),
         child: loading

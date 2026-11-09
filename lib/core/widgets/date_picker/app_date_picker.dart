@@ -491,7 +491,7 @@ class _PickerSheetState extends State<_PickerSheet> {
     return Material(
       color: colors.surface,
       clipBehavior: Clip.antiAlias,
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(AppDimens.radiusXL)),
       child: SafeArea(
         top: false,
         child: Column(

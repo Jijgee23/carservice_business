@@ -78,7 +78,7 @@ class _Body extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(6, 10, 6, 6),
                 decoration: BoxDecoration(
                   color: colors.surface,
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(AppDimens.radiusXL),
                   border: Border.all(color: colors.divider),
                 ),
                 child: Column(
@@ -322,7 +322,7 @@ class _StatTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: colors.surface,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppDimens.radiusMD),
         border: Border.all(color: colors.divider),
       ),
       child: Row(
@@ -332,7 +332,7 @@ class _StatTile extends StatelessWidget {
             height: 30,
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(9),
+              borderRadius: BorderRadius.circular(AppDimens.radiusSM),
             ),
             child: Icon(icon, size: 17, color: color),
           ),
@@ -462,7 +462,7 @@ class _DayTile extends StatelessWidget {
               ? colors.good.withValues(alpha: 0.10)
               : Colors.transparent,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(AppDimens.radiusMD),
             side: isToday
                 ? BorderSide(color: colors.accent, width: 1.6)
                 : BorderSide(
@@ -562,7 +562,7 @@ class _DayNumber extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
       decoration: BoxDecoration(
         color: colors.accent,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(AppDimens.radiusSM),
       ),
       child: text,
     );

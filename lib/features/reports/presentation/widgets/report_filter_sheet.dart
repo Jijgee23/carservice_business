@@ -98,7 +98,7 @@ class _ReportFilterSheetState extends State<ReportFilterSheet> {
     final now = DateTime.now();
     return Material(
       color: colors.surface,
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(AppDimens.radiusXL)),
       clipBehavior: Clip.antiAlias,
       child: SafeArea(
         top: false,
