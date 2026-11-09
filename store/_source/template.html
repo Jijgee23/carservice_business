@@ -1,0 +1,63 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@500;600&display=swap&subset=cyrillic" rel="stylesheet">
+<style>
+:root{--carbon:#1e2b38;--panel:#2c3e50;--panel2:#26374a;--line:#3b5167;--line2:#314559;--ink:#ecf0f1;--muted:#bdc6c8;--muted3:#95a5a6;--accent:#e74c3c;--accentHi:#f1948a;--ok:#58d68d;--warn:#f7c948;--info:#5dade2}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100vw;height:100vh;overflow:hidden;font-family:Geist,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+body.dark{background:var(--carbon);color:var(--ink)}
+body.clear{background:transparent}
+.stage{position:absolute;inset:0}
+.grid{position:absolute;inset:0;background-image:linear-gradient(var(--line2) 1px,transparent 1px),linear-gradient(90deg,var(--line2) 1px,transparent 1px);background-size:calc(var(--u)*6) calc(var(--u)*6);opacity:.35;mask-image:radial-gradient(ellipse at center,#000 30%,transparent 75%)}
+.glow{position:absolute;left:50%;top:50%;width:calc(var(--u)*70);height:calc(var(--u)*70);transform:translate(-50%,-50%);background:radial-gradient(circle,rgba(231,76,60,.30),rgba(231,76,60,.08) 40%,transparent 68%)}
+.ring{position:absolute;left:50%;top:50%;border:1px solid var(--line);border-radius:50%;transform:translate(-50%,-50%);opacity:.5}
+.mark{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:calc(var(--u)*22);filter:drop-shadow(0 0 calc(var(--u)*4) rgba(231,76,60,.55))}
+.card{position:absolute;white-space:nowrap;display:flex;align-items:center;gap:calc(var(--u)*1.4);padding:calc(var(--u)*1.3) calc(var(--u)*2) calc(var(--u)*1.3) calc(var(--u)*1.3);background:rgba(44,62,80,.92);border:1px solid var(--line);border-radius:calc(var(--u)*1.2);box-shadow:0 calc(var(--u)*1.5) calc(var(--u)*4) rgba(0,0,0,.35)}
+.ic{width:calc(var(--u)*4);height:calc(var(--u)*4);border-radius:calc(var(--u)*.9);background:var(--panel2);border:1px solid var(--line);display:grid;place-items:center}
+.ic svg{width:calc(var(--u)*2.1);height:calc(var(--u)*2.1);stroke:var(--accentHi);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.t{font-weight:700;font-size:calc(var(--u)*1.55);letter-spacing:-.01em}
+.s{font-size:calc(var(--u)*1.15);color:var(--muted3);margin-top:calc(var(--u)*.3)}
+.s.mono{font-family:'Geist Mono',monospace;font-weight:600}
+.s.ok{color:var(--ok)} .s.info{color:var(--info)} .s.acc{color:var(--accentHi)}
+.pill{display:inline-flex;align-items:center;gap:.4em;padding:.15em .6em;border-radius:99px;background:rgba(88,214,141,.15);color:var(--ok);font-weight:600}
+/* feature graphic */
+.fg{position:absolute;inset:0;display:flex;align-items:center;padding:0 calc(var(--u)*7)}
+.fg .left{position:relative;z-index:2;width:58%}
+.fg .wm{height:calc(var(--u)*7.5)}
+.fg h1{font-size:calc(var(--u)*4.6);line-height:1.08;font-weight:800;letter-spacing:-.025em;margin-top:calc(var(--u)*3.2)}
+.fg h1 em{font-style:normal;color:var(--accent)}
+.fg p{font-size:calc(var(--u)*1.9);color:var(--muted);margin-top:calc(var(--u)*1.6)}
+.badge{display:inline-block;margin-left:calc(var(--u)*1.2);padding:.25em .7em;border-radius:calc(var(--u)*.8);background:var(--accent);color:#fff;font-weight:700;font-size:calc(var(--u)*1.6);vertical-align:middle;letter-spacing:.02em}
+/* logo */
+.logo{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:calc(var(--u)*3)}
+.logo img{height:100%}
+.biz{font-weight:700;font-size:calc(var(--u)*30);letter-spacing:-.02em}
+</style></head>
+<body><div class="stage" id="s"></div>
+<script>
+const q=new URLSearchParams(location.search), kind=q.get('kind'), app=q.get('app'), B=q.get('brand');
+const W=innerWidth,H=innerHeight; document.documentElement.style.setProperty('--u',(Math.min(W,H*2.1)/100)+'px');
+const I={pin:'<path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',cal:'<rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',car:'<path d="M5 16h14M6 16l1.5-5h9L18 16M5 16v3M19 16v3"/><circle cx="8" cy="16" r="0"/>',pulse:'<path d="M3 12h4l2-5 4 10 2-5h6"/>',doc:'<path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4M10 12h5M10 16h5"/>',clock:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',user:'<circle cx="12" cy="8" r="3.5"/><path d="M5 20c1-4 4-5.5 7-5.5s6 1.5 7 5.5"/>',chart:'<path d="M4 20V4M4 20h16M8 16v-4M12 16V8M16 16v-6"/>'};
+const C={customer:[['pin','Ойролцоох засвар','12 газар · 1.2 км',''],['cal','Цаг баталгаажлаа','Мягмар · 10:30','mono acc'],['car','Миний машин','Үйлчилгээний түүх',''],['pulse','Оношилгооны тайлан','<span class="pill">● Хэвийн</span>','']],
+business:[['doc','Засварын хуудас №0248','<span class="pill">● Дууссан</span>',''],['clock','Цаг захиалга','10:30 · Тос солих',''],['user','Үйлчлүүлэгч','Засварын түүх',''],['chart','Өнөөдрийн орлого','1,240,000₮','mono ok']]};
+const card=(c,x,y)=>`<div class="card" style="left:${x}%;top:${y}%;transform:translate(-50%,-50%)"><div class="ic"><svg viewBox="0 0 24 24">${I[c[0]]}</svg></div><div><div class="t">${c[1]}</div><div class="s ${c[3]}">${c[2]}</div></div></div>`;
+const s=document.getElementById('s');
+if(kind==='hero'){document.body.className='dark';
+  const tall=H/W>0.55, P=tall?[[26,30],[74,30],[27,66],[73,66]]:[[22,28],[78,28],[24,70],[76,70]];
+  s.innerHTML=`<div class="grid"></div><div class="glow"></div>
+  <div class="ring" style="width:calc(var(--u)*34);height:calc(var(--u)*34)"></div><div class="ring" style="width:calc(var(--u)*52);height:calc(var(--u)*52);opacity:.25"></div>
+  <img class="mark" src="${B}/mark.svg">`+C[app].map((c,i)=>card(c,...P[i])).join('');
+}
+if(kind==='feature'){document.body.className='dark';
+  const head=app==='customer'?['Ойролцоох засварыг <em>олж</em>,<br>цагаа онлайнаар захиал','Засвар, оношилгоо, түүх — нэг аппад']:['Засварын газраа<br><em>нэг дороос</em> удирд','Захиалга, цаг, касс, тайлан — ажилтанд'];
+  s.innerHTML=`<div class="grid" style="mask-image:radial-gradient(ellipse at 80% 50%,#000 20%,transparent 70%)"></div><div class="glow" style="left:78%"></div>
+  <img class="mark" src="${B}/mark.svg" style="left:78%;width:calc(var(--u)*17)">
+  ${card(C[app][1],78,22)}${card(C[app][3],80,80)}
+  <div class="fg"><div class="left"><img class="wm" src="${B}/carservice_mn_logo_dark.svg">${app==='business'?'<span class="badge">Business</span>':''}<h1>${head[0]}</h1><p>${head[1]}</p></div></div>`;
+}
+if(kind==='mark'){document.body.className='clear';s.innerHTML=`<img src="${B}/mark.svg" style="position:absolute;inset:0;width:100%;height:100%">`;}
+if(kind==='logo'){document.body.className='clear';
+  const dark=q.get('tone')==='dark';
+  s.innerHTML=`<div class="logo" style="padding:4%"><img src="${B}/${dark?'carservice_mn_logo_dark':'carservice_mn_logo'}.svg" style="height:${app==='business'?'62%':'86%'}">${app==='business'?`<span class="badge" style="font-size:calc(var(--u)*7);border-radius:calc(var(--u)*2.2)">Business</span>`:''}</div>`;
+}
+</script></body></html>
