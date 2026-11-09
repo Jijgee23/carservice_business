@@ -10,6 +10,7 @@ import 'package:carservice_business/core/utils/async_value.dart';
 import 'package:carservice_business/core/widgets/adaptive/adaptive.dart';
 import 'package:carservice_business/core/widgets/common/common_widgets.dart';
 import 'package:carservice_business/core/widgets/filter_pill.dart';
+import 'package:carservice_business/core/widgets/list_search_bar.dart';
 import 'package:carservice_business/features/customers/domain/customers_repository.dart';
 import 'package:carservice_business/features/customers/domain/customer.dart';
 import 'package:carservice_business/features/customers/presentation/controllers/customer_list_controller.dart';
@@ -97,39 +98,21 @@ class _CustomerSearchTabState extends State<CustomerSearchTab> {
                   AppDimens.paddingMD,
                   AppDimens.paddingMD,
                   AppDimens.paddingMD,
-                  AppDimens.paddingXS,
+                  0,
                 ),
                 child: Row(
                   children: [
                     Expanded(
-                      child: TextField(
+                      child: ListSearchBar(
                         controller: _ctrl,
+                        hintText: 'Нэр, утас, регистрээр хайх',
                         onChanged: ctrl.setQuery,
-                        decoration: InputDecoration(
-                          hintText: 'Нэр, утас эсвэл регистрээр хайх...',
-                          prefixIcon: Icon(
-                            Icons.search,
-                            color: context.colors.textHint,
-                          ),
-                          suffixIcon: ctrl.listState is AsyncLoading
-                              // Fixed box: AppLoading's Center would
-                              // otherwise expand across the whole field and
-                              // squeeze the typed text out of view.
-                              ? const SizedBox.square(
-                                  dimension: 48,
-                                  child: AppLoading(size: 16),
-                                )
-                              : _ctrl.text.isNotEmpty
-                              ? IconButton(
-                                  icon: const Icon(Icons.clear),
-                                  onPressed: () {
-                                    _ctrl.clear();
-                                    ctrl.setQuery('');
-                                  },
-                                )
-                              : null,
-                        ),
-                        style: context.textStyles.body,
+                        onClear: () {
+                          _ctrl.clear();
+                          ctrl.setQuery('');
+                        },
+                        loading: ctrl.listState is AsyncLoading,
+                        padding: EdgeInsets.zero,
                       ),
                     ),
                     // Entry point for the P3-F7 broadcast surface — an
@@ -145,39 +128,57 @@ class _CustomerSearchTabState extends State<CustomerSearchTab> {
                     PermissionGate(
                       permission: 'customers.notify',
                       user: _user,
-                      child: IconButton(
-                        icon: const Icon(Icons.campaign_outlined),
-                        tooltip: 'Зар мэдээ илгээх',
-                        onPressed: () =>
-                            AppNav.to(const CustomerBroadcastScreen()),
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        // Same outlined square as ListSearchBar's filter
+                        // button on the Orders/Appointments lists.
+                        child: IconButton.outlined(
+                          icon: const Icon(Icons.campaign_outlined),
+                          tooltip: 'Зар мэдээ илгээх',
+                          color: context.colors.textPrimary,
+                          style: IconButton.styleFrom(
+                            minimumSize: const Size(48, 48),
+                            side: BorderSide(color: context.colors.divider),
+                          ),
+                          onPressed: () =>
+                              AppNav.to(const CustomerBroadcastScreen()),
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppDimens.paddingMD,
-                ),
-                child: Wrap(
-                  spacing: 8,
-                  children: [
-                    FilterPill(
-                      label: 'Бүгд',
-                      selected: ctrl.kind == null,
-                      onTap: () => ctrl.setKind(null),
-                    ),
-                    FilterPill(
-                      label: 'Байгууллага',
-                      selected: ctrl.kind == CustomerKindFilter.org,
-                      onTap: () => ctrl.setKind(CustomerKindFilter.org),
-                    ),
-                    FilterPill(
-                      label: 'Хувь хүн',
-                      selected: ctrl.kind == CustomerKindFilter.person,
-                      onTap: () => ctrl.setKind(CustomerKindFilter.person),
-                    ),
-                  ],
+              Align(
+                alignment: Alignment.centerLeft,
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.fromLTRB(
+                    AppDimens.paddingMD,
+                    AppDimens.paddingXS,
+                    AppDimens.paddingMD,
+                    AppDimens.paddingXS,
+                  ),
+                  child: Row(
+                    children: [
+                      FilterPill(
+                        label: 'Бүгд',
+                        selected: ctrl.kind == null,
+                        onTap: () => ctrl.setKind(null),
+                      ),
+                      const SizedBox(width: 8),
+                      FilterPill(
+                        label: 'Байгууллага',
+                        selected: ctrl.kind == CustomerKindFilter.org,
+                        onTap: () => ctrl.setKind(CustomerKindFilter.org),
+                      ),
+                      const SizedBox(width: 8),
+                      FilterPill(
+                        label: 'Хувь хүн',
+                        selected: ctrl.kind == CustomerKindFilter.person,
+                        onTap: () => ctrl.setKind(CustomerKindFilter.person),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               Expanded(
@@ -191,31 +192,37 @@ class _CustomerSearchTabState extends State<CustomerSearchTab> {
                     icon: Icons.person_search_outlined,
                   ),
                   onRetry: ctrl.refresh,
-                  builder: (context, customers) => ListView.separated(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppDimens.paddingMD,
-                      vertical: AppDimens.paddingXS,
-                    ),
-                    itemCount: customers.length + 1,
-                    separatorBuilder: (context, i) =>
-                        const SizedBox(height: AppDimens.paddingSM),
-                    itemBuilder: (_, i) {
-                      if (i == customers.length) {
-                        return CustomerListFooter(
-                          loadingMore: ctrl.loadingMore,
-                          loadMoreError: ctrl.loadMoreError?.display,
-                          hasNext: ctrl.hasNext,
-                          total: ctrl.total,
-                          onLoadMore: () => unawaited(ctrl.loadMore()),
+                  builder: (context, customers) => RefreshIndicator(
+                    onRefresh: ctrl.refresh,
+                    child: ListView.separated(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(
+                        AppDimens.paddingMD,
+                        AppDimens.paddingSM,
+                        AppDimens.paddingMD,
+                        AppDimens.paddingMD,
+                      ),
+                      itemCount: customers.length + 1,
+                      separatorBuilder: (context, i) =>
+                          const SizedBox(height: AppDimens.paddingSM),
+                      itemBuilder: (_, i) {
+                        if (i == customers.length) {
+                          return CustomerListFooter(
+                            loadingMore: ctrl.loadingMore,
+                            loadMoreError: ctrl.loadMoreError?.display,
+                            hasNext: ctrl.hasNext,
+                            total: ctrl.total,
+                            onLoadMore: () => unawaited(ctrl.loadMore()),
+                          );
+                        }
+                        final c = customers[i];
+                        return CustomerCard(
+                          customer: c,
+                          onTap: () =>
+                              AppNav.to(CustomerDetailScreen(customerId: c.id)),
                         );
-                      }
-                      final c = customers[i];
-                      return CustomerCard(
-                        customer: c,
-                        onTap: () =>
-                            AppNav.to(CustomerDetailScreen(customerId: c.id)),
-                      );
-                    },
+                      },
+                    ),
                   ),
                 ),
               ),

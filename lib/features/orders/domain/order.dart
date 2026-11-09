@@ -1,5 +1,6 @@
 import 'package:carservice_business/core/domain/diagnostic.dart';
 import 'package:carservice_business/core/domain/pagination.dart';
+import 'package:carservice_business/core/utils/money_format.dart';
 import 'package:carservice_business/features/orders/domain/order_intake.dart';
 
 export 'package:carservice_business/features/orders/domain/order_intake.dart';
@@ -51,16 +52,6 @@ typedef DecimalValue = Money;
 /// The API excludes PART and CANCELLED items before calculating these counts.
 /// Keeping the value object integer-only avoids introducing rounding into the
 /// list contract; presentation may derive a ratio when it needs one.
-String _groupThousands(double value) {
-  final digits = value.round().toString();
-  final buf = StringBuffer();
-  for (var i = 0; i < digits.length; i++) {
-    if (i > 0 && (digits.length - i) % 3 == 0) buf.write(',');
-    buf.write(digits[i]);
-  }
-  return buf.toString();
-}
-
 class OrderProgressSummary {
   final int total;
   final int completed;
@@ -793,7 +784,7 @@ class ServiceOrderSummary {
     }
     final balance = unpaidBalance;
     if (!isPostpaid && !isInternal && balance != null && balance > 0.004) {
-      reasons.add('${_groupThousands(balance)}₮ төлөгдөөгүй');
+      reasons.add('${formatMoneyNum(balance)} төлөгдөөгүй');
     }
     if (isPostpaid &&
         !canCloseUnpaidPostpaid &&

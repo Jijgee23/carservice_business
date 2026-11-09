@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:carservice_business/app/theme/app_theme.dart';
 import 'package:carservice_business/core/domain/user.dart';
 import 'package:carservice_business/core/services/auth_storage.dart';
+import 'package:carservice_business/core/utils/price_input.dart';
 import 'package:carservice_business/core/utils/validators.dart';
 import 'package:carservice_business/core/widgets/adaptive/permission_gate.dart';
 import 'package:carservice_business/core/widgets/common/common_widgets.dart';
@@ -103,8 +104,12 @@ class _CreateServiceBodyState extends State<_CreateServiceBody> {
     final existing = context.read<CreateServiceController>().existing;
     _nameCtrl = TextEditingController(text: existing?.name ?? '');
     _codeCtrl = TextEditingController(text: existing?.code ?? '');
-    _priceCtrl = TextEditingController(text: existing?.price ?? '');
-    _costPriceCtrl = TextEditingController(text: existing?.costPrice ?? '');
+    _priceCtrl = TextEditingController(
+      text: formatPriceInput(existing?.price ?? ''),
+    );
+    _costPriceCtrl = TextEditingController(
+      text: formatPriceInput(existing?.costPrice ?? ''),
+    );
     _stockCtrl = TextEditingController();
     _durationCtrl = TextEditingController(text: existing?.durationValue ?? '');
     // Pre-filled on edit: PATCH replaces the whole record, so an empty field
@@ -135,6 +140,10 @@ class _CreateServiceBodyState extends State<_CreateServiceBody> {
       _priceCtrl.text.trim().isNotEmpty &&
       ctrl.selectedCategory != null;
 
+  /// A price field's number as the API takes it: grouping commas removed.
+  static String _priceText(TextEditingController c) =>
+      c.text.replaceAll(',', '').trim();
+
   Future<void> _submit(CreateServiceController ctrl) async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     if (ctrl.selectedCategory == null) {
@@ -145,10 +154,10 @@ class _CreateServiceBodyState extends State<_CreateServiceBody> {
     final saved = await ctrl.submit(
       name: _nameCtrl.text.trim(),
       code: _codeCtrl.text.trim().isEmpty ? null : _codeCtrl.text.trim(),
-      price: _priceCtrl.text.trim(),
-      costPrice: _costPriceCtrl.text.trim().isEmpty
+      price: _priceText(_priceCtrl),
+      costPrice: _priceText(_costPriceCtrl).isEmpty
           ? null
-          : _costPriceCtrl.text.trim(),
+          : _priceText(_costPriceCtrl),
       stock: _stockCtrl.text.trim().isEmpty ? null : _stockCtrl.text.trim(),
       durationValue: _durationCtrl.text.trim().isEmpty
           ? null
@@ -381,11 +390,7 @@ class _CreateServiceBodyState extends State<_CreateServiceBody> {
                             keyboardType: const TextInputType.numberWithOptions(
                               decimal: true,
                             ),
-                            inputFormatters: [
-                              FilteringTextInputFormatter.allow(
-                                RegExp(r'^\d*\.?\d*'),
-                              ),
-                            ],
+                            inputFormatters: const [PriceInputFormatter()],
                             onChanged: (_) => setState(() {}),
                           ),
                           if (ctrl.showCostAndStock) ...[
@@ -399,11 +404,7 @@ class _CreateServiceBodyState extends State<_CreateServiceBody> {
                                   const TextInputType.numberWithOptions(
                                     decimal: true,
                                   ),
-                              inputFormatters: [
-                                FilteringTextInputFormatter.allow(
-                                  RegExp(r'^\d*\.?\d*'),
-                                ),
-                              ],
+                              inputFormatters: const [PriceInputFormatter()],
                             ),
                             const SizedBox(height: 12),
                             if (isEditing)

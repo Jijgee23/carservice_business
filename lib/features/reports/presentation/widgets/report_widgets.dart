@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'package:carservice_business/app/theme/app_theme.dart';
+import 'package:carservice_business/core/utils/money_format.dart';
 import 'package:carservice_business/core/widgets/common/common_widgets.dart';
 
 /// Small presentational pieces shared across the Reports screen's sections —
@@ -9,11 +10,9 @@ import 'package:carservice_business/core/widgets/common/common_widgets.dart';
 /// list/card here instead of a wide table, per the slice's phone-readability
 /// requirement.
 
-final NumberFormat _moneyFormat = NumberFormat('#,###');
-
 /// `formatTugrik()` on the web, ported: integer amount with thousands
 /// separators and a trailing tögrög sign.
-String formatTugrik(num amount) => '${_moneyFormat.format(amount.round())}₮';
+String formatTugrik(num amount) => formatMoneyNum(amount.round());
 
 /// `formatDuration()` on the web (`lib/category-duration.ts`), ported:
 /// whole hours + remaining minutes, Mongolian short units. Zero/negative

@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:carservice_business/app/theme/app_theme.dart';
 import 'package:carservice_business/core/domain/user.dart';
 import 'package:carservice_business/core/services/auth_storage.dart';
+import 'package:carservice_business/core/utils/money_format.dart';
 import 'package:carservice_business/core/widgets/adaptive/async_state_view.dart';
 import 'package:carservice_business/core/widgets/adaptive/permission_gate.dart';
 import 'package:carservice_business/core/widgets/common/common_widgets.dart';
@@ -123,7 +124,6 @@ class _BodyState extends State<_Body>
 
   late final TabController _tabController;
   final _searchController = TextEditingController();
-  final _numberFormat = NumberFormat('#,###');
   bool _didLoad = false;
 
   User? get _user => widget.user ?? Authenticator.user;
@@ -248,7 +248,6 @@ class _BodyState extends State<_Body>
               final service = items[index];
               return _ServiceCard(
                 service: service,
-                numberFormat: _numberFormat,
                 onTap: widget.onSelectService == null
                     ? null
                     : () => widget.onSelectService!(service),
@@ -397,26 +396,15 @@ class _ServiceListFooter extends StatelessWidget {
 // ─── Service card ────────────────────────────────────────────────────────────
 
 class _ServiceCard extends StatelessWidget {
-  const _ServiceCard({
-    required this.service,
-    required this.numberFormat,
-    this.onTap,
-  });
+  const _ServiceCard({required this.service, this.onTap});
 
   final Service service;
-  final NumberFormat numberFormat;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final s = service;
     final categoryName = s.category?.name;
-    // Display-only: the raw decimal `price` string is what is round-tripped
-    // for editing (see `service.dart`'s module doc comment on why money
-    // fields stay strings); this list row has always truncated to whole
-    // currency units for a compact display, matching the legacy screen's
-    // `s.price.toInt()` convention exactly — not a new precision decision.
-    final priceValue = double.tryParse(s.price ?? '') ?? 0;
 
     return Material(
       color: context.colors.surface,
@@ -568,7 +556,7 @@ class _ServiceCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    '${numberFormat.format(priceValue.toInt())}₮',
+                    formatMoney(s.price),
                     style: context.textStyles.bodyMedium.copyWith(
                       color: context.colors.accent,
                       fontWeight: FontWeight.w700,

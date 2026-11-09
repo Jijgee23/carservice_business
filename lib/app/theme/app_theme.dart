@@ -570,6 +570,25 @@ abstract final class AppTheme {
               : Brightness.dark,
         ),
       ),
+      // Every back button — an app bar's automatic one or an explicit
+      // `BackButton` — is the same rounded chevron tile.
+      actionIconTheme: ActionIconThemeData(
+        backButtonIconBuilder: (_) => Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            // Translucent, so the button's press overlay shows through.
+            color: p.ink.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(AppDimens.radiusMD),
+            border: Border.all(color: p.line),
+          ),
+          child: Icon(
+            Icons.arrow_back_ios_new_rounded,
+            size: AppDimens.iconSM,
+            color: p.ink,
+          ),
+        ),
+      ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: p.panel,
         surfaceTintColor: Colors.transparent,

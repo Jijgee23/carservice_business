@@ -94,7 +94,7 @@ void main() {
 
     expect(find.text('Тормозны наклад'), findsOneWidget);
     expect(find.text('BRK-001'), findsOneWidget);
-    expect(find.text('45000.00'), findsOneWidget);
+    expect(find.text('45,000'), findsOneWidget);
     // Stock is never an editable field in edit mode — see
     // `CreateServiceController.lockedStock`'s doc comment.
     expect(find.textContaining('Одоогийн үлдэгдэл: 12.5'), findsOneWidget);
@@ -156,6 +156,45 @@ void main() {
 
     expect(find.text('Нэр оруулна уу.'), findsOneWidget);
   });
+
+  testWidgets('price fields group thousands but submit plain numbers', (
+    tester,
+  ) async {
+    final existing = FakeServiceRepository.seedService(id: 'svc-1');
+    final repo = _RejectingRepository(existing);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light,
+        home: CreateServiceScreen(
+          existing: existing,
+          repo: repo,
+          user: _user(const ['services.edit']),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 20));
+
+    // Prefilled from '30000.00'.
+    expect(find.text('30,000'), findsOneWidget);
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Зарах үнэ ₮'),
+      '1250000.5',
+    );
+    await tester.pump();
+    expect(find.text('1,250,000.5'), findsOneWidget);
+
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('service_form_submit')),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('service_form_submit')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 20));
+
+    expect(repo.sentPrice, '1250000.5');
+    expect(repo.sentCostPrice, '30000');
+  });
 }
 
 /// Always rejects `updateService` with a 422 on `name`, so the screen's
@@ -164,6 +203,9 @@ void main() {
 class _RejectingRepository implements ServicesRepository {
   _RejectingRepository(this._existing);
   final Service _existing;
+
+  /// What the last `updateService` call was given.
+  String? sentPrice, sentCostPrice;
 
   @override
   Future<Result<Service>> updateService(
@@ -181,15 +223,19 @@ class _RejectingRepository implements ServicesRepository {
     String? description,
     bool isActive = true,
     required String categoryId,
-  }) async => const Err(
-    AppError(
-      ErrorKind.unknown,
-      'Хүсэлт буруу.',
-      statusCode: 422,
-      code: 'VALIDATION_FAILED',
-      fieldErrors: {'name': 'Нэр оруулна уу.'},
-    ),
-  );
+  }) async {
+    sentPrice = price;
+    sentCostPrice = costPrice;
+    return const Err(
+      AppError(
+        ErrorKind.unknown,
+        'Хүсэлт буруу.',
+        statusCode: 422,
+        code: 'VALIDATION_FAILED',
+        fieldErrors: {'name': 'Нэр оруулна уу.'},
+      ),
+    );
+  }
 
   @override
   Future<Result<List<Unit>>> getUnits() async =>

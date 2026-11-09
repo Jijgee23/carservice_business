@@ -246,7 +246,7 @@ void main() {
             width: width,
           );
           expect(find.text('100.50₮'), findsNWidgets(2));
-          expect(find.text('0.00₮'), findsOneWidget);
+          expect(find.text('0₮'), findsOneWidget);
           expect(tester.takeException(), isNull);
           await tester.pumpWidget(const SizedBox.shrink());
         }

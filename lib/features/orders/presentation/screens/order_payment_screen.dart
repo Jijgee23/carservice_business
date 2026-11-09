@@ -1,4 +1,5 @@
 import 'package:carservice_business/core/utils/price_input.dart';
+import 'package:carservice_business/core/utils/money_format.dart';
 import 'package:carservice_business/app/shell/shell_chrome.dart';
 
 import 'dart:convert';
@@ -699,7 +700,7 @@ String _remainingRaw(ServiceOrderDetail detail) {
   return balance == balance.roundToDouble() ? balance.toInt().toString() : balance.toString();
 }
 
-String _displayMoney(Money? money) => money == null ? '—' : '${money.raw}₮';
+String _displayMoney(Money? money) => formatMoney(money?.raw);
 Money? _fallbackMoney(double? value) => value == null ? null : Money(value.toString());
 
 String _methodLabel(OrderPaymentMethod method) => switch (method) {

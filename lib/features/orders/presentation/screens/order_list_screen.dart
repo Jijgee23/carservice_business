@@ -922,7 +922,6 @@ class _TabletOrderList extends StatelessWidget {
   final ValueChanged<int> onSort;
 
   static final _dateFmt = DateFormat('MM/dd HH:mm');
-  static final _moneyFmt = NumberFormat('#,###');
 
   List<RecordColumn<ServiceOrderSummary>> _columns(BuildContext context) => [
     RecordColumn<ServiceOrderSummary>(
@@ -989,9 +988,7 @@ class _TabletOrderList extends StatelessWidget {
       flex: 2,
       numeric: true,
       builder: (context, order) => Text(
-        order.totalAmount == null
-            ? '—'
-            : '${_moneyFmt.format(order.totalAmount!.toInt())}₮',
+        orderTotalText(order),
         style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()]),
       ),
     ),

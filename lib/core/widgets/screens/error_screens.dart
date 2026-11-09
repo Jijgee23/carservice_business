@@ -224,10 +224,7 @@ class NotFoundScreen extends StatelessWidget {
       backgroundColor: context.colors.background,
       appBar: AppBar(
         backgroundColor: context.colors.brandSurface,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: onBack ?? () => AppNav.back(),
-        ),
+        leading: BackButton(onPressed: onBack ?? () => AppNav.back()),
         title: Text('Буцах'),
       ),
       body: SafeArea(

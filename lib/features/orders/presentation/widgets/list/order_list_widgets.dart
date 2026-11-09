@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:carservice_business/core/utils/money_format.dart';
 import 'package:carservice_business/core/utils/vehicle_plate.dart';
 import 'package:intl/intl.dart';
 
@@ -15,6 +16,13 @@ List<ServiceItem> progressItems(Iterable<ServiceItem> items) => items
           item.status != ServiceItemStatus.CANCELLED,
     )
     .toList(growable: false);
+
+/// An order row's total: the lossless [Money] when the row has it, else the
+/// legacy double; "—" when neither is known.
+String orderTotalText(ServiceOrderSummary order) =>
+    order.totalAmountMoney != null
+    ? formatMoney(order.totalAmountMoney!.raw)
+    : formatMoneyNum(order.totalAmount);
 
 class OrderStatusChip extends StatelessWidget {
   const OrderStatusChip({super.key, required this.status});
@@ -112,7 +120,6 @@ class OrderPhoneCard extends StatelessWidget {
   final ValueChanged<bool> onSelect;
 
   static final _dateFmt = DateFormat('MM/dd HH:mm');
-  static final _moneyFmt = NumberFormat('#,###');
 
   @override
   Widget build(BuildContext context) {
@@ -219,7 +226,7 @@ class OrderPhoneCard extends StatelessWidget {
                           if (order.totalAmount != null) ...[
                             const SizedBox(width: 8),
                             Text(
-                              '${_moneyFmt.format(order.totalAmount!.toInt())}₮',
+                              orderTotalText(order),
                               style: context.textStyles.h3.copyWith(
                                 fontFeatures: const [
                                   FontFeature.tabularFigures(),

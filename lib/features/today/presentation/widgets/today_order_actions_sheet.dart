@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import 'package:carservice_business/app/theme/app_theme.dart';
 import 'package:carservice_business/core/navigation/app_nav.dart';
 import 'package:carservice_business/core/utils/async_value.dart';
+import 'package:carservice_business/core/utils/money_format.dart';
 import 'package:carservice_business/core/utils/result.dart';
 import 'package:carservice_business/core/utils/vehicle_plate.dart';
 import 'package:carservice_business/features/orders/domain/order.dart';
@@ -69,8 +69,6 @@ class TodayMenuAccess {
   /// Complete the order itself: order edit.
   final bool complete;
 }
-
-final _money = NumberFormat('#,##0.##', 'en_US');
 
 /// Every action a Today card offers for its order. It loads the order's
 /// detail first: work lines and diagnostics are not on the board's rows.
@@ -232,7 +230,7 @@ class _TodayOrderActionsSheetState extends State<TodayOrderActionsSheet> {
           title: 'Төлбөр бүртгэх',
           subtitle: balance == null || balance <= 0
               ? null
-              : 'Үлдэгдэл ${_money.format(balance)}₮',
+              : 'Үлдэгдэл ${formatMoneyNum(balance)}',
           onTap: () => _pick(const TodayPay()),
         ),
       if (inProgress && access.complete)

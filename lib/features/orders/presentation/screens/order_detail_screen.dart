@@ -1,4 +1,5 @@
 import 'package:carservice_business/core/utils/price_input.dart';
+import 'package:carservice_business/core/utils/money_format.dart';
 import 'package:carservice_business/app/shell/shell_chrome.dart';
 import 'package:carservice_business/core/utils/vehicle_plate.dart';
 import 'package:carservice_business/core/services/service_catalog_service.dart';
@@ -1091,7 +1092,7 @@ class _PaymentTile extends StatelessWidget {
   }
 }
 
-String _moneyText(Money? money) => money == null ? '—' : '${money.raw}₮';
+String _moneyText(Money? money) => formatMoney(money?.raw);
 
 String _subtractMoneyStrings(String left, String right) {
   final a = _moneyParts(left);
@@ -1379,8 +1380,6 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final numFmt = NumberFormat('#,###');
-
     return Scaffold(
       appBar: AppBar(
         title: Text(_isEdit ? 'Мөр засах' : 'Мөр нэмэх'),
@@ -1556,7 +1555,7 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
                                 ),
                                 SizedBox(width: 8),
                                 Text(
-                                  '${numFmt.format(svc.price.toInt())}₮',
+                                  formatMoneyNum(svc.price),
                                   style: context.textStyles.captionMedium
                                       .copyWith(color: context.opsAccent),
                                 ),

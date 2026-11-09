@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:carservice_business/app/theme/app_theme.dart';
+import 'package:carservice_business/core/widgets/common/common_widgets.dart';
 
 /// Search field for a list screen, with an optional filter button whose
 /// badge counts the active filters. Flat panel styling, so it reads the same
@@ -18,6 +19,7 @@ class ListSearchBar extends StatelessWidget {
     this.onFilter,
     this.activeFilters = 0,
     this.filterKey,
+    this.loading = false,
     this.padding = const EdgeInsets.fromLTRB(12, 0, 12, 8),
   });
 
@@ -30,6 +32,9 @@ class ListSearchBar extends StatelessWidget {
   final VoidCallback? onFilter;
   final int activeFilters;
   final Key? filterKey;
+
+  /// A small spinner in place of the clear button while the list reloads.
+  final bool loading;
   final EdgeInsetsGeometry padding;
 
   @override
@@ -51,7 +56,14 @@ class ListSearchBar extends StatelessWidget {
               decoration: InputDecoration(
                 hintText: hintText,
                 prefixIcon: Icon(Icons.search, color: colors.textSecondary),
-                suffixIcon: controller.text.isEmpty
+                suffixIcon: loading
+                    // Fixed box: AppLoading's Center would otherwise expand
+                    // across the whole field and squeeze the typed text out.
+                    ? const SizedBox.square(
+                        dimension: 48,
+                        child: AppLoading(size: 16),
+                      )
+                    : controller.text.isEmpty
                     ? null
                     : IconButton(
                         tooltip: 'Цэвэрлэх',

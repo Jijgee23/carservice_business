@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:carservice_business/core/utils/money_format.dart';
 import 'package:carservice_business/core/utils/vehicle_plate.dart';
 import 'package:intl/intl.dart';
 
@@ -12,25 +13,8 @@ import 'package:carservice_business/features/orders/presentation/feature_theme.d
 final _dateFormat = DateFormat('yyyy.MM.dd');
 final _dateTimeFormat = DateFormat('yyyy.MM.dd HH:mm');
 
-/// Formats the already validated decimal text without converting through a
-/// binary floating-point value. This preserves exact fractional digits and
-/// values beyond IEEE-754's safe integer range.
-String formatPostpaidMoney(Money value) {
-  var raw = value.raw;
-  var sign = '';
-  if (raw.startsWith('-')) {
-    sign = '-';
-    raw = raw.substring(1);
-  }
-  final parts = raw.split('.');
-  final integer = parts.first;
-  final fraction = parts.length == 1 ? '' : '.${parts.sublist(1).join('.')}';
-  final grouped = integer.replaceAllMapped(
-    RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
-    (match) => '${match[1]},',
-  );
-  return '$sign$grouped$fraction₮';
-}
+/// [formatMoney] on the exact decimal text, never through a double.
+String formatPostpaidMoney(Money value) => formatMoney(value.raw);
 
 class PostpaidSummaryCard extends StatelessWidget {
   const PostpaidSummaryCard({super.key, required this.summary});

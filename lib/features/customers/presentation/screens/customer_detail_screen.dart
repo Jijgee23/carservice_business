@@ -7,6 +7,7 @@ import 'package:carservice_business/app/theme/app_theme.dart';
 import 'package:carservice_business/core/domain/user.dart';
 import 'package:carservice_business/core/services/auth_storage.dart';
 import 'package:carservice_business/core/utils/async_value.dart';
+import 'package:carservice_business/core/utils/money_format.dart';
 import 'package:carservice_business/core/utils/result.dart';
 import 'package:carservice_business/core/widgets/adaptive/async_state_view.dart';
 import 'package:carservice_business/core/widgets/adaptive/permission_gate.dart';
@@ -565,7 +566,10 @@ class _HistoryOrderRow extends StatelessWidget {
             ),
           ),
           if (order.totalAmount != null)
-            Text(order.totalAmount!, style: context.textStyles.bodyMedium),
+            Text(
+              formatMoney(order.totalAmount),
+              style: context.textStyles.bodyMedium,
+            ),
         ],
       ),
     );

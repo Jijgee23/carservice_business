@@ -128,6 +128,39 @@ void main() {
     expect(find.text('Болд'), findsNWidgets(2));
     controller.dispose();
   });
+  testWidgets('cards show each fact once and mark organizations', (
+    tester,
+  ) async {
+    final controller = CustomerListController(
+      repo: FakeCustomerRepository(
+        seed: const [
+          Customer(id: 'walk-in', phone: '99887766'),
+          Customer(
+            id: 'org',
+            fullName: 'Ганбаатар',
+            phone: '95556677',
+            isOrganization: true,
+            orgName: 'Тэнгэр Тээвэр ХХК',
+            orgRegnum: '6123456',
+          ),
+        ],
+      ),
+      searchDebounce: Duration.zero,
+    );
+    addTearDown(controller.dispose);
+    await _pump(tester, 375, controller);
+
+    // A phone-only walk-in: the phone is the title, not repeated below it.
+    expect(find.text('99887766'), findsOneWidget);
+    expect(find.text('Нэр бүртгэгдээгүй'), findsOneWidget);
+
+    expect(find.text('Тэнгэр Тээвэр ХХК'), findsOneWidget);
+    expect(find.text('Байгууллага'), findsNWidgets(2)); // filter pill + badge
+    expect(find.text('РД 6123456'), findsOneWidget);
+    expect(find.text('Ганбаатар'), findsOneWidget);
+    expect(find.text('95556677'), findsOneWidget);
+  });
+
   testWidgets('broadcast action is hidden without customers.notify', (
     tester,
   ) async {

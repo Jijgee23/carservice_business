@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import 'package:carservice_business/app/theme/app_theme.dart';
 import 'package:carservice_business/core/utils/async_value.dart';
+import 'package:carservice_business/core/utils/money_format.dart';
 import 'package:carservice_business/core/widgets/app_dropdown.dart';
 import 'package:carservice_business/features/orders/domain/order.dart';
 import 'package:carservice_business/features/orders/presentation/controllers/order_item_controller.dart';
@@ -36,6 +37,11 @@ bool isLineStatusLocked(ServiceItem item) =>
 /// (server: 422 `DIAGNOSTIC_REPORT_REQUIRED`).
 bool lineNeedsReport(ServiceItem item) =>
     item.kind == ItemKind.DIAGNOSTIC && item.diagnosticReportId == null;
+
+/// A line amount: the lossless [Money] when the API sent one, else the
+/// legacy double.
+String _itemMoney(Money? value, double fallback) =>
+    value == null ? formatMoneyNum(fallback) : formatMoney(value.raw);
 
 /// Lines «complete all» moves: tracked work not yet done, leaving out
 /// diagnostics still waiting for their report.
@@ -109,15 +115,12 @@ class OrderItemCard extends StatelessWidget {
   final VoidCallback? onDiagnosticFill;
   final VoidCallback? onDiagnosticView;
 
-  String _money(Money? value, double fallback) =>
-      '${value?.raw ?? fallback.toString()}₮';
-
   @override
   Widget build(BuildContext context) {
     final accent = context.itemKindColor(item.kind);
     final qty = item.quantityMoney?.raw ?? item.quantity.toString();
-    final price = _money(item.unitPriceMoney, item.unitPrice);
-    final total = _money(item.totalMoney, item.total);
+    final price = _itemMoney(item.unitPriceMoney, item.unitPrice);
+    final total = _itemMoney(item.totalMoney, item.total);
     final status = pendingStatus ?? item.status;
     final actions = <Widget>[];
     final lineLocked = isLineCompletedLocked(item);
@@ -560,8 +563,8 @@ class _OrderItemHistorySheetState extends State<OrderItemHistorySheet> {
                     '${item.kind.label} · ${item.cancelledAt == null ? '—' : date.format(item.cancelledAt!)}'
                     '${item.cancelledBy == null ? (item.cancelledById == null ? '' : ' · ${item.cancelledById}') : ' · ${item.cancelledBy!.fullName}'}\n'
                     'Тоо: ${item.quantityMoney?.raw ?? item.quantity} · '
-                    'Нэгж: ${item.unitPriceMoney?.raw ?? item.unitPrice}₮ · '
-                    'Нийт: ${item.totalMoney?.raw ?? item.total}₮',
+                    'Нэгж: ${_itemMoney(item.unitPriceMoney, item.unitPrice)} · '
+                    'Нийт: ${_itemMoney(item.totalMoney, item.total)}',
                   ),
                   isThreeLine: true,
                   trailing:

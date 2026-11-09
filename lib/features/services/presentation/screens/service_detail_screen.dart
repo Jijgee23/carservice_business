@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:carservice_business/app/theme/app_theme.dart';
 import 'package:carservice_business/core/domain/user.dart';
 import 'package:carservice_business/core/services/auth_storage.dart';
+import 'package:carservice_business/core/utils/money_format.dart';
 import 'package:carservice_business/core/utils/result.dart';
 import 'package:carservice_business/core/widgets/adaptive/async_state_view.dart';
 import 'package:carservice_business/core/widgets/adaptive/permission_gate.dart';
@@ -348,7 +349,7 @@ class _PricingCard extends StatelessWidget {
             icon: Icons.sell_outlined,
             label: 'Зарах үнэ',
             value:
-                '${service.price ?? '—'}₮'
+                '${formatMoney(service.price)}'
                 '${service.unit != null ? ' / ${service.unit!.display}' : ''}',
             valueStyle: context.textStyles.bodyMedium.copyWith(
               color: context.colors.accent,
@@ -360,7 +361,7 @@ class _PricingCard extends StatelessWidget {
             _DetailRow(
               icon: Icons.receipt_outlined,
               label: 'Өртөг',
-              value: '$costPrice₮',
+              value: formatMoney(costPrice),
             ),
           ],
           if (profit != null) ...[
@@ -368,7 +369,7 @@ class _PricingCard extends StatelessWidget {
             _DetailRow(
               icon: Icons.trending_up_outlined,
               label: 'Ашиг',
-              value: '${profit.toStringAsFixed(2)}₮',
+              value: formatMoneyNum(profit),
               valueStyle: TextStyle(color: context.colors.good),
             ),
           ],

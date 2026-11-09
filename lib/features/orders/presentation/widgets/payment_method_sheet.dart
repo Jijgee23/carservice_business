@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:carservice_business/core/utils/money_format.dart';
 import 'package:carservice_business/core/utils/price_input.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -818,7 +819,7 @@ class _SheetHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final amount = balance == null || balance!.isEmpty ? null : '${formatPriceInput(balance!)}₮';
+    final amount = balance == null || balance!.isEmpty ? null : formatMoney(balance);
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
       child: Column(

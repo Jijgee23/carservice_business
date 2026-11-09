@@ -2,6 +2,7 @@ import 'package:carservice_business/app/router.dart';
 import 'package:carservice_business/app/theme/app_theme.dart';
 import 'package:carservice_business/core/domain/user.dart';
 import 'package:carservice_business/core/services/auth_storage.dart';
+import 'package:carservice_business/core/utils/money_format.dart';
 import 'package:carservice_business/core/utils/result.dart';
 import 'package:carservice_business/core/widgets/adaptive/permission_gate.dart';
 import 'package:carservice_business/core/widgets/common/common_widgets.dart';
@@ -308,8 +309,6 @@ class _Empty extends StatelessWidget {
   }
 }
 
-final _money = NumberFormat('#,##0', 'en_US');
-
 /// One diagnostic service: the web table's row as a card.
 class _TemplateCard extends StatelessWidget {
   const _TemplateCard({
@@ -419,8 +418,7 @@ class _TemplateCard extends StatelessWidget {
                 spacing: 14,
                 runSpacing: 4,
                 children: [
-                  if (price != null)
-                    Text('${_money.format(price)}₮', style: meta),
+                  if (price != null) Text(formatMoneyNum(price), style: meta),
                   if (t.durationMin != null)
                     Text('${t.durationMin}мин', style: meta),
                   Text('v${t.version}', style: meta),

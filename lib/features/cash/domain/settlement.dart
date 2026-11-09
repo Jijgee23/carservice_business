@@ -1,5 +1,4 @@
-import 'package:intl/intl.dart';
-
+import 'package:carservice_business/core/utils/money_format.dart';
 import 'package:carservice_business/features/cash/domain/cash_entry.dart';
 import 'package:carservice_business/features/orders/domain/order.dart';
 
@@ -160,7 +159,4 @@ String cashDateParam(DateTime d) =>
     '${d.month.toString().padLeft(2, '0')}-'
     '${d.day.toString().padLeft(2, '0')}';
 
-final NumberFormat _cashMoneyFormat = NumberFormat('#,##0.##', 'en_US');
-
-String formatCashAmount(String amount) =>
-    '${_cashMoneyFormat.format(double.tryParse(amount) ?? 0)}₮';
+String formatCashAmount(String amount) => formatMoney(amount);
