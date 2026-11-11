@@ -349,6 +349,23 @@ class MoreScreen extends StatelessWidget {
         route: AppRoutes.mySchedule,
       ),
     ]),
+    // Касс: register shifts and payment accounts — both `cash.manage`
+    // (owner always), the permission every `/cash/sessions*` and
+    // `/payment-accounts*` endpoint requires.
+    _NavigationGroup('Касс', [
+      _NavigationEntry(
+        'Кассын ээлж',
+        Icons.point_of_sale_outlined,
+        'cash.manage',
+        route: AppRoutes.cashShifts,
+      ),
+      _NavigationEntry(
+        'Төлбөрийн данс',
+        Icons.account_balance_outlined,
+        'cash.manage',
+        route: AppRoutes.paymentAccounts,
+      ),
+    ]),
     // P7-F4: the three rows below get real destinations. Тайлан and Санал
     // хүсэлт are visible to any authenticated user (D-174/D-176, matching
     // the web's `requireUser()`-only gate); Аудит stays gated on
@@ -367,9 +384,23 @@ class MoreScreen extends StatelessWidget {
         route: AppRoutes.audit,
       ),
     ]),
-    // Салбарууд / Тохиргоо had no mobile screen (placeholder snackbar only)
-    // and were removed with the duplicate Каталог → Оношилгоо row, which
-    // pointed at the same route as Оношилгоо → Загвар.
+    // Тохиргоо: the workshop's settings (owner only — the screen is
+    // read-only for others, but the row stays owner-gated like the web's
+    // /dashboard/settings) and branch management (`branches.view`).
+    _NavigationGroup('Тохиргоо', [
+      _NavigationEntry(
+        'Байгууллага',
+        Icons.storefront_outlined,
+        'owner',
+        route: AppRoutes.organizationSettings,
+      ),
+      _NavigationEntry(
+        'Салбарууд',
+        Icons.store_mall_directory_outlined,
+        'branches',
+        route: AppRoutes.branches,
+      ),
+    ]),
   ];
 
   @override

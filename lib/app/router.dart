@@ -64,6 +64,9 @@ import 'package:carservice_business/features/employees/presentation/screens/empl
 import 'package:carservice_business/features/employees/presentation/screens/employee_detail_screen.dart';
 import 'package:carservice_business/features/employees/presentation/screens/employee_form_screen.dart';
 import 'package:carservice_business/features/employees/presentation/screens/employee_list_screen.dart';
+import 'package:carservice_business/features/cash/presentation/screens/cash_shift_detail_screen.dart';
+import 'package:carservice_business/features/cash/presentation/screens/cash_shift_list_screen.dart';
+import 'package:carservice_business/features/payment_accounts/presentation/screens/payment_account_list_screen.dart';
 import 'package:carservice_business/features/roles/data/role_repository.dart';
 import 'package:carservice_business/features/roles/domain/role.dart';
 import 'package:carservice_business/features/roles/domain/roles_repository.dart';
@@ -71,6 +74,9 @@ import 'package:carservice_business/features/roles/presentation/screens/role_for
 import 'package:carservice_business/features/roles/presentation/screens/role_list_screen.dart';
 import 'package:carservice_business/features/schedules/presentation/screens/my_schedule_screen.dart';
 import 'package:carservice_business/features/schedules/presentation/screens/schedule_grid_screen.dart';
+import 'package:carservice_business/features/organization/presentation/screens/organization_settings_screen.dart';
+import 'package:carservice_business/features/branches/presentation/screens/branch_form_screen.dart';
+import 'package:carservice_business/features/branches/presentation/screens/branch_list_screen.dart';
 import 'package:carservice_business/core/navigation/app_nav.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -104,11 +110,17 @@ class AppRoutes {
   static const mySchedule = '/my-schedule';
   static const reports = '/reports';
   static const audit = '/audit';
+
+  /// «Касс» group of Бусад (cash.manage).
+  static const cashShifts = '/cash/shifts';
+  static const paymentAccounts = '/payment-accounts';
   static const feedback = '/feedback';
   static const profileEdit = '/profile/edit';
   static const profilePassword = '/profile/password';
   static const profileSessions = '/profile/sessions';
   static const profileClosure = '/profile/closure';
+  static const organizationSettings = '/settings/organization';
+  static const branches = '/branches';
 }
 
 /// Pages opened by name with [AppNav.toNamed], GetX-style: full-screen above
@@ -409,6 +421,25 @@ GoRouter buildRouter(AuthController authController) {
         builder: (_, _) => const MyScheduleScreen(),
       ),
 
+      // ── Тохиргоо (Байгууллага / Салбарууд) ──────────────────────────────
+      // The screens gate their own actions (owner / branches.*); the server
+      // stays authoritative.
+      GoRoute(
+        path: AppRoutes.organizationSettings,
+        builder: (_, _) => const OrganizationSettingsScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.branches,
+        builder: (_, _) => const BranchListScreen(),
+        routes: [
+          GoRoute(path: 'new', builder: (_, _) => const BranchFormScreen()),
+          GoRoute(
+            path: ':id',
+            builder: (_, state) => BranchFormScreen(branchId: state.pathParameters['id']),
+          ),
+        ],
+      ),
+
       // ── Удирдлага (Reports/Audit/Feedback) — P7-F4 ──────────────────────
       //
       // Same top-level shape as Хүмүүс above: none of these is a bottom-nav
@@ -476,6 +507,25 @@ GoRouter buildRouter(AuthController authController) {
       GoRoute(
         path: AppRoutes.profileClosure,
         builder: (_, _) => const AccountClosureScreen(),
+      ),
+
+      // ── Касс (Кассын ээлж / Төлбөрийн данс) — cash.manage ───────────────
+      // Above the shell like Удирдлага; each screen gates itself on
+      // cash.manage and defaults its own repository/user.
+      GoRoute(
+        path: AppRoutes.cashShifts,
+        builder: (_, _) => const CashShiftListScreen(),
+        routes: [
+          GoRoute(
+            path: ':id',
+            builder: (_, state) =>
+                CashShiftDetailScreen(shiftId: state.pathParameters['id']!),
+          ),
+        ],
+      ),
+      GoRoute(
+        path: AppRoutes.paymentAccounts,
+        builder: (_, _) => const PaymentAccountListScreen(),
       ),
 
       // Search is a global utility (top-bar action on every tab), not a

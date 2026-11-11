@@ -107,6 +107,9 @@ class OrderPaymentController extends ChangeNotifier {
   /// Per-method hook of the payment sheet; every method is blocked alike.
   bool showNoSessionWarning(OrderPaymentMethod method) => cashSessionClosed;
 
+  /// Re-reads the open flag, e.g. after «Ээлж нээх» from the warning.
+  Future<void> reloadSessionFlag() => _loadSessionFlag();
+
   /// The flag endpoint needs `payments.create` or `cash.manage`.
   Future<void> _loadSessionFlag() async {
     final lookup = sessionOpenLookup;

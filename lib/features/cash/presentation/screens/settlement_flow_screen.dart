@@ -177,7 +177,11 @@ class _SettlementFlowScreenState extends State<SettlementFlowScreen> {
                 if (choice.bank != null) _c.setBank(choice.bank);
               },
             ),
-            if (_c.showNoSessionWarning) const NoCashSessionWarning(),
+            if (_c.showNoSessionWarning)
+              NoCashSessionWarning(
+                branchId: _c.branchId,
+                onOpened: _c.loadSessionFlag,
+              ),
             const SizedBox(height: 8),
             OutlinedButton.icon(
               key: const ValueKey('settlement_date'),

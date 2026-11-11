@@ -436,6 +436,8 @@ Future<void> _openRecordSheet(
       busy: () => controller.isBusy,
       errorText: () => controller.lastError?.display,
       showNoSessionWarning: controller.showNoSessionWarning,
+      cashSessionBranchId: () => controller.order?.branch.id,
+      onCashSessionOpened: controller.reloadSessionFlag,
       onRecord: (choice, amount) =>
           controller.createManual(amount: amount, method: choice.method, bankId: choice.bank),
       qpay: QPaySheetHooks(

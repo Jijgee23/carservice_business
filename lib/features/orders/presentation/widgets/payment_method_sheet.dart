@@ -176,6 +176,8 @@ class PaymentMethodSheet extends StatefulWidget {
     this.listenable,
     this.isSettled,
     this.showNoSessionWarning,
+    this.cashSessionBranchId,
+    this.onCashSessionOpened,
     this.errorText,
     this.busy,
     this.liveBanks,
@@ -219,6 +221,11 @@ class PaymentMethodSheet extends StatefulWidget {
   /// When true the sheet closes itself (order fully paid).
   final bool Function()? isSettled;
   final bool Function(OrderPaymentMethod method)? showNoSessionWarning;
+
+  /// Branch of the blocked write; with [onCashSessionOpened] the warning
+  /// offers «Ээлж нээх» (cash.manage) and re-reads the open flag after.
+  final String? Function()? cashSessionBranchId;
+  final Future<void> Function()? onCashSessionOpened;
   final String? Function()? errorText;
   final bool Function()? busy;
 
@@ -548,7 +555,11 @@ class _PaymentMethodSheetState extends State<PaymentMethodSheet> {
           () => _amountError = widget.validateAmount?.call(raw) ?? _amountExceedsMessage,
         ),
       ),
-      if (blocked) const NoCashSessionWarning(),
+      if (blocked)
+        NoCashSessionWarning(
+          branchId: widget.cashSessionBranchId?.call(),
+          onOpened: widget.onCashSessionOpened,
+        ),
       if (widget.includeManual && option != null) ...[
         const SizedBox(height: 20),
         Padding(
