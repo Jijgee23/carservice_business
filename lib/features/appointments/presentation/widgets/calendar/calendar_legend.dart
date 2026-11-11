@@ -59,9 +59,15 @@ class _LegendItem extends StatelessWidget {
     child: Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 14, color: color),
+        Icon(icon, size: 13, color: color),
         const SizedBox(width: 4),
-        Text(label, style: context.textStyles.caption),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: CarserviceTheme.of(context).mutedText,
+          ),
+        ),
       ],
     ),
   );

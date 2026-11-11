@@ -4,6 +4,7 @@ import 'package:carservice_business/core/network/api_client.dart';
 import 'package:carservice_business/core/services/auth_storage.dart';
 import 'package:carservice_business/core/services/branch_service.dart';
 import 'package:carservice_business/core/services/device_service.dart';
+import 'package:carservice_business/core/services/legal_consent_store.dart';
 import 'package:carservice_business/core/services/network_status.dart';
 import 'package:carservice_business/core/services/pending_logout_store.dart';
 import 'package:carservice_business/core/services/saved_login_store.dart';
@@ -126,6 +127,12 @@ class AuthController extends ChangeNotifier {
 
   String? maskedPhone;
 
+  /// [LoginStep.activate] / [LoginStep.resetPassword] are two screens: the
+  /// SMS code first, then the new password. The server checks both in one
+  /// call, so this only says which screen is up — a wrong code (401) sends
+  /// the user back to the code screen.
+  bool codeConfirmed = false;
+
   /// Set when login answered 423 — the password card then offers a reset.
   bool lockedOut = false;
 
@@ -172,6 +179,7 @@ class AuthController extends ChangeNotifier {
     otpCtrl.clear();
     newPasswordCtrl.clear();
     confirmPasswordCtrl.clear();
+    codeConfirmed = false;
   }
 
   void resetToIdentifier() {
@@ -466,6 +474,7 @@ class AuthController extends ChangeNotifier {
       _clearSecrets();
       _stopCooldown();
     }
+    if (res.status == 401) _backToCode();
     errorText = res.error ?? 'Код буруу байна.';
     notifyListeners();
   }
@@ -496,6 +505,7 @@ class AuthController extends ChangeNotifier {
     });
     if (res == null || errorText != null) return notifyListeners();
     if (!res.ok) {
+      if (res.status == 401) _backToCode();
       errorText = res.error ?? 'Код буруу байна.';
       return notifyListeners();
     }
@@ -518,6 +528,22 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ─── Шинэ засвар бүртгүүлэх ───────────────────────────────────────────────
+
+  /// Signs in the owner `auth/signup` just created ([SignupController]); the
+  /// reply is the same as `auth/login`'s. They accepted the terms on the
+  /// signup form, so the consent page is skipped. [phone] becomes the saved
+  /// identifier for the next sign-in.
+  Future<void> completeSignup(Map<String, dynamic> data, {required String phone}) async {
+    final userId = (data['user'] as Map?)?['id'];
+    if (userId is String) unawaited(LegalConsentStore.instance.accept(userId));
+    step = LoginStep.identifier;
+    _identifier = phone;
+    maskedPhone = null;
+    identifierCtrl.text = phone;
+    _handleLoginResponse(data);
+  }
+
   // ─── Common ────────────────────────────────────────────────────────────────
 
   Future<void> _requestCode(String path) async {
@@ -533,10 +559,38 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
   }
 
+  static final _codePattern = RegExp(r'^\d{6}$');
+
+  /// Code screen → new-password screen. Only checks the format; the server
+  /// verifies the code together with the new password.
+  void confirmCode() {
+    if (_codePattern.hasMatch(otpCtrl.text.trim())) {
+      codeConfirmed = true;
+      errorText = null;
+    } else {
+      errorText = '6 оронтой кодоо оруулна уу.';
+    }
+    notifyListeners();
+  }
+
+  /// New-password screen → back to the code screen (the passwords stay).
+  void editCode() {
+    codeConfirmed = false;
+    errorText = null;
+    notifyListeners();
+  }
+
+  /// The server rejected the code: re-enter it, keep the typed passwords.
+  void _backToCode() {
+    codeConfirmed = false;
+    otpCtrl.clear();
+  }
+
   bool _validateCodeAndNewPassword() {
     String? error;
-    if (!RegExp(r'^\d{6}$').hasMatch(otpCtrl.text.trim())) {
+    if (!_codePattern.hasMatch(otpCtrl.text.trim())) {
       error = '6 оронтой кодоо оруулна уу.';
+      codeConfirmed = false;
     } else if (newPasswordCtrl.text.length < 8) {
       error = 'Нууц үг хамгийн багадаа 8 тэмдэгт байна.';
     } else if (newPasswordCtrl.text != confirmPasswordCtrl.text) {
@@ -566,7 +620,8 @@ class AuthController extends ChangeNotifier {
       accessToken: data['accessToken'] as String,
       refreshToken: data['refreshToken'] as String,
       id: u['id'] as String,
-      email: u['email'] as String,
+      // Email is optional (phone-only owners and staff): null → empty.
+      email: u['email'] as String? ?? '',
       firstName: u['firstName'] as String,
       lastName: u['lastName'] as String,
       phone: u['phone'].toString(),

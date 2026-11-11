@@ -226,6 +226,15 @@ class NewInspectionController extends ChangeNotifier {
     }
   }
 
+  /// Jumps straight to section [index] (the checklist's section chips).
+  void goToSection(int index) {
+    if (index < 0 || index >= sections.length || index == _currentSection) {
+      return;
+    }
+    _currentSection = index;
+    notifyListeners();
+  }
+
   void prevSection() {
     if (canGoPrev) {
       _currentSection--;

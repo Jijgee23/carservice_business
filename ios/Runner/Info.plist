@@ -60,6 +60,8 @@
 	<string>Засварын хуудасны хүлээн авалт болон оношилгоонд машины зураг авахад камер ашиглана.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Засварын хуудас, оношилгоо болон санал хүсэлтэд зураг хавсаргахад зургийн сан ашиглана.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Засвараа бүртгүүлэхдээ газрын зураг дээр байршлаа тэмдэглэхэд одоогийн байршлыг ашиглана.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

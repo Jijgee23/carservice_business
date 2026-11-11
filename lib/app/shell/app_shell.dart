@@ -5,6 +5,7 @@ import 'package:carservice_business/core/services/auth_storage.dart';
 import 'package:carservice_business/core/domain/user.dart';
 import 'package:carservice_business/core/navigation/app_nav.dart';
 import 'package:carservice_business/core/widgets/adaptive/adaptive.dart';
+import 'package:carservice_business/core/widgets/common/ops_kit.dart';
 import 'package:carservice_business/core/widgets/dialogs/confirm_sheet.dart';
 import 'package:carservice_business/features/appointments/presentation/screens/appointment_screen.dart';
 import 'package:carservice_business/features/controllers.dart';
@@ -15,6 +16,7 @@ import 'package:carservice_business/features/orders/domain/orders_repository.dar
 import 'package:carservice_business/features/orders/presentation/controllers/order_list_controller.dart';
 import 'package:carservice_business/features/orders/presentation/screens/order_list_screen.dart';
 import 'package:carservice_business/features/overview/presentation/screens/home_screen.dart';
+import 'package:carservice_business/features/profile/presentation/widgets/profile_identity_card.dart';
 import 'package:carservice_business/features/shell/data/working_branch_repository.dart';
 import 'package:carservice_business/features/shell/presentation/controllers/working_branch_controller.dart';
 import 'package:carservice_business/features/shell/presentation/screens/choose_branch_screen.dart';
@@ -97,7 +99,10 @@ class AppShell extends StatelessWidget {
           final branch = shellContext.watch<WorkingBranchController>();
           if (branch.needsChoice) {
             AppNav.currentTab = null;
-            return ChooseBranchScreen(controller: branch);
+            return ChooseBranchScreen(
+              controller: branch,
+              user: Authenticator.user,
+            );
           }
           // `AppNav.to` opens pages inside the tab on screen.
           AppNav.currentTab = navigationShell.currentIndex;
@@ -124,14 +129,14 @@ class AppShell extends StatelessWidget {
               navigationShell.goBranch(index);
             },
             searchAction: canSearch
-                ? IconButton(
+                ? OpsCircleButton(
+                    icon: Icons.search_rounded,
                     tooltip: 'Хайлт',
                     onPressed: () => shellContext.push(AppRoutes.search),
-                    icon: const Icon(Icons.search_rounded),
                   )
                 : null,
             // Just the greeting; the branch switcher lives on Бусад.
-            title: _ShellGreeting(name: user?.firstName),
+            title: _ShellGreeting(user: user),
             // Pushed screens own a single app bar with the bell (D: shell
             // header only on top-level tabs; no branch switch mid-flow).
             showHeader: !ShellDepthTracker.instance.isSubPage(
@@ -167,22 +172,69 @@ extension on AdaptiveNavigationDestination {
       );
 }
 
+/// Shell header text: today's date and a time-of-day greeting, after the
+/// user's initials ("Даваа, 11-р сарын 9" / "Өглөөний мэнд, Бат").
 class _ShellGreeting extends StatelessWidget {
-  const _ShellGreeting({required this.name});
-  final String? name;
+  const _ShellGreeting({required this.user});
+  final User? user;
+
+  static const _weekdays = [
+    'Даваа',
+    'Мягмар',
+    'Лхагва',
+    'Пүрэв',
+    'Баасан',
+    'Бямба',
+    'Ням',
+  ];
+
+  static String _greeting(int hour) {
+    if (hour >= 5 && hour < 12) return 'Өглөөний мэнд';
+    if (hour >= 12 && hour < 18) return 'Өдрийн мэнд';
+    if (hour >= 18 && hour < 23) return 'Оройн мэнд';
+    return 'Сайн байна уу';
+  }
 
   @override
   Widget build(BuildContext context) {
-    final who = name?.trim();
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: Text(
-        who == null || who.isEmpty ? 'Сайн байна уу' : 'Сайн байна уу, $who',
-        key: const ValueKey('shell_greeting'),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: context.textStyles.h3,
-      ),
+    final t = CarserviceTheme.of(context);
+    final now = DateTime.now();
+    final user = this.user;
+    final who = user?.firstName.trim() ?? '';
+    final greeting = _greeting(now.hour);
+    return Row(
+      children: [
+        if (user != null) ...[
+          OpsAvatar(initials: opsInitials(user.firstName, user.lastName)),
+          const SizedBox(width: 12),
+        ],
+        Expanded(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${_weekdays[now.weekday - 1]}, ${now.month}-р сарын ${now.day}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 13, color: t.mutedText),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                who.isEmpty ? greeting : '$greeting, $who',
+                key: const ValueKey('shell_greeting'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: t.ink,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -197,13 +249,17 @@ class _NotificationAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = CarserviceTheme.of(context);
     return Badge(
       isLabelVisible: unreadCount > 0,
       label: Text(unreadCount > 99 ? '99+' : '$unreadCount'),
-      child: IconButton(
+      backgroundColor: t.accentHi,
+      textColor: Colors.white,
+      offset: const Offset(-2, 2),
+      child: OpsCircleButton(
+        icon: Icons.notifications_none_rounded,
         tooltip: 'Мэдэгдэл',
         onPressed: onPressed,
-        icon: const Icon(Icons.notifications_none_rounded),
       ),
     );
   }
@@ -320,14 +376,6 @@ class MoreScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final user = Authenticator.user;
     final unreadCount = context.watch<NotificationController>().unreadCount;
-    // Work groups cycle through the theme's accent tones; the general app
-    // rows stay neutral so the two kinds read apart at a glance.
-    final tones = [
-      context.colors.accent,
-      context.colors.good,
-      context.colors.warning,
-    ];
-    final neutral = context.colors.textSecondary;
 
     // Full-screen, above the bottom navigation — like the group rows'
     // top-level routes.
@@ -340,35 +388,34 @@ class MoreScreen extends StatelessWidget {
           // Keep rows at a readable width on tablets instead of stretching
           // them across the whole content pane.
           final gutter = ((constraints.maxWidth - 640) / 2).clamp(
-            16.0,
+            20.0,
             double.infinity,
           );
           return ListView(
-            padding: EdgeInsets.fromLTRB(gutter, 12, gutter, 32),
+            padding: EdgeInsets.fromLTRB(gutter, 8, gutter, 32),
             children: [
               if (user != null)
-                _ProfileCard(user: user, onTap: () => open(AppPages.profile)),
-              for (final (i, group) in groups.indexed)
-                _NavigationGroupView(
-                  group: group,
+                ProfileIdentityCard(
                   user: user,
-                  tone: tones[i % tones.length],
+                  onTap: () => open(AppPages.profile),
+                  onEdit: () => AppNav.push<void>(AppRoutes.profileEdit),
                 ),
+              const _BranchRow(),
+              for (final group in groups)
+                _NavigationGroupView(group: group, user: user),
               _MoreSection(
-                label: 'Ерөнхий',
+                label: 'Апп',
                 tiles: [
                   _MoreTile(
                     icon: Icons.notifications_none_rounded,
                     label: 'Мэдэгдэл',
-                    tone: neutral,
                     trailing: unreadCount > 0
-                        ? Badge(
-                            label: Text(
-                              unreadCount > 99 ? '99+' : '$unreadCount',
-                            ),
+                        ? OpsPill(
+                            unreadCount > 99 ? '99+' : '$unreadCount шинэ',
+                            tone: OpsTone.accent,
                           )
                         : null,
-                    // Back from the list, the badge above shows what is left.
+                    // Back from the list, the count above shows what is left.
                     onTap: () =>
                         AppNav.toNamed<void>(AppPages.notifications).then((_) {
                           if (context.mounted) {
@@ -376,48 +423,41 @@ class MoreScreen extends StatelessWidget {
                           }
                         }),
                   ),
-                  _MoreTile(
-                    icon: Icons.feedback_outlined,
-                    label: 'Санал хүсэлт',
-                    tone: neutral,
-                    onTap: () => open(AppPages.feedback),
-                  ),
+                  ?_AppearanceTile.maybe(context),
+                ],
+              ),
+              _MoreSection(
+                label: 'Тусламж',
+                tiles: [
                   _MoreTile(
                     icon: Icons.menu_book_outlined,
                     label: 'Гарын авлага',
-                    tone: neutral,
                     onTap: () => open(AppPages.help),
+                  ),
+                  _MoreTile(
+                    icon: Icons.chat_bubble_outline_rounded,
+                    label: 'Санал хүсэлт',
+                    onTap: () => open(AppPages.feedback),
                   ),
                   _MoreTile(
                     icon: Icons.gavel_rounded,
                     label: 'Үйлчилгээний нөхцөл',
-                    tone: neutral,
                     onTap: () => open(AppPages.terms),
                   ),
                   _MoreTile(
                     icon: Icons.privacy_tip_outlined,
                     label: 'Нууцлалын бодлого',
-                    tone: neutral,
                     onTap: () => open(AppPages.privacy),
                   ),
                   _MoreTile(
                     icon: Icons.info_outline_rounded,
                     label: 'Тухай',
-                    tone: neutral,
                     onTap: () => open(AppPages.about),
                   ),
                 ],
               ),
-              const SizedBox(height: 24),
-              _Panel(
-                child: _MoreTile(
-                  icon: Icons.logout_rounded,
-                  label: 'Гарах',
-                  tone: context.colors.danger,
-                  destructive: true,
-                  onTap: () => _logout(context),
-                ),
-              ),
+              const SizedBox(height: 20),
+              _LogoutButton(onTap: () => _logout(context)),
             ],
           );
         },
@@ -439,14 +479,9 @@ class MoreScreen extends StatelessWidget {
 }
 
 class _NavigationGroupView extends StatelessWidget {
-  const _NavigationGroupView({
-    required this.group,
-    required this.user,
-    required this.tone,
-  });
+  const _NavigationGroupView({required this.group, required this.user});
   final _NavigationGroup group;
   final User? user;
-  final Color tone;
 
   @override
   Widget build(BuildContext context) {
@@ -461,7 +496,6 @@ class _NavigationGroupView extends StatelessWidget {
           _MoreTile(
             icon: entry.icon,
             label: entry.label,
-            tone: tone,
             onTap: () {
               final route = entry.route;
               if (route != null) {
@@ -481,135 +515,172 @@ class _NavigationGroupView extends StatelessWidget {
   }
 }
 
-/// The flat bordered surface every MoreScreen block sits on — same panel
-/// treatment as the Today board (1px border, no shadow).
-class _Panel extends StatelessWidget {
-  const _Panel({required this.child});
-  final Widget child;
+/// "Идэвхтэй салбар" card: the working scope and "Солих" (a sheet over the
+/// same choices as the header switcher). Hidden outside the shell and when
+/// there is nothing to switch — failed load or no branches; shows a spinner
+/// while loading.
+class _BranchRow extends StatelessWidget {
+  const _BranchRow();
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: context.colors.cardBg,
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppDimens.radiusLG),
-        side: BorderSide(color: context.colors.divider),
-      ),
-      child: child,
-    );
-  }
-}
-
-class _ProfileCard extends StatelessWidget {
-  const _ProfileCard({required this.user, required this.onTap});
-  final User user;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final role = user.role?.name ?? (user.isOwner ? 'Эзэмшигч' : 'Ажилтан');
     WorkingBranchController? branch;
     try {
       branch = context.watch<WorkingBranchController>();
     } on ProviderNotFoundException {
-      // Outside the shell (isolated tests): no branch row.
+      return const SizedBox.shrink();
     }
-    // Hidden when there is nothing to switch — failed load or no branches;
-    // shown (with its spinner) while loading.
-    final showBranch =
-        branch != null &&
-        (branch.state == WorkingBranchLoadState.initial ||
-            branch.isLoading ||
-            (!branch.hasError && branch.options.branches.isNotEmpty));
-    return _Panel(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          InkWell(
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.all(AppDimens.paddingMD),
-              child: Row(
+    final loading =
+        branch.state == WorkingBranchLoadState.initial || branch.isLoading;
+    if (!loading && (branch.hasError || branch.options.branches.isEmpty)) {
+      return const SizedBox.shrink();
+    }
+    final t = CarserviceTheme.of(context);
+    final name = loading ? null : workingBranchLabel(branch);
+    final canSwitch = !loading && !branch.isLocked;
+    final controller = branch;
+    return Padding(
+      key: const ValueKey('more_branch_switcher'),
+      padding: const EdgeInsets.only(top: 14),
+      child: OpsCard(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        onTap: canSwitch
+            ? () => showWorkingBranchSheet(context, controller)
+            : null,
+        child: Row(
+          children: [
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                color: OpsTone.accent.background(t),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: Icon(
+                Icons.storefront_outlined,
+                size: 18,
+                color: OpsTone.accent.foreground(t),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  CircleAvatar(
-                    radius: 26,
-                    backgroundColor: context.colors.accent,
-                    child: Text(
-                      user.firstName.isNotEmpty ? user.firstName[0] : '?',
+                  Text(
+                    'Идэвхтэй салбар',
+                    style: TextStyle(fontSize: 12, color: t.mutedText),
+                  ),
+                  const SizedBox(height: 2),
+                  if (loading)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 2),
+                      child: SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  else
+                    Text(
+                      name ?? 'Сонгоогүй',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 20,
-                        color: CarserviceTheme.of(context).onAccent,
-                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: t.ink,
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          user.fullName,
-                          style: context.textStyles.h3,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          [
-                            role,
-                            user.tenant.name,
-                          ].where((s) => s.isNotEmpty).join(' · '),
-                          style: context.textStyles.caption,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: context.colors.textHint,
-                  ),
                 ],
               ),
             ),
-          ),
-          if (showBranch) ...[
-            Divider(height: 1, color: context.colors.divider),
-            Padding(
-              key: const ValueKey('more_branch_switcher'),
-              padding: const EdgeInsets.fromLTRB(16, 6, 12, 6),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.storefront_outlined,
-                    size: 20,
-                    color: context.colors.textSecondary,
-                  ),
-                  const SizedBox(width: 10),
-                  Text('Салбар', style: context.textStyles.bodyMedium),
-                  const SizedBox(width: 12),
-                  // Right-aligned; long branch names ellipsize inside.
-                  Expanded(
-                    child: WorkingBranchSwitcher(
-                      controller: branch,
-                      expanded: true,
-                    ),
-                  ),
-                ],
+            const SizedBox(width: 8),
+            if (canSwitch)
+              Text(
+                'Солих',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: t.accent,
+                ),
+              )
+            else if (!loading)
+              Tooltip(
+                message: 'Өнөөдрийн хуваариар түгжигдсэн',
+                child: Icon(
+                  Icons.lock_outline_rounded,
+                  size: 18,
+                  color: t.mutedText,
+                ),
               ),
-            ),
           ],
-        ],
+        ),
       ),
     );
   }
 }
 
-/// A labelled group of [_MoreTile]s in one panel, separated by hairlines
-/// that start under the label text rather than the icon.
+/// "Харагдах байдал" with the current mode; a sheet picks another. Null
+/// when no [ThemeProvider] is in scope (isolated tests).
+class _AppearanceTile extends StatelessWidget {
+  const _AppearanceTile();
+
+  static Widget? maybe(BuildContext context) {
+    try {
+      context.watch<ThemeProvider>();
+    } on ProviderNotFoundException {
+      return null;
+    }
+    return const _AppearanceTile();
+  }
+
+  static const _labels = {
+    ThemeMode.system: 'Системийн',
+    ThemeMode.light: 'Цайвар',
+    ThemeMode.dark: 'Бараан',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = context.watch<ThemeProvider>();
+    return _MoreTile(
+      icon: Icons.dark_mode_outlined,
+      label: 'Харагдах байдал',
+      value: _labels[theme.mode],
+      onTap: () => showModalBottomSheet<void>(
+        context: context,
+        useRootNavigator: true,
+        showDragHandle: true,
+        builder: (sheetContext) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final MapEntry(key: mode, value: label) in _labels.entries)
+                ListTile(
+                  title: Text(label),
+                  trailing: mode == theme.mode
+                      ? Icon(
+                          Icons.check_rounded,
+                          color: CarserviceTheme.of(sheetContext).accent,
+                        )
+                      : null,
+                  onTap: () {
+                    theme.setMode(mode);
+                    Navigator.of(sheetContext).pop();
+                  },
+                ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A mono section label over one white group of [_MoreTile]s with
+/// hairlines between them (the design's settings groups).
 class _MoreSection extends StatelessWidget {
   const _MoreSection({required this.label, required this.tiles});
   final String label;
@@ -622,78 +693,87 @@ class _MoreSection extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(4, 20, 4, 8),
-          child: Text(label.toUpperCase(), style: context.textStyles.label),
+          child: OpsSectionLabel(label),
         ),
-        _Panel(
-          child: Column(
-            children: [
-              for (final (i, tile) in tiles.indexed) ...[
-                if (i > 0)
-                  Divider(height: 1, indent: 66, color: context.colors.divider),
-                tile,
-              ],
-            ],
-          ),
-        ),
+        OpsGroup(children: tiles),
       ],
     );
   }
 }
 
+/// One settings row: neutral icon tile, title, optional value / trailing,
+/// chevron. A [ListTile] underneath, for semantics and the router tests.
 class _MoreTile extends StatelessWidget {
   const _MoreTile({
     required this.icon,
     required this.label,
-    required this.tone,
     required this.onTap,
+    this.value,
     this.trailing,
-    this.destructive = false,
   });
   final IconData icon;
   final String label;
-  final Color tone;
   final VoidCallback onTap;
+  final String? value;
   final Widget? trailing;
-
-  /// Colours the label with [tone] and drops the chevron — an action, not
-  /// a destination.
-  final bool destructive;
 
   @override
   Widget build(BuildContext context) {
+    final t = CarserviceTheme.of(context);
     return ListTile(
       onTap: onTap,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14),
-      minVerticalPadding: 10,
+      minTileHeight: 50,
+      contentPadding: const EdgeInsets.only(left: 14, right: 10),
+      horizontalTitleGap: 12,
       leading: Container(
-        width: 36,
-        height: 36,
+        width: 30,
+        height: 30,
         decoration: BoxDecoration(
-          color: tone.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(AppDimens.radiusMD),
+          color: t.shellBackground,
+          borderRadius: BorderRadius.circular(9),
         ),
-        child: Icon(icon, size: AppDimens.iconMD, color: tone),
+        child: Icon(icon, size: 16, color: t.ink),
       ),
-      title: Text(
-        label,
-        style: context.textStyles.bodyMedium.copyWith(
-          color: destructive ? tone : null,
-          fontWeight: destructive ? FontWeight.w600 : null,
-        ),
+      title: Text(label, style: TextStyle(fontSize: 15, color: t.ink)),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (value != null)
+            Text(value!, style: TextStyle(fontSize: 13, color: t.mutedText)),
+          ?trailing,
+          const SizedBox(width: 4),
+          Icon(Icons.chevron_right_rounded, size: 18, color: t.mutedText3),
+        ],
       ),
-      trailing: destructive
-          ? null
-          : Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (trailing != null) ...[trailing!, const SizedBox(width: 6)],
-                Icon(
-                  Icons.chevron_right_rounded,
-                  size: 20,
-                  color: context.colors.textHint,
-                ),
-              ],
+    );
+  }
+}
+
+/// "Гарах" — a white card with the accent label, centred.
+class _LogoutButton extends StatelessWidget {
+  const _LogoutButton({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CarserviceTheme.of(context);
+    return OpsCard(
+      key: const ValueKey('more_logout'),
+      padding: EdgeInsets.zero,
+      onTap: onTap,
+      child: SizedBox(
+        height: 50,
+        child: Center(
+          child: Text(
+            'Гарах',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: t.accent,
             ),
+          ),
+        ),
+      ),
     );
   }
 }

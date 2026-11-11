@@ -41,7 +41,7 @@ Future<void> _pumpScreen(
 
 void main() {
   group('AppointmentCalendarScreen', () {
-    testWidgets('phone width (375dp) renders the agenda', (tester) async {
+    testWidgets('phone width (375dp) renders the day grid', (tester) async {
       final repo = FakeAppointmentRepository();
       final controller = CalendarController(
         repo: repo,
@@ -49,8 +49,8 @@ void main() {
         date: day(9),
       );
       await _pumpScreen(tester, controller, size: const Size(375, 800));
-      expect(find.byType(CalendarAgendaList), findsOneWidget);
-      expect(find.byType(CalendarDayGrid), findsNothing);
+      expect(find.byType(CalendarDayGrid), findsOneWidget);
+      expect(find.byType(CalendarAgendaList), findsNothing);
     });
 
     testWidgets('compact tablet width (700dp) renders the day grid', (
@@ -106,19 +106,18 @@ void main() {
       expect(find.text('Дахин оролдох'), findsOneWidget);
     });
 
-    testWidgets(
-      'an empty day still renders (agenda empty state), not an error',
-      (tester) async {
-        final repo = _EmptyDayRepository();
-        final controller = CalendarController(
-          repo: repo,
-          branchId: 'branch-1',
-          date: day(9),
-        );
-        await _pumpScreen(tester, controller, size: const Size(375, 800));
-        expect(find.textContaining('цаг захиалга алга'), findsOneWidget);
-      },
-    );
+    testWidgets('an empty day still renders (empty-day note), not an error', (
+      tester,
+    ) async {
+      final repo = _EmptyDayRepository();
+      final controller = CalendarController(
+        repo: repo,
+        branchId: 'branch-1',
+        date: day(9),
+      );
+      await _pumpScreen(tester, controller, size: const Size(375, 800));
+      expect(find.textContaining('цаг захиалга алга'), findsOneWidget);
+    });
 
     testWidgets('switching the day triggers a reload', (tester) async {
       final repo = FakeAppointmentRepository();

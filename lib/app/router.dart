@@ -10,6 +10,7 @@ import 'package:carservice_business/core/services/subscription_service.dart';
 import 'package:carservice_business/features/appointments/presentation/screens/appointment_detail_route.dart';
 import 'package:carservice_business/features/appointments/presentation/screens/appointment_screen.dart';
 import 'package:carservice_business/features/auth/presentation/screens/login_screen.dart';
+import 'package:carservice_business/features/auth/presentation/screens/signup_screen.dart';
 import 'package:carservice_business/features/controllers.dart';
 import 'package:carservice_business/features/customers/presentation/screens/customer_detail_screen.dart';
 import 'package:carservice_business/features/customers/presentation/screens/customer_search_tab.dart';
@@ -131,6 +132,10 @@ abstract final class AppPages {
   static const privacy = '/privacy';
   static const terms = '/terms';
 
+  /// New workshop signup, from the login page. Arguments: an optional phone
+  /// to prefill.
+  static const signup = '/signup';
+
   static final Map<String, AppPageBuilder> all = {
     orderDetail: (context, arguments) => switch (arguments) {
       final String id when id.isNotEmpty => _orderDetail(context, id),
@@ -143,6 +148,7 @@ abstract final class AppPages {
     about: (_, _) => const AboutScreen(),
     privacy: (_, _) => const PrivacyPolicyScreen(),
     terms: (_, _) => const TermsOfServiceScreen(),
+    signup: (_, arguments) => SignupScreen(initialPhone: arguments is String ? arguments : null),
   };
 }
 

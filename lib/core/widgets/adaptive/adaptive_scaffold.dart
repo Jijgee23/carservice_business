@@ -1,4 +1,9 @@
+import 'dart:math' as math;
+import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/material.dart';
+
+import 'package:carservice_business/app/theme/app_theme.dart';
 
 import 'breakpoints.dart';
 
@@ -134,23 +139,14 @@ class AdaptiveScaffold extends StatelessWidget {
           bottomNavigationBar: rail
               ? null
               : (bottomNavigationBar ??
-                    // A 1px top line, like the app bar's bottom one: the bar
-                    // is a panel, flat against the page.
-                    DecoratedBox(
-                      decoration: BoxDecoration(
-                        border: Border(
-                          top: BorderSide(color: Theme.of(context).colorScheme.outline),
-                        ),
-                      ),
-                      child: NavigationBar(
-                        selectedIndex: _safeIndex,
-                        onDestinationSelected: (index) {
-                          if (destinations[index].enabled) {
-                            onDestinationSelected(index);
-                          }
-                        },
-                        destinations: _bottomDestinations,
-                      ),
+                    _FloatingNavBar(
+                      selectedIndex: _safeIndex,
+                      onDestinationSelected: (index) {
+                        if (destinations[index].enabled) {
+                          onDestinationSelected(index);
+                        }
+                      },
+                      destinations: _bottomDestinations,
                     )),
         );
       },
@@ -164,17 +160,116 @@ class AdaptiveScaffold extends StatelessWidget {
         searchAction == null) {
       return null;
     }
-    return SizedBox(
-      height: 56,
+    // Design header: avatar + greeting on the left, round actions right.
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 64),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8),
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 6),
         child: Row(
           children: [
-            if (leadingAction != null) leadingAction!,
+            if (leadingAction != null) ...[leadingAction!, const SizedBox(width: 8)],
             if (title != null) Expanded(child: title!) else const Spacer(),
-            if (searchAction != null) searchAction!,
-            if (notificationAction != null) notificationAction!,
+            if (searchAction != null) ...[const SizedBox(width: 8), searchAction!],
+            if (notificationAction != null) ...[const SizedBox(width: 8), notificationAction!],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Phone navigation: a floating pill over the page — translucent panel,
+/// blur, 1px line, soft shadow; the selected tab in ink, the rest muted, no
+/// indicator blob. Still a [NavigationBar] inside, for its semantics.
+class _FloatingNavBar extends StatelessWidget {
+  const _FloatingNavBar({
+    required this.selectedIndex,
+    required this.onDestinationSelected,
+    required this.destinations,
+  });
+
+  final int selectedIndex;
+  final ValueChanged<int> onDestinationSelected;
+  final List<NavigationDestination> destinations;
+
+  static const _height = 68.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CarserviceTheme.of(context);
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+    final shape = BorderRadius.circular(AppDimens.radiusFull);
+    return Padding(
+      // ~24 above the bottom edge on a home-indicator phone, never flush.
+      padding: EdgeInsets.fromLTRB(16, 8, 16, math.max(16, bottomInset - 10)),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: shape,
+          boxShadow: [
+            BoxShadow(
+              color: t.ink.withValues(alpha: 0.16),
+              blurRadius: 30,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: shape,
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: t.panel.withValues(alpha: 0.78),
+                borderRadius: shape,
+                border: Border.all(color: t.border.withValues(alpha: 0.9)),
+              ),
+              // The pill already sits above the safe area.
+              child: MediaQuery.removePadding(
+                context: context,
+                removeBottom: true,
+                child: NavigationBarTheme(
+                  data: NavigationBarThemeData(
+                    height: _height,
+                    backgroundColor: Colors.transparent,
+                    surfaceTintColor: Colors.transparent,
+                    shadowColor: Colors.transparent,
+                    elevation: 0,
+                    indicatorColor: Colors.transparent,
+                    labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+                    iconTheme: WidgetStateProperty.resolveWith(
+                      (states) => IconThemeData(
+                        size: 22,
+                        color: states.contains(WidgetState.disabled)
+                            ? t.mutedText3.withValues(alpha: 0.5)
+                            : states.contains(WidgetState.selected)
+                            ? t.ink
+                            : t.mutedText,
+                      ),
+                    ),
+                    labelTextStyle: WidgetStateProperty.resolveWith(
+                      (states) => TextStyle(
+                        fontFamily: AppFonts.sans,
+                        fontSize: 10,
+                        fontWeight: states.contains(WidgetState.selected)
+                            ? FontWeight.w600
+                            : FontWeight.w500,
+                        color: states.contains(WidgetState.disabled)
+                            ? t.mutedText3.withValues(alpha: 0.5)
+                            : states.contains(WidgetState.selected)
+                            ? t.ink
+                            : t.mutedText,
+                      ),
+                    ),
+                  ),
+                  child: NavigationBar(
+                    selectedIndex: selectedIndex,
+                    onDestinationSelected: onDestinationSelected,
+                    destinations: destinations,
+                  ),
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );

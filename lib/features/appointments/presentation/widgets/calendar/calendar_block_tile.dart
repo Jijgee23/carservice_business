@@ -6,8 +6,11 @@ import 'package:carservice_business/features/appointments/domain/appointment.dar
 import 'calendar_status_style.dart';
 import 'calendar_time_format.dart';
 
-/// Renders one [CalendarBlock] — shared between the tablet day grid and the
-/// phone agenda so both surfaces stay visually and semantically consistent.
+/// Renders one [CalendarBlock] — shared between the day grid and the
+/// agenda list so both surfaces stay visually and semantically consistent.
+/// Styled as the design's booking block: navy when confirmed, a pale tint
+/// for the other statuses ([calendarStatusStyle]), a red outline for an
+/// issue.
 ///
 /// [dense] controls how much visible content a narrow rendering keeps
 /// (grid cells can be a few dozen pixels tall); the block's full meaning is
@@ -33,110 +36,146 @@ class CalendarBlockTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = CarserviceTheme.of(context);
-    final color = calendarStatusColor(context, block.status);
+    final style = calendarStatusStyle(context, block.status);
     final timeLabel = calendarBlockTimeLabel(block);
+    final issue = block.issue;
+    final markerSize = dense ? 12.0 : 14.0;
+    // On the solid navy block the tinted warn/danger colours would not
+    // read; the markers take the block's text colour there.
+    final confirmed = block.status == AppointmentStatus.CONFIRMED;
+
+    final side = issue != null
+        ? BorderSide(color: theme.danger, width: 1.5)
+        : style.border != null
+        ? BorderSide(color: style.border!)
+        : BorderSide.none;
 
     return Semantics(
       label: block.accessibleLabel,
       button: onTap != null,
       excludeSemantics: true,
       child: Material(
-        color: Colors.transparent,
+        color: style.background,
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: side,
+        ),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(AppRadii.control),
-          child: Container(
-            width: double.infinity,
+          child: Padding(
             padding: EdgeInsets.symmetric(
-              horizontal: dense ? 6 : AppDimens.paddingSM,
-              vertical: dense ? 2 : AppDimens.paddingXS,
+              horizontal: dense ? 6 : 8,
+              vertical: dense ? 3 : 6,
             ),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.16),
-              borderRadius: BorderRadius.circular(AppRadii.control),
-              border: Border.all(
-                color: block.issue != null ? theme.danger : color,
-                width: block.issue != null ? 1.5 : 1,
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
+            // A grid cell has a fixed height: clip what does not fit
+            // instead of overflowing (the semantics label keeps it all).
+            child: ClipRect(
+              child: UnconstrainedBox(
+                constrainedAxis: Axis.horizontal,
+                alignment: Alignment.topLeft,
+                clipBehavior: Clip.hardEdge,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Open-ended/unknown-finish work is visually distinct
-                    // from a known finish — a dedicated icon, not just the
-                    // text, so it still reads at a glance in a dense cell.
-                    if (!block.finishKnown)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 4),
-                        child: Icon(
-                          Icons.all_inclusive_rounded,
-                          size: dense ? 12 : 14,
-                          color: theme.mutedText,
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            block.name,
+                            maxLines: dense ? 1 : 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              height: 15 / 12,
+                              fontWeight: FontWeight.w600,
+                              color: style.foreground,
+                            ),
+                          ),
                         ),
-                      ),
-                    Expanded(
-                      child: Text(
-                        timeLabel,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style:
-                            (dense
-                                    ? context.textStyles.caption
-                                    : context.textStyles.captionMedium)
-                                .copyWith(fontFamily: theme.monoFontFamily),
-                      ),
+                        if (block.capacityOverflow)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 2),
+                            child: Icon(
+                              Icons.warning_amber_rounded,
+                              size: markerSize,
+                              color: confirmed ? style.foreground : theme.warn,
+                            ),
+                          ),
+                        if (issue != null)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 2),
+                            child: Icon(
+                              Icons.error_outline_rounded,
+                              size: markerSize,
+                              color: confirmed
+                                  ? style.foreground
+                                  : theme.danger,
+                            ),
+                          ),
+                      ],
                     ),
-                    if (block.capacityOverflow)
-                      Icon(
-                        Icons.warning_amber_rounded,
-                        size: dense ? 12 : 14,
-                        color: theme.warn,
-                      ),
-                    if (block.issue != null)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 2),
-                        child: Icon(
-                          Icons.error_outline_rounded,
-                          size: dense ? 12 : 14,
-                          color: theme.danger,
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        // Open-ended/unknown-finish work is visually
+                        // distinct from a known finish — a dedicated icon,
+                        // not just the text, so it still reads at a glance
+                        // in a dense cell.
+                        if (!block.finishKnown)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 3),
+                            child: Icon(
+                              Icons.all_inclusive_rounded,
+                              size: markerSize,
+                              color: style.secondary,
+                            ),
+                          ),
+                        Flexible(
+                          child: Text(
+                            timeLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontFamily: theme.monoFontFamily,
+                              fontSize: 11,
+                              color: style.secondary,
+                            ),
+                          ),
                         ),
+                      ],
+                    ),
+                    if (!dense) ...[
+                      const SizedBox(height: 4),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 2,
+                        children: [
+                          _Fact(
+                            label: block.statusLabel,
+                            color: style.foreground,
+                            strong: true,
+                          ),
+                          if (block.paymentStatusLabel != null)
+                            _Fact(
+                              label: block.paymentStatusLabel!,
+                              color: style.secondary,
+                            ),
+                          if (issue != null)
+                            _Fact(label: issue.label, color: style.foreground),
+                          if (block.capacityOverflow)
+                            _Fact(
+                              label: 'Багтаамжаас хэтэрсэн',
+                              color: style.foreground,
+                            ),
+                        ],
                       ),
+                    ],
                   ],
                 ),
-                if (!dense) const SizedBox(height: 2),
-                Text(
-                  block.name,
-                  maxLines: dense ? 1 : 2,
-                  overflow: TextOverflow.ellipsis,
-                  style:
-                      (dense
-                              ? context.textStyles.caption
-                              : context.textStyles.body)
-                          .copyWith(fontWeight: FontWeight.w600),
-                ),
-                if (!dense) ...[
-                  const SizedBox(height: 2),
-                  Wrap(
-                    spacing: 4,
-                    runSpacing: 2,
-                    children: [
-                      _Chip(label: block.statusLabel, color: color),
-                      if (block.paymentStatusLabel != null)
-                        _Chip(
-                          label: block.paymentStatusLabel!,
-                          color: theme.mutedText2,
-                        ),
-                      if (block.issue != null)
-                        _Chip(label: block.issue!.label, color: theme.danger),
-                      if (block.capacityOverflow)
-                        _Chip(label: 'Багтаамжаас хэтэрсэн', color: theme.warn),
-                    ],
-                  ),
-                ],
-              ],
+              ),
             ),
           ),
         ),
@@ -145,21 +184,20 @@ class CalendarBlockTile extends StatelessWidget {
   }
 }
 
-class _Chip extends StatelessWidget {
-  const _Chip({required this.label, required this.color});
+class _Fact extends StatelessWidget {
+  const _Fact({required this.label, required this.color, this.strong = false});
+
   final String label;
   final Color color;
+  final bool strong;
 
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-    decoration: BoxDecoration(
-      color: color.withValues(alpha: 0.14),
-      borderRadius: BorderRadius.circular(AppRadii.control),
-    ),
-    child: Text(
-      label,
-      style: context.textStyles.caption.copyWith(color: color, fontSize: 10),
+  Widget build(BuildContext context) => Text(
+    label,
+    style: TextStyle(
+      fontSize: 11,
+      fontWeight: strong ? FontWeight.w600 : FontWeight.w400,
+      color: color,
     ),
   );
 }

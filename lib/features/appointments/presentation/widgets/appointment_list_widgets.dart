@@ -6,6 +6,8 @@ import 'package:carservice_business/app/theme/app_theme.dart';
 import 'package:carservice_business/features/appointments/domain/appointment.dart';
 import 'package:carservice_business/features/appointments/presentation/controllers/appointment_list_controller.dart';
 import 'package:carservice_business/features/orders/presentation/feature_theme.dart';
+import 'package:carservice_business/core/widgets/common/ops_kit.dart';
+import 'package:carservice_business/features/appointments/presentation/widgets/calendar/calendar_status_style.dart';
 
 /// List/selection widgets for the Appointments list screen — P2-F2.
 /// Mirrors `order_list_widgets.dart`'s shape (phone card + tablet row +
@@ -16,31 +18,39 @@ import 'package:carservice_business/features/orders/presentation/feature_theme.d
 /// equivalent of the web's shift-click, never a drag/right-click
 /// transliteration.
 
+/// Status pill in the design's tints — the same colours as the calendar
+/// blocks ([calendarStatusStyle]), with a pale navy for a confirmed booking
+/// instead of the block's solid fill.
 class AppointmentStatusChip extends StatelessWidget {
   const AppointmentStatusChip({super.key, required this.status});
   final AppointmentStatus status;
 
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-    decoration: BoxDecoration(
-      color: context.appointmentStatusBackground(status),
-      borderRadius: BorderRadius.circular(AppDimens.radiusFull),
-      border: Border.all(
-        color: context.appointmentStatusColor(status).withOpacity(0.35),
+  Widget build(BuildContext context) {
+    final t = CarserviceTheme.of(context);
+    final style = calendarStatusStyle(context, status);
+    final confirmed = status == AppointmentStatus.CONFIRMED;
+    final neutral = style.border != null;
+    final bg = confirmed
+        ? Color.alphaBlend(t.ink.withValues(alpha: 0.1), t.panel)
+        : neutral
+        ? t.shellBackground
+        : style.background;
+    final fg = confirmed ? t.ink : style.foreground;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(AppDimens.radiusFull),
       ),
-    ),
-    child: Text(
-      status.label,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: TextStyle(
-        fontSize: 11,
-        fontWeight: FontWeight.w600,
-        color: context.appointmentStatusColor(status),
+      child: Text(
+        status.label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: fg),
       ),
-    ),
-  );
+    );
+  }
 }
 
 /// One row's selection interaction wiring, shared by the phone card and the
@@ -101,125 +111,102 @@ class AppointmentPhoneCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = CarserviceTheme.of(context);
     final requestedAt = appointment.requestedAt;
     final v = appointment.displayVehicle;
-    return Card(
-      margin: EdgeInsets.zero,
-      clipBehavior: Clip.antiAlias,
-      color: selected ? context.opsAccent.withOpacity(.08) : null,
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (selectionMode)
-              SizedBox(
-                width: 44,
-                child: Center(
+    final sub = [
+      if (v?.plate != null) plateLabel(v!.plate),
+      appointment.displayPhone,
+    ].where((part) => part.trim().isNotEmpty).join(' · ');
+    final detail = [
+      v?.displayName,
+      appointment.category?.name,
+    ].whereType<String>().where((part) => part.trim().isNotEmpty).join(' · ');
+    final mono = TextStyle(
+      fontFamily: t.monoFontFamily,
+      fontSize: 12,
+      color: t.mutedText,
+    );
+    return OpsCard(
+      padding: const EdgeInsets.all(14),
+      borderColor: selected ? t.accent : null,
+      borderWidth: selected ? 2 : 1,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (selectionMode)
+                Padding(
+                  padding: const EdgeInsets.only(right: 10),
                   child: Icon(
                     selected
                         ? Icons.check_circle_rounded
                         : Icons.radio_button_unchecked,
-                    color: selected ? context.opsAccent : context.opsTextHint,
+                    size: 22,
+                    color: selected ? t.accent : t.mutedText3,
                   ),
                 ),
-              )
-            else
-              Container(
-                width: 60,
-                color: context.appointmentStatusBackground(appointment.status),
-                child: Center(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (showDate && requestedAt != null)
-                          Text(
-                            requestedAt.year == DateTime.now().year
-                                ? _dayFmt.format(requestedAt)
-                                : _yearDayFmt.format(requestedAt),
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: context.appointmentStatusColor(
-                                appointment.status,
-                              ),
-                              fontFeatures: const [
-                                FontFeature.tabularFigures(),
-                              ],
-                            ),
-                          ),
-                        Text(
-                          requestedAt == null
-                              ? '—'
-                              : _timeFmt.format(requestedAt),
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                            color: context.appointmentStatusColor(
-                              appointment.status,
-                            ),
-                            fontFeatures: const [FontFeature.tabularFigures()],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
-                ),
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            appointment.displayName,
-                            style: context.textStyles.bodyMedium,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Flexible(
-                          child: AppointmentStatusChip(
-                            status: appointment.status,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 3),
                     Text(
-                      appointment.displayPhone,
-                      style: context.textStyles.caption,
-                    ),
-                    if (v != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        '${plateLabel(v.plate)}  ${v.displayName}'.trim(),
-                        style: context.textStyles.caption,
-                        overflow: TextOverflow.ellipsis,
+                      appointment.displayName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: t.ink,
                       ),
-                    ],
-                    if (appointment.category?.name != null) ...[
+                    ),
+                    if (sub.isNotEmpty) ...[
                       const SizedBox(height: 2),
                       Text(
-                        appointment.category!.name!,
-                        style: context.textStyles.caption,
+                        sub,
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
+                        style: mono,
                       ),
                     ],
                   ],
                 ),
               ),
-            ),
-          ],
-        ),
+              const SizedBox(width: 10),
+              Flexible(
+                child: AppointmentStatusChip(status: appointment.status),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  detail,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 13, color: t.mutedText),
+                ),
+              ),
+              if (showDate && requestedAt != null) ...[
+                Text(
+                  requestedAt.year == DateTime.now().year
+                      ? _dayFmt.format(requestedAt)
+                      : _yearDayFmt.format(requestedAt),
+                  style: mono,
+                ),
+                const SizedBox(width: 6),
+              ],
+              Text(
+                requestedAt == null ? '—' : _timeFmt.format(requestedAt),
+                style: mono.copyWith(fontWeight: FontWeight.w500, color: t.ink),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

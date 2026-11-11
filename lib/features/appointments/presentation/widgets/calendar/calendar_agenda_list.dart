@@ -46,9 +46,9 @@ class CalendarAgendaList extends StatelessWidget {
     }
 
     return ListView.separated(
-      padding: const EdgeInsets.all(AppDimens.paddingMD),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
       itemCount: blocks.length,
-      separatorBuilder: (_, _) => const SizedBox(height: AppDimens.paddingSM),
+      separatorBuilder: (_, _) => const SizedBox(height: 10),
       itemBuilder: (context, index) {
         final block = blocks[index];
         return CalendarBlockTile(
@@ -113,7 +113,7 @@ class _EmptyDayAgenda extends StatelessWidget {
                 const SizedBox(height: 8),
                 Text(
                   'Энэ өдөр цаг захиалга алга',
-                  style: context.textStyles.body,
+                  style: TextStyle(fontSize: 15, color: theme.mutedText),
                 ),
               ],
             ),
@@ -132,6 +132,7 @@ class _EmptyDayAgenda extends StatelessWidget {
                     child: CalendarSlotCell(
                       hourStart: hour,
                       tappable: true,
+                      showTime: true,
                       onTap: onCreateAt != null
                           ? () => onCreateAt!(hour)
                           : null,

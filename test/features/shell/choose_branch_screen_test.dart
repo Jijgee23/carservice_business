@@ -160,7 +160,11 @@ void main() {
       findsOneWidget,
     );
 
+    // Marking a card persists nothing until "Үргэлжлүүлэх".
     await tester.tap(find.byKey(const ValueKey('choose_branch_b')));
+    await tester.pump();
+    expect(store.value, isNull);
+    await tester.tap(find.byKey(const ValueKey('choose_branch_continue')));
     await tester.pump();
     expect(store.value, 'b');
     expect(c.needsChoice, isFalse);
@@ -169,6 +173,8 @@ void main() {
     await c.handleInvalidBranch();
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey('choose_branch_all')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('choose_branch_continue')));
     await tester.pump();
     expect(store.value, allWorkingBranches);
   });

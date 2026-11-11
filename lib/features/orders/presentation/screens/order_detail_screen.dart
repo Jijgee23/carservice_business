@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:carservice_business/core/utils/price_input.dart';
 import 'package:carservice_business/core/utils/money_format.dart';
 import 'package:carservice_business/app/shell/shell_chrome.dart';
@@ -38,6 +40,8 @@ import 'package:carservice_business/features/diagnostics/presentation/screens/ne
 import 'package:carservice_business/features/diagnostics/presentation/screens/report_detail_screen.dart';
 import 'package:carservice_business/features/diagnostics/data/diagnostic_repository.dart';
 import 'package:carservice_business/core/widgets/common/common_widgets.dart';
+import 'package:carservice_business/core/widgets/common/ops_kit.dart';
+import 'package:carservice_business/core/widgets/app_dropdown.dart';
 import 'package:carservice_business/core/widgets/dialogs/confirm_sheet.dart';
 import 'package:carservice_business/core/widgets/dialogs/message.dart';
 import 'package:carservice_business/core/widgets/date_picker/app_date_picker.dart';
@@ -451,17 +455,16 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     final provider = context.watch<OrderDetailController>();
     final user = widget.user ?? Authenticator.user;
     if (!_canView(user)) {
-      return const Scaffold(
+      return const _DetailFrame(
         body: Center(child: Text('Засварын хуудас харах эрхгүй')),
       );
     }
 
     switch (provider.detailState) {
       case AsyncLoading():
-        return Scaffold(appBar: AppBar(), body: const AppLoading());
+        return const _DetailFrame(body: AppLoading());
       case AsyncError(:final error):
-        return Scaffold(
-          appBar: AppBar(),
+        return _DetailFrame(
           body: Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -496,35 +499,20 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         .where((item) => item.status != ServiceItemStatus.CANCELLED)
         .toList(growable: false);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              plateLabel(o.vehicle.plate, o.vehicle.vin),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            Text(
-              [
-                '#${o.number}',
-                if (formerPlate(o.plateSnapshot, o.vehicle.plate)
-                    case final old?)
-                  'хуучин: $old',
-              ].join(' · '),
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ],
+    return _DetailFrame(
+      subtitle: [
+        '#${o.number}',
+        if (formerPlate(o.plateSnapshot, o.vehicle.plate) case final old?)
+          'хуучин: $old',
+      ].join(' · '),
+      actions: [
+        const ShellNotificationBell(),
+        _MoreMenu(
+          onRefresh: provider.refresh,
+          onItemHistory: _canItemHistory(user) ? _showItemHistory : null,
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: provider.refresh,
-          ),
-          const ShellNotificationBell(),
-        ],
-      ),
+      ],
+      bottomBar: _actionBar(o, user, itemEdit),
       body: _detailList(
         context,
         o,
@@ -539,7 +527,62 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     );
   }
 
-  Widget _itemsCard(
+  /// The design's bottom bar: add a line (secondary) and the order's next
+  /// step — start, finish, or take the payment of a finished order.
+  Widget? _actionBar(ServiceOrderDetail o, User? user, bool itemEdit) {
+    final canAdd = o.status.canAddItems && itemEdit;
+    final next = _canEdit(user)
+        ? o.status.nextStatuses
+              .where((status) => status != OrderStatus.CANCELLED)
+              .firstOrNull
+        : null;
+    final paymentStatus = o.paymentTotals?.paymentStatus ?? o.paymentStatus;
+    final payable =
+        next == null &&
+        o.status == OrderStatus.COMPLETED &&
+        !o.isInternal &&
+        paymentStatus != PaymentStatus.PAID &&
+        _canViewPayments(user);
+    if (!canAdd && next == null && !payable) return null;
+    return OpsBottomActionBar(
+      children: [
+        if (canAdd)
+          OpsSecondaryButton(
+            key: const ValueKey('order_action_add_item'),
+            icon: Icons.add_rounded,
+            tooltip: 'Мөр нэмэх',
+            onPressed: _addItem,
+          ),
+        if (next != null)
+          Expanded(
+            child: OpsPrimaryButton(
+              key: const ValueKey('order_action_next_status'),
+              label: next == OrderStatus.IN_PROGRESS
+                  ? 'Ажил эхлүүлэх'
+                  : 'Ажил дуусгах',
+              icon: next == OrderStatus.IN_PROGRESS
+                  ? Icons.play_arrow_rounded
+                  : Icons.flag_outlined,
+              onPressed: () => _changeStatus(next),
+            ),
+          )
+        else if (payable)
+          Expanded(
+            child: OpsPrimaryButton(
+              key: const ValueKey('order_action_payment'),
+              label: 'Төлбөр авах',
+              icon: Icons.payments_outlined,
+              onPressed: _openPayment,
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// «Ажлууд» (labour, diagnostics, fees) as a checklist and «Сэлбэг»
+  /// (parts) with quantities and prices; the order total closes the last
+  /// card.
+  Widget _itemsCards(
     BuildContext context,
     ServiceOrderDetail o,
     User? user,
@@ -547,10 +590,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     bool itemEdit,
     List<ServiceItem> activeItems,
   ) {
+    final t = CarserviceTheme.of(context);
     final items = _itemController!;
     ServiceItemStatus statusOf(ServiceItem item) =>
         items.pendingStatusOf(item.id) ?? item.status;
     final canLineStatus = itemEdit && _canItemStatus(user);
+    final canAdd = o.status.canAddItems && itemEdit;
     final tracked = progressItems(o.items);
     final open = tracked
         .where((item) => statusOf(item) != ServiceItemStatus.COMPLETED)
@@ -565,141 +610,169 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               )
               .toList(growable: false)
         : const <ServiceItem>[];
-    return AppCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text('Ажлын мөрүүд', style: context.textStyles.h3),
+    final jobs = activeItems
+        .where((item) => item.kind != ItemKind.PART)
+        .toList(growable: false);
+    final parts = activeItems
+        .where((item) => item.kind == ItemKind.PART)
+        .toList(growable: false);
+    final showParts = parts.isNotEmpty || canAdd;
+
+    Widget line(ServiceItem item) => OrderItemCard(
+      item: item,
+      locked: locked,
+      paidLocked: o.hasPaidPayment,
+      paidLockReason: paidLockReason(o),
+      canEdit: o.status.canAddItems && itemEdit,
+      canPrice: o.status.canAddItems && itemEdit && _canItemPrice(user),
+      // A SCHEDULED order is started first when a line moves
+      // (_ensureOrderStarted), so that needs the order status permission too.
+      canStatus:
+          (o.status == OrderStatus.IN_PROGRESS ||
+              (o.status == OrderStatus.SCHEDULED && _canEdit(user))) &&
+          item.kind != ItemKind.PART &&
+          canLineStatus,
+      pendingStatus: items.pendingStatusOf(item.id),
+      statusBusy: items.isStatusBusy(item.id),
+      diagnosticEditable: o.status == OrderStatus.IN_PROGRESS && itemEdit,
+      onEdit: () => _editItem(item),
+      onCancel: () => _cancelItem(item),
+      onStatus: (status) => _changeItemStatus(item, status),
+      onDiagnosticCreate: item.kind == ItemKind.DIAGNOSTIC
+          ? () => _openNewInspection(item: item)
+          : null,
+      onDiagnosticFill: item.kind == ItemKind.DIAGNOSTIC
+          ? () => _openNewInspection(item: item)
+          : null,
+      onDiagnosticView: item.diagnosticReportId == null
+          ? null
+          : () => AppNav.to(
+              ReportDetailScreen(
+                reportId: item.diagnosticReportId!,
+                deleteLocked: isLineCompletedLocked(item),
               ),
-              if (_canItemHistory(user))
-                TextButton.icon(
-                  onPressed: _showItemHistory,
-                  icon: const Icon(Icons.history, size: 16),
-                  label: const Text('Түүх'),
-                ),
-              if (o.status.canAddItems && itemEdit)
-                TextButton.icon(
-                  onPressed: _addItem,
-                  icon: const Icon(Icons.add, size: 16),
-                  label: const Text('Нэмэх'),
-                ),
-            ],
-          ),
-          if (tracked.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Row(
+            ),
+    );
+
+    List<Widget> lines(List<ServiceItem> list) => [
+      for (var i = 0; i < list.length; i++) ...[
+        if (i > 0) Divider(height: 1, thickness: 1, color: t.shellBackground),
+        line(list[i]),
+      ],
+    ];
+
+    Widget empty(String text) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Text(text, style: TextStyle(fontSize: 14, color: t.mutedText)),
+    );
+
+    final total = activeItems.isEmpty
+        ? null
+        : Container(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              border: Border(top: BorderSide(color: t.border)),
+            ),
+            child: Row(
               children: [
                 Expanded(
-                  child: OrderProgressView(
-                    key: const ValueKey('items_progress'),
-                    progress: OrderProgressSummary(
-                      total: tracked.length,
-                      completed: tracked.length - open.length,
+                  child: Text(
+                    'Нийт дүн',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: t.ink,
                     ),
                   ),
                 ),
-                if (completable.length >= 2) ...[
-                  const SizedBox(width: 12),
-                  TextButton.icon(
+                Text(
+                  _moneyText(o.totalAmountMoney),
+                  style: opsMono(
+                    context,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: t.ink,
+                  ),
+                ),
+              ],
+            ),
+          );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        OpsCard(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _CardHeader(
+                label: 'Ажлууд',
+                onAdd: canAdd && !showParts ? _addItem : null,
+              ),
+              if (tracked.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Row(
+                  key: const ValueKey('items_progress'),
+                  children: [
+                    Expanded(
+                      child: OpsProgressBar(
+                        value: (tracked.length - open.length) / tracked.length,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      '${tracked.length - open.length}/${tracked.length} дууссан',
+                      style: opsMono(context, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ],
+              if (completable.length >= 2)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
                     key: const ValueKey('items_complete_all_button'),
                     onPressed: () => _completeAllItems(
                       completable,
                       skipped: open.where(lineNeedsReport).length,
                     ),
+                    style: TextButton.styleFrom(foregroundColor: t.accent),
                     icon: const Icon(Icons.done_all_rounded, size: 16),
                     label: const Text('Бүгдийг дуусгах'),
                   ),
-                ],
-              ],
-            ),
-          ],
-          if (activeItems.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Text(
-                'Ажлын мөр байхгүй',
-                style: context.textStyles.caption,
-              ),
-            )
-          else ...[
-            const Divider(height: 16),
-            for (final kind in ItemKind.values)
-              if (activeItems.any((item) => item.kind == kind)) ...[
-                Padding(
-                  padding: const EdgeInsets.only(top: 4, bottom: 2),
-                  child: Text(
-                    kind.label,
-                    style: context.textStyles.caption.copyWith(
-                      color: context.itemKindColor(kind),
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                ...activeItems
-                    .where((item) => item.kind == kind)
-                    .map(
-                      (item) => OrderItemCard(
-                        item: item,
-                        locked: locked,
-                        paidLocked: o.hasPaidPayment,
-                        paidLockReason: paidLockReason(o),
-                        canEdit: o.status.canAddItems && itemEdit,
-                        canPrice:
-                            o.status.canAddItems &&
-                            itemEdit &&
-                            _canItemPrice(user),
-                        // A SCHEDULED order is started first when a line
-                        // moves (_ensureOrderStarted), so that needs the
-                        // order status permission too.
-                        canStatus:
-                            (o.status == OrderStatus.IN_PROGRESS ||
-                                (o.status == OrderStatus.SCHEDULED &&
-                                    _canEdit(user))) &&
-                            item.kind != ItemKind.PART &&
-                            canLineStatus,
-                        pendingStatus: items.pendingStatusOf(item.id),
-                        statusBusy: items.isStatusBusy(item.id),
-                        diagnosticEditable:
-                            o.status == OrderStatus.IN_PROGRESS && itemEdit,
-                        onEdit: () => _editItem(item),
-                        onCancel: () => _cancelItem(item),
-                        onStatus: (status) => _changeItemStatus(item, status),
-                        onDiagnosticCreate: item.kind == ItemKind.DIAGNOSTIC
-                            ? () => _openNewInspection(item: item)
-                            : null,
-                        onDiagnosticFill: item.kind == ItemKind.DIAGNOSTIC
-                            ? () => _openNewInspection(item: item)
-                            : null,
-                        onDiagnosticView: item.diagnosticReportId == null
-                            ? null
-                            : () => AppNav.to(
-                                ReportDetailScreen(
-                                  reportId: item.diagnosticReportId!,
-                                  deleteLocked: isLineCompletedLocked(item),
-                                ),
-                              ),
-                      ),
-                    ),
-              ],
-            Divider(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                )
+              else
+                const SizedBox(height: 4),
+              if (jobs.isEmpty)
+                empty(
+                  activeItems.isEmpty ? 'Ажлын мөр байхгүй' : 'Ажил бүртгээгүй',
+                )
+              else
+                ...lines(jobs),
+              if (!showParts && total != null) total,
+            ],
+          ),
+        ),
+        if (showParts) ...[
+          const SizedBox(height: 14),
+          OpsCard(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('Нийт дүн', style: context.textStyles.bodyMedium),
-                Text(
-                  _moneyText(o.totalAmountMoney),
-                  style: context.textStyles.h3.copyWith(
-                    color: context.opsAccent,
-                  ),
-                ),
+                _CardHeader(label: 'Сэлбэг', onAdd: canAdd ? _addItem : null),
+                const SizedBox(height: 4),
+                if (parts.isEmpty)
+                  empty('Сэлбэг нэмээгүй')
+                else
+                  ...lines(parts),
+                ?total,
               ],
             ),
-          ],
+          ),
         ],
-      ),
+      ],
     );
   }
 
@@ -714,151 +787,312 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     bool itemEdit,
     List<ServiceItem> activeItems,
   ) {
-    return RefreshIndicator(
-      onRefresh: provider.refresh,
-      child: ListView(
-        padding: const EdgeInsets.all(AppDimens.paddingMD),
-        children: [
-          if (provider.detailRefreshError case final error?) ...[
-            _DetailRefreshWarning(
-              message: error.display,
-              onRetry: provider.refresh,
-            ),
-            const SizedBox(height: 14),
-          ],
+    final t = CarserviceTheme.of(context);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Phone gutter 20; on wider screens a centred 720px column.
+        final side = math.max(20.0, (constraints.maxWidth - 720) / 2);
+        return RefreshIndicator(
+          onRefresh: provider.refresh,
+          child: ListView(
+            padding: EdgeInsets.fromLTRB(side, 6, side, 24),
+            children: [
+              if (provider.detailRefreshError case final error?) ...[
+                _DetailRefreshWarning(
+                  message: error.display,
+                  onRetry: provider.refresh,
+                ),
+                const SizedBox(height: 14),
+              ],
 
-          // ─── Locked banner ───────────────────────────────────────────
-          if (locked) ...[
-            _LockedBanner(status: o.status),
-            const SizedBox(height: 14),
-          ],
+              // ─── Locked banner ─────────────────────────────────────────
+              if (locked) ...[
+                _LockedBanner(status: o.status),
+                const SizedBox(height: 14),
+              ],
 
-          // ─── Summary ─────────────────────────────────────────────────
-          OrderDetailSummaryCard(
-            order: o,
-            // The app bar already shows "#<number>"; keep it to one place.
-            showNumber: false,
-          ),
-          const SizedBox(height: 14),
-
-          if (o.isInternal) ...[
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: OrderInternalTag(),
-            ),
-            const SizedBox(height: 14),
-          ],
-          // ─── Status ──────────────────────────────────────────────────
-          OrderStatusField(
-            current: o.status,
-            enabled: _canEdit(user),
-            onSelect: _changeStatus,
-          ),
-          const SizedBox(height: 14),
-          // ─── Items ───────────────────────────────────────────────────
-          ListenableBuilder(
-            listenable: _itemController!,
-            builder: (context, _) =>
-                _itemsCard(context, o, user, locked, itemEdit, activeItems),
-          ),
-          const SizedBox(height: 14),
-          // ─── Payment ──────────────────────────────────────────────────
-          if (_canViewPayments(user) && o.isInternal) ...[
-            AppCard(
-              key: const ValueKey('order_internal_payment_note'),
-              child: Text(
-                internalOrderPaymentNote,
-                style: context.textStyles.caption,
+              // ─── Vehicle hero ──────────────────────────────────────────
+              OrderDetailSummaryCard(
+                order: o,
+                // The header already shows "#<number>"; keep it to one place.
+                showNumber: false,
               ),
-            ),
-            const SizedBox(height: 14),
-          ] else if (_canViewPayments(user)) ...[
-            _PaymentTile(
-              key: const ValueKey('order_payment_entry'),
-              order: o,
-              numFmt: numFmt,
-              onTap: _openPayment,
-            ),
-            const SizedBox(height: 14),
-          ],
-          OrderAssignmentSection(
-            order: o,
-            enabled: _canAssign(user),
-            state: provider.assignableUsersState,
-            loading: provider.loadingAssignableUsers,
-            error: provider.assignableUsersError,
-            onChanged: _assign,
-          ),
-          const SizedBox(height: 14),
-          OrderScheduleSection(
-            order: o,
-            enabled: _canEdit(user) && !locked,
-            onExpectedFinish: _setExpectedFinish,
-            onReschedule: _reschedule,
-          ),
-          const SizedBox(height: 14),
+              const SizedBox(height: 14),
 
-          // ─── Хүлээн авах (унших-зөвхөн; байхгүй бол нуугдана) ────────
-          if (o.intake != null) ...[
-            OrderIntakeTile(intake: o.intake),
-            const SizedBox(height: 14),
-          ],
-
-          // ─── Linked reports ──────────────────────────────────────────
-          _DiagnosticsSection(
-            order: o,
-            dateFmt: dateFmt,
-            locked: locked || o.status != OrderStatus.IN_PROGRESS || !itemEdit,
-            onOpenReport: (id) => AppNav.to(
-              ReportDetailScreen(
-                reportId: id,
-                deleteLocked: o.items.any(
-                  (i) => i.diagnosticReportId == id && isLineCompletedLocked(i),
+              if (o.isInternal) ...[
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: OrderInternalTag(),
+                ),
+                const SizedBox(height: 14),
+              ],
+              // ─── Progress + status ─────────────────────────────────────
+              OrderStatusField(
+                current: o.status,
+                enabled: _canEdit(user),
+                onSelect: _changeStatus,
+              ),
+              const SizedBox(height: 14),
+              // ─── Items ─────────────────────────────────────────────────
+              ListenableBuilder(
+                listenable: _itemController!,
+                builder: (context, _) => _itemsCards(
+                  context,
+                  o,
+                  user,
+                  locked,
+                  itemEdit,
+                  activeItems,
                 ),
               ),
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          // ─── Delete ──────────────────────────────────────────────────
-          // Last on the page, away from the everyday actions above.
-          if (_canDelete(user)) ...[
-            const SizedBox(height: 10),
-            SizedBox(
-              height: 50,
-              child: OutlinedButton.icon(
-                key: const ValueKey('order_detail_delete'),
-                onPressed: o.hasPaidPayment ? null : _delete,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: context.opsDanger,
-                  side: BorderSide(color: context.opsDanger),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppDimens.radiusMD),
+              const SizedBox(height: 14),
+              // ─── Payment ────────────────────────────────────────────────
+              if (_canViewPayments(user) && o.isInternal) ...[
+                OpsCard(
+                  key: const ValueKey('order_internal_payment_note'),
+                  child: Text(
+                    internalOrderPaymentNote,
+                    style: TextStyle(fontSize: 13, color: t.mutedText),
                   ),
                 ),
-                icon: const Icon(Icons.delete_outline, size: 20),
-                label: const Text(
-                  'Засварын хуудас устгах',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                const SizedBox(height: 14),
+              ] else if (_canViewPayments(user)) ...[
+                _PaymentTile(
+                  key: const ValueKey('order_payment_entry'),
+                  order: o,
+                  numFmt: numFmt,
+                  onTap: _openPayment,
                 ),
+                const SizedBox(height: 14),
+              ],
+              OrderAssignmentSection(
+                order: o,
+                enabled: _canAssign(user),
+                state: provider.assignableUsersState,
+                loading: provider.loadingAssignableUsers,
+                error: provider.assignableUsersError,
+                onChanged: _assign,
+              ),
+              const SizedBox(height: 14),
+              OrderScheduleSection(
+                order: o,
+                enabled: _canEdit(user) && !locked,
+                onExpectedFinish: _setExpectedFinish,
+                onReschedule: _reschedule,
+              ),
+              const SizedBox(height: 14),
+
+              // ─── Хүлээн авах (унших-зөвхөн; байхгүй бол нуугдана) ──────
+              if (o.intake != null) ...[
+                OrderIntakeTile(intake: o.intake),
+                const SizedBox(height: 14),
+              ],
+
+              // ─── Linked reports ────────────────────────────────────────
+              _DiagnosticsSection(
+                order: o,
+                dateFmt: dateFmt,
+                locked:
+                    locked || o.status != OrderStatus.IN_PROGRESS || !itemEdit,
+                onOpenReport: (id) => AppNav.to(
+                  ReportDetailScreen(
+                    reportId: id,
+                    deleteLocked: o.items.any(
+                      (i) =>
+                          i.diagnosticReportId == id &&
+                          isLineCompletedLocked(i),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+
+              // ─── Delete ────────────────────────────────────────────────
+              // Last on the page, away from the everyday actions above.
+              if (_canDelete(user)) ...[
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 52,
+                  child: OutlinedButton.icon(
+                    key: const ValueKey('order_detail_delete'),
+                    onPressed: o.hasPaidPayment ? null : _delete,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: context.opsDanger,
+                      backgroundColor: t.panel,
+                      side: BorderSide(color: t.border),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    icon: const Icon(Icons.delete_outline, size: 20),
+                    label: const Text(
+                      'Засварын хуудас устгах',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+                if (o.hasPaidPayment)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      paidLockReason(o),
+                      textAlign: TextAlign.center,
+                      style: context.textStyles.caption,
+                    ),
+                  ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Page frame of the design: 44px round back button, "Засварын хуудас" with
+/// the order number under it, trailing round actions; the body below; an
+/// optional bottom action bar.
+class _DetailFrame extends StatelessWidget {
+  const _DetailFrame({
+    required this.body,
+    this.subtitle,
+    this.actions = const [],
+    this.bottomBar,
+  });
+
+  final Widget body;
+  final String? subtitle;
+  final List<Widget> actions;
+  final Widget? bottomBar;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CarserviceTheme.of(context);
+    final canPop = ModalRoute.of(context)?.canPop ?? false;
+    return Scaffold(
+      backgroundColor: t.shellBackground,
+      bottomNavigationBar: bottomBar,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: Row(
+                children: [
+                  if (canPop) ...[
+                    OpsCircleButton(
+                      icon: Icons.chevron_left_rounded,
+                      tooltip: 'Буцах',
+                      onPressed: () => Navigator.of(context).maybePop(),
+                    ),
+                    const SizedBox(width: 12),
+                  ],
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Засварын хуудас',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w600,
+                            color: t.ink,
+                          ),
+                        ),
+                        if (subtitle != null)
+                          Text(
+                            subtitle!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: opsMono(context, fontSize: 12),
+                          ),
+                      ],
+                    ),
+                  ),
+                  ...actions,
+                ],
               ),
             ),
-            if (o.hasPaidPayment)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text(
-                  paidLockReason(o),
-                  textAlign: TextAlign.center,
-                  style: context.textStyles.caption,
-                ),
-              ),
-          ],
-
-          const SizedBox(height: 24),
+          ),
+          Expanded(child: body),
         ],
       ),
     );
   }
+}
+
+/// The header's round "…" button: refresh, and the cancelled-lines history
+/// with `orders.itemHistory`.
+class _MoreMenu extends StatelessWidget {
+  const _MoreMenu({required this.onRefresh, required this.onItemHistory});
+
+  final Future<void> Function() onRefresh;
+  final VoidCallback? onItemHistory;
+
+  @override
+  Widget build(BuildContext context) => MenuAnchor(
+    alignmentOffset: const Offset(-120, 6),
+    style: AppDropdown.menuStyle(context),
+    menuChildren: [
+      MenuItemButton(
+        key: const ValueKey('order_detail_refresh'),
+        leadingIcon: const Icon(Icons.refresh, size: 20),
+        onPressed: onRefresh,
+        child: const Text('Шинэчлэх'),
+      ),
+      if (onItemHistory != null)
+        MenuItemButton(
+          key: const ValueKey('order_detail_item_history'),
+          leadingIcon: const Icon(Icons.history, size: 20),
+          onPressed: onItemHistory,
+          child: const Text('Цуцалсан мөрүүд'),
+        ),
+    ],
+    builder: (context, menu, _) => OpsCircleButton(
+      icon: Icons.more_horiz_rounded,
+      tooltip: 'Бусад үйлдэл',
+      onPressed: () => menu.isOpen ? menu.close() : menu.open(),
+    ),
+  );
+}
+
+/// Card header: mono section label and an optional "+ Нэмэх".
+class _CardHeader extends StatelessWidget {
+  const _CardHeader({required this.label, this.onAdd});
+
+  final String label;
+  final VoidCallback? onAdd;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    height: 32,
+    child: Row(
+      children: [
+        Expanded(child: OpsSectionLabel(label)),
+        if (onAdd != null)
+          TextButton.icon(
+            onPressed: onAdd,
+            style: TextButton.styleFrom(
+              foregroundColor: CarserviceTheme.of(context).accent,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: const Size(0, 32),
+            ),
+            icon: const Icon(Icons.add, size: 16),
+            label: const Text(
+              'Нэмэх',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+            ),
+          ),
+      ],
+    ),
+  );
 }
 
 class _DetailRefreshWarning extends StatelessWidget {
@@ -871,11 +1105,10 @@ class _DetailRefreshWarning extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       key: const ValueKey('order_detail_refresh_warning'),
-      padding: const EdgeInsets.all(AppDimens.paddingMD),
+      padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
       decoration: BoxDecoration(
-        color: context.opsWarning.withValues(alpha: 0.12),
-        border: Border.all(color: context.opsWarning.withValues(alpha: 0.45)),
-        borderRadius: BorderRadius.circular(AppDimens.radiusMD),
+        color: OpsTone.warn.background(CarserviceTheme.of(context)),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -885,7 +1118,7 @@ class _DetailRefreshWarning extends StatelessWidget {
             color: context.opsWarning,
             size: AppDimens.iconMD,
           ),
-          const SizedBox(width: AppDimens.paddingSM),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -924,11 +1157,10 @@ class _LockedBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = CarserviceTheme.of(context);
     final isCompleted = status == OrderStatus.COMPLETED;
-    final bg = isCompleted
-        ? context.opsGood.withOpacity(0.12)
-        : context.opsDanger.withOpacity(0.12);
-    final fg = isCompleted ? context.opsGood : context.opsDanger;
+    final tone = isCompleted ? OpsTone.ok : OpsTone.accent;
+    final fg = isCompleted ? t.ok : t.danger;
     final title = isCompleted
         ? 'Засварын хуудас дууссан'
         : 'Засварын хуудас цуцлагдсан';
@@ -937,11 +1169,10 @@ class _LockedBanner extends StatelessWidget {
         : 'Цуцлагдсан засварын хуудсанд өөрчлөлт хийх боломжгүй.';
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(AppDimens.radiusMD),
-        border: Border.all(color: fg.withOpacity(0.3)),
+        color: tone.background(t),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
         children: [
@@ -949,8 +1180,8 @@ class _LockedBanner extends StatelessWidget {
             width: 34,
             height: 34,
             decoration: BoxDecoration(
-              color: fg.withOpacity(0.12),
-              shape: BoxShape.circle,
+              color: t.panel,
+              borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(Icons.lock_outline_rounded, size: 17, color: fg),
           ),
@@ -961,18 +1192,14 @@ class _LockedBanner extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: context.textStyles.body.copyWith(
-                    fontWeight: FontWeight.w700,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
                     color: fg,
                   ),
                 ),
                 const SizedBox(height: 2),
-                Text(
-                  sub,
-                  style: context.textStyles.label.copyWith(
-                    color: fg.withOpacity(0.8),
-                  ),
-                ),
+                Text(sub, style: TextStyle(fontSize: 12, color: t.ink)),
               ],
             ),
           ),
@@ -993,13 +1220,11 @@ class _PaymentChip extends StatelessWidget {
       decoration: BoxDecoration(
         color: context.paymentStatusBackground(status),
         borderRadius: BorderRadius.circular(AppDimens.radiusFull),
-        border: Border.all(
-          color: context.paymentStatusColor(status).withOpacity(0.35),
-        ),
       ),
       child: Text(
         status.label,
-        style: context.textStyles.label.copyWith(
+        style: TextStyle(
+          fontSize: 11,
           fontWeight: FontWeight.w600,
           color: context.paymentStatusColor(status),
         ),
@@ -1023,6 +1248,7 @@ class _PaymentTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = CarserviceTheme.of(context);
     // Keep payment display on the lossless Money representation. The legacy
     // double fields would round-trip through binary floating point and the old
     // integer formatting silently truncated fractional amounts.
@@ -1039,54 +1265,60 @@ class _PaymentTile extends StatelessWidget {
     final hasRemaining =
         remaining != null && _subtractMoneyStrings(remaining.raw, '0') != '0';
 
-    return AppCard(
-      padding: EdgeInsets.zero,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(AppDimens.radiusLG),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-          child: Row(
-            children: [
-              Icon(Icons.payments_outlined, size: 18, color: context.opsAccent),
-              SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+    return OpsCard(
+      onTap: onTap,
+      padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+      child: Row(
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: OpsTone.accent.background(t),
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Icon(Icons.payments_outlined, size: 16, color: t.accent),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    Row(
-                      children: [
-                        Text('Төлбөр', style: context.textStyles.h3),
-                        const SizedBox(width: 8),
-                        _PaymentChip(status: status),
-                      ],
-                    ),
-                    SizedBox(height: 3),
                     Text(
-                      isPaid
-                          ? '${_moneyText(total)} · Бүрэн төлөгдсөн'
-                          : hasRemaining
-                          ? 'Үлдэгдэл: ${_moneyText(remaining)}'
-                          : _moneyText(total),
-                      style: context.textStyles.caption.copyWith(
-                        color: isPaid
-                            ? context.opsGood
-                            : hasRemaining
-                            ? context.opsDanger
-                            : context.opsTextSecondary,
+                      'Төлбөр',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: t.ink,
                       ),
                     ),
+                    const SizedBox(width: 8),
+                    _PaymentChip(status: status),
                   ],
                 ),
-              ),
-              Icon(
-                Icons.arrow_forward_ios_rounded,
-                size: 13,
-                color: context.opsTextHint,
-              ),
-            ],
+                const SizedBox(height: 3),
+                Text(
+                  isPaid
+                      ? '${_moneyText(total)} · Бүрэн төлөгдсөн'
+                      : hasRemaining
+                      ? 'Үлдэгдэл: ${_moneyText(remaining)}'
+                      : _moneyText(total),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isPaid
+                        ? t.ok
+                        : hasRemaining
+                        ? t.danger
+                        : t.mutedText,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
+          Icon(Icons.chevron_right_rounded, size: 20, color: t.mutedText3),
+        ],
       ),
     );
   }
@@ -1822,135 +2054,92 @@ class _DiagnosticsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = CarserviceTheme.of(context);
     final reports = order.reports;
-    return AppCard(
+    return OpsCard(
       padding: EdgeInsets.zero,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // ── Header ──────────────────────────────────────────────────
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-            child: Wrap(
-              alignment: WrapAlignment.spaceBetween,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              runSpacing: 4,
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+            child: Row(
               children: [
-                Icon(
-                  Icons.assignment_outlined,
-                  size: 18,
-                  color: context.opsAccent,
-                ),
-                const SizedBox(width: 8),
-                Text('Оношилгоо', style: context.textStyles.h3),
-                const SizedBox(width: 8),
+                const Expanded(child: OpsSectionLabel('Оношилгооны тайлан')),
                 if (reports.isNotEmpty)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 7,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: context.opsAccent.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(AppDimens.radiusFull),
-                    ),
-                    child: Text(
-                      '${reports.length}',
-                      style: context.textStyles.label.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: context.opsAccent,
-                      ),
-                    ),
-                  ),
+                  Text('${reports.length}', style: opsMono(context)),
               ],
             ),
           ),
-          const Divider(height: 1),
-
           // ── Body ─────────────────────────────────────────────────────
           if (reports.isEmpty)
             Padding(
-              padding: EdgeInsets.symmetric(vertical: 24),
-              child: Center(
-                child: Text(
-                  'Тайлан бүртгээгүй байна.',
-                  style: context.textStyles.body.copyWith(
-                    color: context.opsTextSecondary,
-                  ),
-                ),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+              child: Text(
+                'Тайлан бүртгээгүй байна.',
+                style: TextStyle(fontSize: 14, color: t.mutedText),
               ),
             )
           else
-            ...reports.asMap().entries.map((entry) {
-              final i = entry.key;
-              final r = entry.value;
-              final type = r.template.type;
-              return Column(
-                children: [
-                  InkWell(
-                    onTap: () => onOpenReport(r.id),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
+            for (final (i, r) in reports.indexed) ...[
+              if (i > 0)
+                Divider(height: 1, thickness: 1, color: t.shellBackground),
+              InkWell(
+                onTap: () => onOpenReport(r.id),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 12, 12),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: context.diagnosticTypeBackground(
+                            r.template.type,
+                          ),
+                          borderRadius: BorderRadius.circular(
+                            AppDimens.radiusFull,
+                          ),
+                        ),
+                        child: Text(
+                          r.template.type.label,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: context.diagnosticTypeColor(r.template.type),
+                          ),
+                        ),
                       ),
-                      child: Row(
-                        children: [
-                          // Type badge
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 3,
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              r.template.name,
+                              style: TextStyle(fontSize: 14, color: t.ink),
                             ),
-                            decoration: BoxDecoration(
-                              color: context.diagnosticTypeBackground(type),
-                              borderRadius: BorderRadius.circular(
-                                AppDimens.radiusFull,
-                              ),
+                            const SizedBox(height: 2),
+                            Text(
+                              dateFmt.format(r.createdAt),
+                              style: opsMono(context, fontSize: 12),
                             ),
-                            child: Text(
-                              type.label,
-                              style: context.textStyles.label.copyWith(
-                                fontWeight: FontWeight.w600,
-                                color: context.diagnosticTypeColor(type),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          // Name + date
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  r.template.name,
-                                  style: context.textStyles.captionMedium,
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  dateFmt.format(r.createdAt),
-                                  style: context.textStyles.caption,
-                                ),
-                              ],
-                            ),
-                          ),
-                          // Chevron
-                          Text(
-                            'Үзэх →',
-                            style: context.textStyles.label.copyWith(
-                              color: context.opsAccent,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
+                      Icon(
+                        Icons.chevron_right_rounded,
+                        size: 20,
+                        color: t.mutedText3,
+                      ),
+                    ],
                   ),
-                  if (i < reports.length - 1)
-                    const Divider(height: 1, indent: 16, endIndent: 16),
-                ],
-              );
-            }),
+                ),
+              ),
+            ],
         ],
       ),
     );

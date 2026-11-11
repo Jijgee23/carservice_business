@@ -1,6 +1,9 @@
 import 'package:carservice_business/core/utils/vehicle_plate.dart';
 import 'package:carservice_business/core/network/api_client.dart';
 import 'package:carservice_business/core/domain/diagnostic.dart';
+import 'package:carservice_business/core/domain/plate_registration.dart';
+import 'package:carservice_business/core/errors/app_error.dart';
+import 'package:carservice_business/core/utils/result.dart';
 
 // Олон feature-д хуваалцдаг lookup operations.
 // Diagnostic-specific (templates, reports) → DiagnosticRepository
@@ -29,6 +32,52 @@ class DiagnosticService {
     return list
         .map((e) => VehicleSummary.fromJson(e as Map<String, dynamic>))
         .toList();
+  }
+
+  /// «+ 1234УБА — машин бүртгэх»: the server fetches the vehicle by plate
+  /// (or takes [make]/[model]) and registers it — for [customerId], else
+  /// ownerless (the order create links it). No toast: the picker shows the
+  /// error under its field, like the web form.
+  static Future<Result<PlateRegistration>> registerVehicleFromPlate({
+    required String plate,
+    String? customerId,
+    String? make,
+    String? model,
+  }) async {
+    try {
+      final res = await apiOrThrow(
+        Api.post,
+        'vehicles/from-plate',
+        body: {
+          'plate': plate,
+          'customerId': ?customerId,
+          'make': ?make,
+          'model': ?model,
+        },
+      );
+      final data = Map<String, dynamic>.from(res.data as Map);
+      if (data['needsDetails'] == true) {
+        return Ok(
+          PlateNeedsDetails(
+            data['reason'] as String? ??
+                'Машины мэдээлэл олдсонгүй — марк, загвараа оруулна уу.',
+          ),
+        );
+      }
+      return Ok(
+        PlateRegistered(
+          VehicleSummary.fromJson(
+            Map<String, dynamic>.from(data['vehicle'] as Map),
+          ),
+        ),
+      );
+    } on AppError catch (e) {
+      return Err(e);
+    } catch (_) {
+      return const Err(
+        AppError(ErrorKind.unknown, 'Машин бүртгэхэд алдаа гарлаа.'),
+      );
+    }
   }
 
   static Future<VehicleSummary?> createVehicle({

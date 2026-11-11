@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import 'package:carservice_business/core/utils/vehicle_plate.dart';
 import 'package:carservice_business/app/theme/app_theme.dart';
 import 'package:carservice_business/core/domain/user.dart';
 import 'package:carservice_business/core/utils/async_value.dart';
 import 'package:carservice_business/core/widgets/app_dropdown.dart';
+import 'package:carservice_business/core/widgets/common/ops_kit.dart';
 import 'package:carservice_business/features/orders/domain/order.dart';
 import 'package:carservice_business/features/orders/presentation/feature_theme.dart';
 import 'package:carservice_business/features/orders/presentation/widgets/assignee_avatar.dart';
 import 'package:carservice_business/features/orders/presentation/widgets/list/order_list_widgets.dart';
 
+/// The navy vehicle header of the design: make/model, year and mileage when
+/// known, the plate as a light chip, then customer, branch and arrival.
 class OrderDetailSummaryCard extends StatelessWidget {
   const OrderDetailSummaryCard({
     super.key,
@@ -19,52 +23,155 @@ class OrderDetailSummaryCard extends StatelessWidget {
 
   final ServiceOrderDetail order;
 
-  /// Whether to render the "#number" heading. In embedded (side-pane) mode
-  /// the number is already shown in the pane header, so the caller passes
-  /// `false` here to avoid showing it twice.
+  /// Whether to render the "#number" heading. The detail screen's header
+  /// already shows it, so it passes `false` to avoid showing it twice.
   final bool showNumber;
+
+  static final _time = DateFormat('HH:mm');
+  static final _dayTime = DateFormat('MM/dd HH:mm');
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (showNumber) ...[
-              Text(
-                '#${order.number}',
-                key: const ValueKey('order_detail_number'),
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 8),
-            ],
-            _SummaryLine(
-              icon: Icons.directions_car_outlined,
-              text:
-                  '${plateLabel(order.vehicle.plate, order.vehicle.vin)} — ${order.vehicle.displayName}',
+    final vehicle = order.vehicle;
+    final plate = plateLabel(vehicle.plate, vehicle.vin);
+    final name = '${vehicle.make} ${vehicle.model}'.trim();
+    final mileage = vehicle.mileage ?? order.intake?.mileageKm;
+    final facts = [
+      if (vehicle.year != null) '${vehicle.year}',
+      if (mileage != null) formatMileageKm(mileage),
+    ];
+    final arrived = order.intake?.recordedAt;
+    final customer = order.customer;
+    final phone = customer.phone.trim();
+    const muted = TextStyle(
+      fontSize: 13,
+      height: 18 / 13,
+      color: OpsDark.muted,
+    );
+
+    return OpsHeroCard(
+      radius: 18,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (showNumber) ...[
+            Text(
+              '#${order.number}',
+              key: const ValueKey('order_detail_number'),
+              style: opsMono(context, fontSize: 12, color: OpsDark.muted2),
             ),
-            _SummaryLine(
-              icon: Icons.person_outline,
-              text: '${order.customer.displayName} · ${order.customer.phone}',
-            ),
-            _SummaryLine(
-              icon: Icons.storefront_outlined,
-              text: order.branch.name,
-            ),
-            if (order.notes?.trim().isNotEmpty == true)
-              _SummaryLine(icon: Icons.notes_outlined, text: order.notes!),
+            const SizedBox(height: 6),
           ],
-        ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name.isEmpty ? plate : name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 19,
+                        height: 24 / 19,
+                        fontWeight: FontWeight.w600,
+                        color: OpsDark.ink,
+                      ),
+                    ),
+                    if (facts.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(facts.join(' · '), style: muted),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: OpsDark.ink,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  plate,
+                  style: opsMono(
+                    context,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: OpsDark.bg,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 16,
+            runSpacing: 6,
+            children: [
+              Text.rich(
+                TextSpan(
+                  text: 'Үйлчлүүлэгч: ',
+                  children: [
+                    TextSpan(
+                      text: customer.displayName,
+                      style: const TextStyle(
+                        color: OpsDark.ink,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    if (phone.isNotEmpty && phone != customer.displayName)
+                      TextSpan(text: ' · $phone'),
+                  ],
+                ),
+                style: muted,
+              ),
+              Text(order.branch.name, style: muted),
+              if (arrived != null)
+                Text(
+                  'Ирсэн ${DateUtils.isSameDay(arrived, DateTime.now()) ? _time.format(arrived) : _dayTime.format(arrived)}',
+                  style: muted,
+                ),
+            ],
+          ),
+          if (order.notes?.trim().isNotEmpty == true) ...[
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(top: 1),
+                  child: Icon(
+                    Icons.notes_outlined,
+                    size: 16,
+                    color: OpsDark.muted,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    order.notes!.trim(),
+                    style: muted.copyWith(color: OpsDark.ink),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
       ),
     );
   }
 }
 
-/// "Төлөв" row: the order's current status, and — when the user may change
-/// it — a tap opens a dropdown of the statuses it can move to next. The
-/// current status heads the list, checked, for context.
+/// «Явц» card: a stepper over the order's status sequence (Товлогдсон →
+/// Хийгдэж байна → Дууссан), then the "Төлөв" row. When the user may change
+/// the status, tapping the row opens a dropdown of the statuses it can move
+/// to next; the current status heads the list, checked, for context.
 class OrderStatusField extends StatelessWidget {
   const OrderStatusField({
     super.key,
@@ -81,54 +188,196 @@ class OrderStatusField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = CarserviceTheme.of(context);
     final options = enabled ? current.nextStatuses : const <OrderStatus>[];
-    return LayoutBuilder(
-      builder: (context, constraints) => MenuAnchor(
-        alignmentOffset: const Offset(0, 6),
-        // Lets the min width below reach the panel; by default MenuAnchor
-        // sizes the panel to its widest item.
-        crossAxisUnconstrained: false,
-        // As wide as the row, like a dropdown.
-        style: AppDropdown.menuStyle(context, width: constraints.maxWidth),
-        menuChildren: [
-          _StatusMenuItem(status: current, selected: true),
-          for (final status in options)
-            _StatusMenuItem(
-              key: ValueKey('order_status_${status.name}'),
-              status: status,
-              onPressed: () => onSelect(status),
-            ),
-        ],
-        builder: (context, menu, _) => Card(
-          margin: EdgeInsets.zero,
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            key: const ValueKey('order_status_menu'),
-            onTap: options.isEmpty
-                ? null
-                : () => menu.isOpen ? menu.close() : menu.open(),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-              child: Row(
-                children: [
-                  Text('Төлөв', style: context.textStyles.h3),
-                  const Spacer(),
-                  OrderStatusChip(status: current),
-                  if (options.isNotEmpty) ...[
-                    const SizedBox(width: 4),
-                    Icon(
-                      menu.isOpen
-                          ? Icons.expand_less_rounded
-                          : Icons.expand_more_rounded,
-                      color: context.opsTextSecondary,
-                    ),
-                  ],
-                ],
+    return OpsCard(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Expanded(child: OpsSectionLabel('Явц')),
+              if (current == OrderStatus.CANCELLED)
+                OpsSectionLabel(current.label, color: t.danger),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _StatusStepper(current: current),
+          const SizedBox(height: 12),
+          Divider(height: 1, thickness: 1, color: t.shellBackground),
+          LayoutBuilder(
+            builder: (context, constraints) => MenuAnchor(
+              alignmentOffset: const Offset(0, 4),
+              // Lets the min width below reach the panel; by default
+              // MenuAnchor sizes the panel to its widest item.
+              crossAxisUnconstrained: false,
+              // As wide as the row, like a dropdown.
+              style: AppDropdown.menuStyle(
+                context,
+                width: constraints.maxWidth,
+              ),
+              menuChildren: [
+                _StatusMenuItem(status: current, selected: true),
+                for (final status in options)
+                  _StatusMenuItem(
+                    key: ValueKey('order_status_${status.name}'),
+                    status: status,
+                    onPressed: () => onSelect(status),
+                  ),
+              ],
+              builder: (context, menu, _) => InkWell(
+                key: const ValueKey('order_status_menu'),
+                borderRadius: BorderRadius.circular(10),
+                onTap: options.isEmpty
+                    ? null
+                    : () => menu.isOpen ? menu.close() : menu.open(),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 48),
+                  child: Row(
+                    children: [
+                      Text(
+                        'Төлөв',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: t.ink,
+                        ),
+                      ),
+                      const Spacer(),
+                      OrderStatusChip(status: current),
+                      if (options.isNotEmpty) ...[
+                        const SizedBox(width: 4),
+                        Icon(
+                          menu.isOpen
+                              ? Icons.expand_less_rounded
+                              : Icons.expand_more_rounded,
+                          color: t.mutedText,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Horizontal stepper: done steps get a navy tick, the current one the
+/// accent dot with a ring, the rest an empty circle. A cancelled order has
+/// no current step.
+class _StatusStepper extends StatelessWidget {
+  const _StatusStepper({required this.current});
+
+  final OrderStatus current;
+
+  static const _steps = [
+    OrderStatus.SCHEDULED,
+    OrderStatus.IN_PROGRESS,
+    OrderStatus.COMPLETED,
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CarserviceTheme.of(context);
+    final finished = current == OrderStatus.COMPLETED;
+    final index = _steps.indexOf(current); // -1 when cancelled
+    return Semantics(
+      label: 'Явц: ${current.label}',
+      child: ExcludeSemantics(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final segment = constraints.maxWidth / _steps.length;
+            final reached = index < 0 ? 0 : index;
+            return Stack(
+              children: [
+                Positioned(
+                  left: segment / 2,
+                  right: segment / 2,
+                  top: 10,
+                  child: Container(height: 2, color: t.border),
+                ),
+                if (reached > 0)
+                  Positioned(
+                    left: segment / 2,
+                    width: segment * reached,
+                    top: 10,
+                    child: Container(height: 2, color: t.ink),
+                  ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (var i = 0; i < _steps.length; i++)
+                      Expanded(
+                        child: Column(
+                          children: [
+                            _StepDot(
+                              done: finished || i < index,
+                              current: !finished && i == index,
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              _steps[i].label,
+                              textAlign: TextAlign.center,
+                              maxLines: 2,
+                              style: TextStyle(
+                                fontSize: 11,
+                                height: 14 / 11,
+                                fontWeight: !finished && i == index
+                                    ? FontWeight.w600
+                                    : FontWeight.w400,
+                                color: !finished && i == index
+                                    ? t.ink
+                                    : t.mutedText,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            );
+          },
         ),
       ),
+    );
+  }
+}
+
+class _StepDot extends StatelessWidget {
+  const _StepDot({required this.done, required this.current});
+
+  final bool done;
+  final bool current;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CarserviceTheme.of(context);
+    return Container(
+      width: 22,
+      height: 22,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: done
+            ? t.ink
+            : current
+            ? t.accentHi
+            : t.panel,
+        border: done || current ? null : Border.all(color: t.border, width: 2),
+        boxShadow: [
+          if (current)
+            BoxShadow(
+              color: t.accentHi.withValues(alpha: 0.18),
+              spreadRadius: 4,
+            ),
+        ],
+      ),
+      child: done ? Icon(Icons.check, size: 12, color: t.panel) : null,
     );
   }
 }
@@ -231,22 +480,29 @@ class OrderAssignmentSection extends StatelessWidget {
               onPressed: () => onChanged(user.id),
             ),
         ],
-        builder: (context, menu, _) => Card(
-          margin: EdgeInsets.zero,
-          clipBehavior: Clip.antiAlias,
+        builder: (context, menu, _) => OpsCard(
+          padding: EdgeInsets.zero,
           child: InkWell(
             key: canOpen ? const ValueKey('order_assignment_picker') : null,
             onTap: canOpen
                 ? () => menu.isOpen ? menu.close() : menu.open()
                 : null,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+              padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Row(
                     children: [
-                      Text('Хариуцагч', style: context.textStyles.h3),
+                      _RowIcon(icon: Icons.engineering_outlined),
+                      const SizedBox(width: 12),
+                      Text(
+                        'Хариуцагч',
+                        style: TextStyle(
+                          fontSize: 15,
+                          color: CarserviceTheme.of(context).ink,
+                        ),
+                      ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Align(
@@ -394,60 +650,92 @@ class OrderScheduleSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = CarserviceTheme.of(context);
     final format = MaterialLocalizations.of(context).formatMediumDate;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Хуваарь', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            if (order.scheduledAt != null)
-              Text('Товлосон: ${format(order.scheduledAt!)}'),
-            if (order.expectedFinishAt != null)
-              Text('Дуусах тооцоо: ${format(order.expectedFinishAt!)}'),
-            if (enabled)
-              Wrap(
-                spacing: 8,
-                children: [
-                  if (order.status == OrderStatus.IN_PROGRESS)
-                    TextButton.icon(
-                      key: const ValueKey('order_expected_finish_button'),
-                      onPressed: onExpectedFinish,
-                      icon: const Icon(Icons.flag_outlined),
-                      label: const Text('Дуусах хугацаа'),
-                    ),
-                  if (order.status == OrderStatus.SCHEDULED)
-                    TextButton.icon(
-                      key: const ValueKey('order_reschedule_button'),
-                      onPressed: onReschedule,
-                      icon: const Icon(Icons.event_repeat_outlined),
-                      label: const Text('Шилжүүлэх'),
-                    ),
-                ],
-              ),
-          ],
+    Widget line(String label, DateTime value) => Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(fontSize: 14, color: t.mutedText),
+            ),
+          ),
+          Text(
+            format(value),
+            style: opsMono(
+              context,
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: t.ink,
+            ),
+          ),
+        ],
+      ),
+    );
+    final actions = [
+      if (enabled && order.status == OrderStatus.IN_PROGRESS)
+        TextButton.icon(
+          key: const ValueKey('order_expected_finish_button'),
+          onPressed: onExpectedFinish,
+          icon: const Icon(Icons.flag_outlined, size: 18),
+          label: const Text('Дуусах хугацаа'),
+          style: TextButton.styleFrom(foregroundColor: t.accent),
         ),
+      if (enabled && order.status == OrderStatus.SCHEDULED)
+        TextButton.icon(
+          key: const ValueKey('order_reschedule_button'),
+          onPressed: onReschedule,
+          icon: const Icon(Icons.event_repeat_outlined, size: 18),
+          label: const Text('Шилжүүлэх'),
+          style: TextButton.styleFrom(foregroundColor: t.accent),
+        ),
+    ];
+    return OpsCard(
+      padding: EdgeInsets.fromLTRB(16, 14, 16, actions.isEmpty ? 14 : 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const OpsSectionLabel('Хуваарь'),
+          if (order.scheduledAt != null) line('Товлосон', order.scheduledAt!),
+          if (order.expectedFinishAt != null)
+            line('Дуусах тооцоо', order.expectedFinishAt!),
+          if (order.scheduledAt == null && order.expectedFinishAt == null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                'Хуваарь тохируулаагүй',
+                style: TextStyle(fontSize: 14, color: t.mutedText),
+              ),
+            ),
+          if (actions.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Wrap(spacing: 8, children: actions),
+            ),
+        ],
       ),
     );
   }
 }
 
-class _SummaryLine extends StatelessWidget {
-  const _SummaryLine({required this.icon, required this.text});
+/// Neutral icon tile at the start of a row.
+class _RowIcon extends StatelessWidget {
+  const _RowIcon({required this.icon});
   final IconData icon;
-  final String text;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(top: 4),
-    child: Row(
-      children: [
-        Icon(icon, size: 16, color: context.opsTextSecondary),
-        const SizedBox(width: 8),
-        Expanded(child: Text(text)),
-      ],
-    ),
-  );
+  Widget build(BuildContext context) {
+    final t = CarserviceTheme.of(context);
+    return Container(
+      width: 30,
+      height: 30,
+      decoration: BoxDecoration(
+        color: t.shellBackground,
+        borderRadius: BorderRadius.circular(9),
+      ),
+      child: Icon(icon, size: 16, color: t.ink),
+    );
+  }
 }

@@ -16,6 +16,7 @@ import 'package:carservice_business/features/controllers.dart';
 import 'package:carservice_business/core/services/diagnostic_service.dart';
 import 'package:carservice_business/core/widgets/dialogs/message.dart';
 import 'package:carservice_business/core/widgets/common/common_widgets.dart';
+import 'package:carservice_business/core/widgets/common/ops_kit.dart';
 import 'package:carservice_business/core/widgets/plate/plate_field.dart';
 import 'package:carservice_business/core/widgets/adaptive/permission_gate.dart';
 import 'package:carservice_business/features/diagnostics/presentation/screens/create_template_screen.dart';
@@ -1043,6 +1044,41 @@ class _VehicleStepState extends State<_VehicleStep> {
 
 // ─── АЛХАМ 2: Динамик checklist ───────────────────────────────────────────────
 
+/// One answerable input: an item, or one position of a positioned item.
+typedef _Field = ({TemplateItem item, String key});
+
+/// The visible, answerable inputs of [section] (signatures have no input).
+List<_Field> _fieldsOf(NewInspectionController prov, TemplateSection section) {
+  final fields = <_Field>[];
+  for (final item in section.items) {
+    if (!prov.isItemVisible(item) || item.type == ItemType.signature) continue;
+    final positions = item.positionSet?.positions;
+    if (positions == null) {
+      fields.add((item: item, key: item.id));
+    } else {
+      for (final pos in positions) {
+        fields.add((item: item, key: positionedKey(item.id, pos.code)));
+      }
+    }
+  }
+  return fields;
+}
+
+/// Every visible input of [section] answered (an empty section is not).
+bool _isComplete(NewInspectionController prov, TemplateSection section) {
+  final fields = _fieldsOf(prov, section);
+  return fields.isNotEmpty && fields.every((f) => _isAnswered(prov, f));
+}
+
+bool _isAnswered(NewInspectionController prov, _Field f) =>
+    f.item.type == ItemType.photo
+    ? prov.getPhotos(f.key).isNotEmpty
+    : (prov.getAnswer(f.key)?.trim().isNotEmpty ?? false);
+
+/// Tenant-app design (Оношилгоо): one section at a time — progress, section
+/// chips, item cards with a segmented status, «Өмнөх» / «Дараах хэсэг».
+/// Search (web diagnostic-form parity) lists matching questions from every
+/// section instead.
 class _ChecklistStep extends StatefulWidget {
   const _ChecklistStep();
 
@@ -1054,36 +1090,243 @@ class _ChecklistStepState extends State<_ChecklistStep> {
   // Асуултын үгээр хайх (web diagnostic-form-тай ижил). Хариулт controller-т
   // хадгалагддаг тул тохирохгүй мөрийг жагсаалтаас хасахад алдагдахгүй.
   final _search = TextEditingController();
+  final _scroll = ScrollController();
+  bool _searching = false;
   String _q = '';
 
   @override
   void dispose() {
     _search.dispose();
+    _scroll.dispose();
     super.dispose();
+  }
+
+  void _closeSearch() => setState(() {
+    _searching = false;
+    _search.clear();
+    _q = '';
+  });
+
+  /// Section changes start at the top of the new section.
+  void _go(VoidCallback move) {
+    move();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scroll.hasClients) _scroll.jumpTo(0);
+    });
+  }
+
+  Future<void> _openBulkSheet(
+    NewInspectionController prov,
+    List<String> options,
+  ) async {
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: Text('Бүх асуултыг:', style: context.textStyles.h3),
+            ),
+            for (final opt in options)
+              ListTile(
+                leading: Icon(
+                  _optionIcon(opt),
+                  color: _optionTone(opt)
+                      .foreground(CarserviceTheme.of(context)),
+                ),
+                title: Text(opt),
+                onTap: () => Navigator.of(context).pop(opt),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (picked != null) prov.markAll(picked);
   }
 
   @override
   Widget build(BuildContext context) {
     final prov = context.watch<NewInspectionController>();
+    final t = CarserviceTheme.of(context);
     final sections = prov.sections;
+    final subtitle = _vehicleLine(prov);
+    final globalOptions = prov.bulkOptionsFor();
 
-    final children = <Widget>[];
-    for (final section in sections) {
+    final header = _StepHeader(
+      title: 'Оношилгоо',
+      subtitle: subtitle,
+      actions: [
+        if (sections.isNotEmpty)
+          OpsCircleButton(
+            icon: _searching ? Icons.close_rounded : Icons.search_rounded,
+            tooltip: _searching ? 'Хайлт хаах' : 'Асуулт хайх',
+            onPressed: _searching
+                ? _closeSearch
+                : () => setState(() => _searching = true),
+          ),
+        if (globalOptions.isNotEmpty)
+          OpsCircleButton(
+            icon: Icons.more_horiz_rounded,
+            tooltip: 'Бүх асуултыг тэмдэглэх',
+            onPressed: () => _openBulkSheet(prov, globalOptions),
+          ),
+      ],
+    );
+
+    if (sections.isEmpty) {
+      return Scaffold(
+        backgroundColor: t.shellBackground,
+        body: SafeArea(
+          child: Column(
+            children: [
+              header,
+              const Expanded(child: Center(child: Text('Хэсэг байхгүй'))),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final index = prov.currentSection.clamp(0, sections.length - 1);
+    final section = sections[index];
+    final allFields = [for (final s in sections) ..._fieldsOf(prov, s)];
+    final done = allFields.where((f) => _isAnswered(prov, f)).length;
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+
+    final List<Widget> content;
+    if (_searching) {
+      content = _searchResults(context, prov, sections);
+    } else {
       final visible = section.items.where(prov.isItemVisible).toList();
-      if (visible.isEmpty) continue;
-      final matching = _q.isEmpty
-          ? visible
-          : visible.where((i) => i.label.toLowerCase().contains(_q)).toList();
+      final options = prov.bulkOptionsFor([section]);
+      content = [
+        if (options.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _BulkButtons(
+              label: 'Бүгдийг:',
+              options: options,
+              onMark: (v) => prov.markAll(v, [section]),
+            ),
+          ),
+        if (visible.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 32),
+            child: Text(
+              'Энэ хэсэгт бөглөх асуулт алга.',
+              textAlign: TextAlign.center,
+              style: context.textStyles.caption,
+            ),
+          ),
+        for (final item in visible)
+          KeyedSubtree(
+            key: ValueKey(item.id),
+            child: _ItemWidget(item: item, prov: prov),
+          ),
+      ];
+    }
+
+    final last = !prov.canGoNext;
+    return Scaffold(
+      backgroundColor: t.shellBackground,
+      extendBody: true,
+      bottomNavigationBar: OpsBottomActionBar(
+        children: [
+          OpsSecondaryButton(
+            label: 'Өмнөх',
+            onPressed: !_searching && prov.canGoPrev
+                ? () => _go(prov.prevSection)
+                : null,
+          ),
+          Expanded(
+            child: last || _searching
+                ? OpsPrimaryButton(
+                    label: 'Дуусгах',
+                    onPressed: () => AppNav.to(
+                      ChangeNotifierProvider.value(
+                        value: prov,
+                        child: const _NoteStep(),
+                      ),
+                    ),
+                  )
+                : OpsPrimaryButton(
+                    label: 'Дараах хэсэг →',
+                    dark: true,
+                    onPressed: () => _go(prov.nextSection),
+                  ),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            header,
+            if (_searching)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+                child: TextField(
+                  controller: _search,
+                  autofocus: true,
+                  onChanged: (v) => setState(() => _q = v.trim().toLowerCase()),
+                  style: TextStyle(fontSize: 15, color: t.ink),
+                  decoration: _filledDecoration(context, hint: 'Асуулт хайх')
+                      .copyWith(
+                        prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                      ),
+                ),
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+                child: _SectionProgress(
+                  sections: sections,
+                  index: index,
+                  done: done,
+                  total: allFields.length,
+                  sectionDone: [for (final s in sections) _isComplete(prov, s)],
+                  onSelect: (i) => _go(() => prov.goToSection(i)),
+                ),
+              ),
+            Expanded(
+              child: ListView(
+                controller: _scroll,
+                padding: EdgeInsets.fromLTRB(20, 14, 20, bottomInset + 16),
+                children: content,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _searchResults(
+    BuildContext context,
+    NewInspectionController prov,
+    List<TemplateSection> sections,
+  ) {
+    final results = <Widget>[];
+    for (final section in sections) {
+      final matching = section.items
+          .where(prov.isItemVisible)
+          .where((i) => _q.isEmpty || i.label.toLowerCase().contains(_q))
+          .toList();
       if (matching.isEmpty) continue;
-      children.add(
-        _SectionHeader(
-          title: section.title,
-          options: prov.bulkOptionsFor([section]),
-          onMark: (v) => prov.markAll(v, [section]),
+      results.add(
+        Padding(
+          padding: const EdgeInsets.only(top: 4, bottom: 10),
+          child: OpsSectionLabel(section.title),
         ),
       );
       for (final item in matching) {
-        children.add(
+        results.add(
           KeyedSubtree(
             key: ValueKey(item.id),
             child: _ItemWidget(item: item, prov: prov),
@@ -1091,136 +1334,253 @@ class _ChecklistStepState extends State<_ChecklistStep> {
         );
       }
     }
+    if (results.isEmpty) {
+      results.add(
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 32),
+          child: Text(
+            '«${_search.text.trim()}» гэсэн асуулт олдсонгүй.',
+            textAlign: TextAlign.center,
+            style: context.textStyles.caption,
+          ),
+        ),
+      );
+    }
+    return results;
+  }
+}
 
-    final globalOptions = prov.bulkOptionsFor();
+/// "Lexus RX 450h · 9012 УКА", or the template name before a vehicle is set.
+String _vehicleLine(NewInspectionController prov) {
+  final vehicle = prov.vehicle;
+  if (vehicle == null) return prov.template?.name ?? '';
+  return [
+    vehicle.displayName,
+    plateLabel(vehicle.plate, vehicle.vin),
+  ].where((s) => s.trim().isNotEmpty).join(' · ');
+}
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(prov.template?.name ?? 'Оношилгоо'),
-        leading: BackButton(onPressed: () => AppNav.back()),
-        actions: const [ShellNotificationBell()],
-      ),
-      body: sections.isEmpty
-          ? const Center(child: Text('Хэсэг байхгүй'))
-          : Column(
+/// Round back button, title, mono subtitle, trailing round actions.
+class _StepHeader extends StatelessWidget {
+  const _StepHeader({
+    required this.title,
+    this.subtitle = '',
+    this.actions = const [],
+  });
+
+  final String title;
+  final String subtitle;
+  final List<Widget> actions;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CarserviceTheme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+      child: Row(
+        children: [
+          OpsCircleButton(
+            icon: Icons.chevron_left_rounded,
+            tooltip: 'Буцах',
+            onPressed: () => AppNav.back(),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  color: context.colors.surface,
-                  padding: const EdgeInsets.fromLTRB(
-                    AppDimens.paddingMD,
-                    12,
-                    AppDimens.paddingMD,
-                    12,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      TextField(
-                        controller: _search,
-                        onChanged: (v) =>
-                            setState(() => _q = v.trim().toLowerCase()),
-                        decoration: InputDecoration(
-                          hintText: 'Асуулт хайх',
-                          prefixIcon: const Icon(Icons.search),
-                          isDense: true,
-                          suffixIcon: _q.isEmpty
-                              ? null
-                              : IconButton(
-                                  tooltip: 'Цэвэрлэх',
-                                  icon: const Icon(Icons.close),
-                                  onPressed: () => setState(() {
-                                    _search.clear();
-                                    _q = '';
-                                  }),
-                                ),
-                        ),
-                      ),
-                      if (globalOptions.isNotEmpty) ...[
-                        const SizedBox(height: 10),
-                        _BulkButtons(
-                          label: 'Бүх асуултыг:',
-                          options: globalOptions,
-                          onMark: prov.markAll,
-                        ),
-                      ],
-                    ],
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600,
+                    color: t.ink,
                   ),
                 ),
-
-                Expanded(
-                  child: children.isEmpty
-                      ? Center(
-                          child: Text(
-                            '«${_search.text.trim()}» гэсэн асуулт олдсонгүй.',
-                            style: context.textStyles.caption,
-                          ),
-                        )
-                      : ListView(
-                          padding: const EdgeInsets.all(AppDimens.paddingMD),
-                          children: children,
-                        ),
-                ),
-
-                Container(
-                  padding: const EdgeInsets.all(AppDimens.paddingMD),
-                  color: context.colors.surface,
-                  child: SafeArea(
-                    top: false,
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: AppButton(
-                            label: 'Буцах',
-                            outlined: true,
-                            onPressed: () => AppNav.back(),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: AppButton(
-                            label: 'Дуусгах',
-                            onPressed: () => AppNav.to(
-                              ChangeNotifierProvider.value(
-                                value: prov,
-                                child: const _NoteStep(),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                if (subtitle.isNotEmpty)
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: opsMono(context),
                   ),
-                ),
               ],
             ),
+          ),
+          for (final action in actions) ...[const SizedBox(width: 8), action],
+        ],
+      ),
     );
   }
 }
 
-class _SectionHeader extends StatelessWidget {
-  final String title;
-  final List<String> options;
-  final ValueChanged<String> onMark;
-  const _SectionHeader({
-    required this.title,
-    required this.options,
-    required this.onMark,
+/// "ТООРМОСНЫ СИСТЕМ · 2/5", answered counter, bar and section chips; the
+/// current chip is scrolled into view.
+class _SectionProgress extends StatefulWidget {
+  const _SectionProgress({
+    required this.sections,
+    required this.index,
+    required this.done,
+    required this.total,
+    required this.sectionDone,
+    required this.onSelect,
   });
+
+  final List<TemplateSection> sections;
+  final int index;
+  final int done;
+  final int total;
+  final List<bool> sectionDone;
+  final ValueChanged<int> onSelect;
+
+  @override
+  State<_SectionProgress> createState() => _SectionProgressState();
+}
+
+class _SectionProgressState extends State<_SectionProgress> {
+  final _currentChip = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    _revealCurrent(animate: false);
+  }
+
+  @override
+  void didUpdateWidget(_SectionProgress oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.index != widget.index) _revealCurrent(animate: true);
+  }
+
+  void _revealCurrent({required bool animate}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final chip = _currentChip.currentContext;
+      if (!mounted || chip == null) return;
+      Scrollable.ensureVisible(
+        chip,
+        alignment: 0.5,
+        duration: animate ? const Duration(milliseconds: 220) : Duration.zero,
+        curve: Curves.easeOutCubic,
+      );
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 6, bottom: 10),
-      child: Wrap(
-        alignment: WrapAlignment.spaceBetween,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        spacing: 8,
-        runSpacing: 6,
-        children: [
-          Text(title, style: context.textStyles.h3),
-          if (options.isNotEmpty)
-            _BulkButtons(label: 'Бүгдийг:', options: options, onMark: onMark),
-        ],
+    final t = CarserviceTheme.of(context);
+    final sections = widget.sections;
+    final index = widget.index;
+    final done = widget.done;
+    final total = widget.total;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: OpsSectionLabel(
+                '${sections[index].title} · ${index + 1}/${sections.length}',
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text('$done / $total', style: opsMono(context)),
+          ],
+        ),
+        const SizedBox(height: 8),
+        OpsProgressBar(
+          value: total == 0 ? 0 : done / total,
+          height: 6,
+          color: t.ink,
+          trackColor: t.border,
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 34,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var i = 0; i < sections.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 6),
+                  KeyedSubtree(
+                    key: i == index
+                        ? _currentChip
+                        : ValueKey('inspection_section_$i'),
+                    child: _SectionChip(
+                      label: sections[i].title,
+                      current: i == index,
+                      done: widget.sectionDone[i],
+                      onTap: () => widget.onSelect(i),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SectionChip extends StatelessWidget {
+  const _SectionChip({
+    required this.label,
+    required this.current,
+    required this.done,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool current;
+  final bool done;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CarserviceTheme.of(context);
+    final (bg, fg, border) = current
+        ? (t.ink, t.shellBackground, t.ink)
+        : done
+        ? (OpsTone.ok.background(t), t.ok, OpsTone.ok.background(t))
+        : (t.panel, t.mutedText, t.border);
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(AppDimens.radiusFull),
+      side: BorderSide(color: border),
+    );
+    return Semantics(
+      selected: current,
+      button: true,
+      child: Material(
+        color: bg,
+        shape: shape,
+        child: InkWell(
+          customBorder: shape,
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (done && !current) ...[
+                  Icon(Icons.check_rounded, size: 14, color: fg),
+                  const SizedBox(width: 4),
+                ],
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: current ? FontWeight.w600 : FontWeight.w500,
+                    color: fg,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -1238,6 +1598,7 @@ class _BulkButtons extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = CarserviceTheme.of(context);
     return Wrap(
       crossAxisAlignment: WrapCrossAlignment.center,
       spacing: 6,
@@ -1248,11 +1609,50 @@ class _BulkButtons extends StatelessWidget {
           ActionChip(
             label: Text(opt),
             visualDensity: VisualDensity.compact,
+            backgroundColor: t.panel,
+            side: BorderSide(color: t.border),
+            shape: const StadiumBorder(),
+            labelStyle: TextStyle(fontSize: 12, color: t.ink),
             onPressed: () => onMark(opt),
           ),
       ],
     );
   }
+}
+
+/// Status tone of a check option: OK / Хэвийн → ok, Анхаарах → warn,
+/// Засах → accent; any other template option is neutral.
+OpsTone _optionTone(String option) => switch (option) {
+  'Засах' => OpsTone.accent,
+  'Анхаарах' => OpsTone.warn,
+  'OK' || 'Хэвийн' => OpsTone.ok,
+  _ => OpsTone.neutral,
+};
+
+IconData _optionIcon(String option) => switch (_optionTone(option)) {
+  OpsTone.accent => Icons.build_circle_outlined,
+  OpsTone.warn => Icons.error_outline_rounded,
+  OpsTone.ok => Icons.check_circle_outline_rounded,
+  _ => Icons.radio_button_unchecked_rounded,
+};
+
+/// Filled input of the design's cards (notes, text and number answers).
+InputDecoration _filledDecoration(BuildContext context, {String? hint}) {
+  final t = CarserviceTheme.of(context);
+  OutlineInputBorder border(Color c, [double w = 1]) => OutlineInputBorder(
+    borderRadius: BorderRadius.circular(10),
+    borderSide: BorderSide(color: c, width: w),
+  );
+  return InputDecoration(
+    hintText: hint,
+    isDense: true,
+    filled: true,
+    fillColor: t.shellBackground,
+    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    border: border(t.border),
+    enabledBorder: border(t.border),
+    focusedBorder: border(t.ink, 1.5),
+  );
 }
 
 class _ItemWidget extends StatelessWidget {
@@ -1272,51 +1672,77 @@ class _ItemWidget extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: AppCard(
+      child: OpsCard(
         padding: const EdgeInsets.all(14),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    item.label + (item.required ? ' *' : ''),
-                    style: context.textStyles.bodyMedium,
-                  ),
-                ),
-                if (item.type == ItemType.check) ...[
-                  const SizedBox(width: 8),
-                  _CheckStatusBadge(value: prov.getAnswer(item.id)),
-                ],
-              ],
-            ),
+            _ItemTitle(item: item),
             const SizedBox(height: 10),
-
-            if (item.type == ItemType.check)
-              _CheckInput(item: item, prov: prov, fieldKey: item.id),
-            if (item.type == ItemType.text)
-              _TextInput(item: item, prov: prov, fieldKey: item.id),
-            if (item.type == ItemType.number)
-              _NumberInput(item: item, prov: prov, fieldKey: item.id),
-            if (item.type == ItemType.photo)
-              _PhotoInput(item: item, prov: prov, fieldKey: item.id),
-            if (item.type == ItemType.signature)
-              Text(
-                '(Гарын үсэг — тэмдэглэл орлуулна)',
-                style: context.textStyles.caption,
-              ),
-
-            if (item.type != ItemType.photo &&
-                item.type != ItemType.signature) ...[
-              const SizedBox(height: 8),
+            _ItemInput(item: item, prov: prov, fieldKey: item.id),
+            if (item.type != ItemType.photo && item.type != ItemType.signature)
               _NoteField(prov: prov, fieldKey: item.id),
-            ],
           ],
         ),
       ),
     );
   }
+}
+
+class _ItemTitle extends StatelessWidget {
+  const _ItemTitle({required this.item, this.trailing});
+
+  final TemplateItem item;
+  final String? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CarserviceTheme.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Text(
+            item.label + (item.required ? ' *' : ''),
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: t.ink,
+            ),
+          ),
+        ),
+        if (trailing != null) ...[
+          const SizedBox(width: 8),
+          Text(trailing!, style: opsMono(context)),
+        ],
+      ],
+    );
+  }
+}
+
+/// The answer control for one field, by item type.
+class _ItemInput extends StatelessWidget {
+  const _ItemInput({
+    required this.item,
+    required this.prov,
+    required this.fieldKey,
+  });
+
+  final TemplateItem item;
+  final NewInspectionController prov;
+  final String fieldKey;
+
+  @override
+  Widget build(BuildContext context) => switch (item.type) {
+    ItemType.check => _CheckInput(item: item, prov: prov, fieldKey: fieldKey),
+    ItemType.text => _TextInput(item: item, prov: prov, fieldKey: fieldKey),
+    ItemType.number => _NumberInput(item: item, prov: prov, fieldKey: fieldKey),
+    ItemType.photo => _PhotoInput(item: item, prov: prov, fieldKey: fieldKey),
+    ItemType.signature => Text(
+      '(Гарын үсэг — тэмдэглэл орлуулна)',
+      style: context.textStyles.caption,
+    ),
+  };
 }
 
 // Positioned item — байрлал тус бүр нь тусдаа мөр
@@ -1327,93 +1753,70 @@ class _PositionedItemWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = CarserviceTheme.of(context);
     final positions = item.positionSet!.positions;
+    final answered = positions
+        .where(
+          (p) => _isAnswered(prov, (
+            item: item,
+            key: positionedKey(item.id, p.code),
+          )),
+        )
+        .length;
 
-    return AppCard(
+    return OpsCard(
       padding: const EdgeInsets.all(14),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            item.label + (item.required ? ' *' : ''),
-            style: context.textStyles.bodyMedium,
+          _ItemTitle(
+            item: item,
+            trailing: item.type == ItemType.signature
+                ? null
+                : '$answered/${positions.length}',
           ),
-          const SizedBox(height: 12),
-          ...positions.asMap().entries.map((entry) {
-            final i = entry.key;
-            final pos = entry.value;
-            final key = positionedKey(item.id, pos.code);
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (i > 0) const Divider(height: 20),
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: context.colors.accent.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(AppDimens.radiusSM),
-                      ),
-                      child: Text(
-                        pos.label,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: context.colors.accent,
-                        ),
-                      ),
-                    ),
-                    if (item.type == ItemType.check) ...[
-                      const SizedBox(width: 8),
-                      _CheckStatusBadge(value: prov.getAnswer(key)),
-                    ],
-                  ],
+          for (final (i, pos) in positions.indexed) ...[
+            if (i > 0) Divider(height: 24, color: t.shellBackground),
+            if (i == 0) const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: t.shellBackground,
+                  borderRadius: BorderRadius.circular(AppDimens.radiusFull),
                 ),
-                const SizedBox(height: 8),
-                if (item.type == ItemType.check)
-                  _CheckInput(item: item, prov: prov, fieldKey: key),
-                if (item.type == ItemType.text)
-                  _TextInput(item: item, prov: prov, fieldKey: key),
-                if (item.type == ItemType.number)
-                  _NumberInput(item: item, prov: prov, fieldKey: key),
-                if (item.type == ItemType.photo)
-                  _PhotoInput(item: item, prov: prov, fieldKey: key),
-                if (item.type != ItemType.signature) ...[
-                  const SizedBox(height: 6),
-                  _NoteField(prov: prov, fieldKey: key),
-                ],
-              ],
-            );
-          }),
+                child: Text(
+                  pos.label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: t.ink,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            _ItemInput(
+              item: item,
+              prov: prov,
+              fieldKey: positionedKey(item.id, pos.code),
+            ),
+            if (item.type != ItemType.signature)
+              _NoteField(
+                prov: prov,
+                fieldKey: positionedKey(item.id, pos.code),
+              ),
+          ],
         ],
       ),
     );
   }
 }
 
-class _CheckStatusBadge extends StatelessWidget {
-  final String? value;
-  const _CheckStatusBadge({this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    if (value == null) return const SizedBox.shrink();
-    CheckStatus status;
-    if (value == 'Засах') {
-      status = CheckStatus.danger;
-    } else if (value == 'Анхаарах') {
-      status = CheckStatus.warning;
-    } else {
-      status = CheckStatus.good;
-    }
-    return StatusBadge(status: status, compact: true);
-  }
-}
-
+/// Segmented status control: one equal-width segment per option (wraps when
+/// a template has many). Selected: OK solid green, Анхаарах warn tint,
+/// Засах solid accent.
 class _CheckInput extends StatelessWidget {
   final TemplateItem item;
   final NewInspectionController prov;
@@ -1428,47 +1831,103 @@ class _CheckInput extends StatelessWidget {
   Widget build(BuildContext context) {
     final options = item.effectiveOptions;
     final selected = prov.getAnswer(fieldKey);
+    Widget segment(String opt) => _Segment(
+      label: opt,
+      tone: _optionTone(opt),
+      selected: selected == opt,
+      onTap: () => prov.setAnswer(fieldKey, opt),
+    );
 
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: options.map((opt) {
-        final isSelected = selected == opt;
-        Color color;
-        if (opt == 'Засах') {
-          color = context.colors.danger;
-        } else if (opt == 'Анхаарах') {
-          color = context.colors.warning;
-        } else {
-          color = context.colors.good;
-        }
+    if (options.length > 4) {
+      return Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: [
+          for (final opt in options) IntrinsicWidth(child: segment(opt)),
+        ],
+      );
+    }
+    return Row(
+      children: [
+        for (final (i, opt) in options.indexed) ...[
+          if (i > 0) const SizedBox(width: 6),
+          Expanded(child: segment(opt)),
+        ],
+      ],
+    );
+  }
+}
 
-        return GestureDetector(
-          onTap: () => prov.setAnswer(fieldKey, opt),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(
-              color: isSelected
-                  ? color.withOpacity(0.12)
-                  : context.colors.background,
-              borderRadius: BorderRadius.circular(AppDimens.radiusFull),
-              border: Border.all(
-                color: isSelected ? color : context.colors.divider,
-                width: isSelected ? 1.5 : 1,
-              ),
+class _Segment extends StatelessWidget {
+  const _Segment({
+    required this.label,
+    required this.tone,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final OpsTone tone;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CarserviceTheme.of(context);
+    final (Color bg, Color fg, Color border) = !selected
+        ? (t.panel, t.mutedText, t.border)
+        : switch (tone) {
+            // The dark theme's ok green is light: dark text on it.
+            OpsTone.ok => (
+              t.ok,
+              ThemeData.estimateBrightnessForColor(t.ok) == Brightness.light
+                  ? OpsColors.darkCarbon
+                  : t.onAccent,
+              t.ok,
             ),
-            child: Text(
-              opt,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                color: isSelected ? color : context.colors.textSecondary,
+            OpsTone.accent => (t.accent, t.onAccent, t.accent),
+            OpsTone.warn => (
+              OpsTone.warn.background(t),
+              t.warn,
+              t.warn.withValues(alpha: 0.45),
+            ),
+            _ => (t.ink, t.shellBackground, t.ink),
+          };
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(10),
+      side: BorderSide(color: border),
+    );
+    return Semantics(
+      selected: selected,
+      inMutuallyExclusiveGroup: true,
+      button: true,
+      child: Material(
+        color: bg,
+        shape: shape,
+        child: InkWell(
+          customBorder: shape,
+          onTap: onTap,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 40),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                child: Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                    color: fg,
+                  ),
+                ),
               ),
             ),
           ),
-        );
-      }).toList(),
+        ),
+      ),
     );
   }
 }
@@ -1489,8 +1948,8 @@ class _TextInput extends StatelessWidget {
       key: ValueKey('answer:$fieldKey'),
       initialText: prov.getAnswer(fieldKey) ?? '',
       onChanged: (v) => prov.setAnswer(fieldKey, v),
-      decoration: const InputDecoration(hintText: 'Утга оруулна уу...'),
-      style: context.textStyles.body,
+      decoration: _filledDecoration(context, hint: 'Утга оруулна уу...'),
+      style: TextStyle(fontSize: 14, color: CarserviceTheme.of(context).ink),
     );
   }
 }
@@ -1507,12 +1966,17 @@ class _NumberInput extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = CarserviceTheme.of(context);
     return _ControlledTextField(
       key: ValueKey('answer:$fieldKey'),
       initialText: prov.getAnswer(fieldKey) ?? '',
       onChanged: (v) => prov.setAnswer(fieldKey, v),
-      decoration: const InputDecoration(hintText: '0'),
-      style: context.textStyles.body,
+      decoration: _filledDecoration(context, hint: '0'),
+      style: TextStyle(
+        fontFamily: t.monoFontFamily,
+        fontSize: 14,
+        color: t.ink,
+      ),
       keyboardType: TextInputType.number,
     );
   }
@@ -1526,6 +1990,9 @@ class _ControlledTextField extends StatefulWidget {
   final InputDecoration decoration;
   final TextStyle? style;
   final TextInputType? keyboardType;
+  final int? minLines;
+  final int maxLines;
+  final bool autofocus;
   const _ControlledTextField({
     super.key,
     required this.initialText,
@@ -1533,6 +2000,9 @@ class _ControlledTextField extends StatefulWidget {
     required this.decoration,
     this.style,
     this.keyboardType,
+    this.minLines,
+    this.maxLines = 1,
+    this.autofocus = false,
   });
 
   @override
@@ -1557,6 +2027,9 @@ class _ControlledTextFieldState extends State<_ControlledTextField> {
       decoration: widget.decoration,
       style: widget.style,
       keyboardType: widget.keyboardType,
+      minLines: widget.minLines,
+      maxLines: widget.maxLines,
+      autofocus: widget.autofocus,
       onChanged: widget.onChanged,
     );
   }
@@ -1576,99 +2049,129 @@ class _NoteStepState extends State<_NoteStep> {
   final _noteCtrl = TextEditingController();
 
   @override
+  void dispose() {
+    _mileageCtrl.dispose();
+    _noteCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final prov = context.watch<NewInspectionController>();
+    final t = CarserviceTheme.of(context);
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Нэмэлт мэдээлэл'),
-        leading: BackButton(onPressed: () => AppNav.back()),
-        actions: const [ShellNotificationBell()],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(AppDimens.paddingMD),
+      backgroundColor: t.shellBackground,
+      extendBody: true,
+      bottomNavigationBar: OpsBottomActionBar(
         children: [
-          // ─── Дүн ────────────────────────────────────────────────────────
-          AppCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Оношилгооны дүн', style: context.textStyles.h3),
-                const SizedBox(height: 12),
-                StatCounterRow(
-                  good: prov.answeredGood,
-                  warning: prov.answeredWarning,
-                  danger: prov.answeredDanger,
-                ),
-              ],
+          Expanded(
+            child: OpsPrimaryButton(
+              label: prov.submitting ? 'Илгээж байна...' : 'Тайлан илгээх',
+              onPressed: prov.submitting ? null : () => _submit(context),
             ),
           ),
-          const SizedBox(height: 14),
-
-          // ─── Машины мэдээлэл ─────────────────────────────────────────────
-          AppCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Машин', style: context.textStyles.h3),
-                const SizedBox(height: 10),
-                if (prov.vehicle != null) ...[
-                  _SummaryRow(
-                    label: 'Дугаар',
-                    value: plateLabel(prov.vehicle!.plate, prov.vehicle!.vin),
-                  ),
-                  _SummaryRow(label: 'Марка', value: prov.vehicle!.displayName),
-                ],
-                if (prov.customer != null)
-                  _SummaryRow(
-                    label: 'Үйлчлүүлэгч',
-                    value: prov.customer!.displayName,
-                  ),
-                const SizedBox(height: 12),
-                AppTextField(
-                  label: 'Явсан км',
-                  hint: '0',
-                  controller: _mileageCtrl,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [
-                    LengthLimitingTextInputFormatter(kMileageMaxDigits + 2),
-                  ],
-                  onChanged: (v) =>
-                      prov.setMileage(int.tryParse(v.replaceAll(',', '')) ?? 0),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          // ─── Тайлбар ─────────────────────────────────────────────────────
-          AppCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Нийт тайлбар', style: context.textStyles.h3),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _noteCtrl,
-                  maxLines: 4,
-                  decoration: const InputDecoration(
-                    hintText: 'Нэмэлт тайлбар...',
-                  ),
-                  style: context.textStyles.body,
-                  onChanged: prov.setGeneralNote,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // ─── Илгээх товч ─────────────────────────────────────────────────
-          AppButton(
-            label: prov.submitting ? 'Илгээж байна...' : 'Тайлан илгээх',
-            onPressed: prov.submitting ? null : () => _submit(context),
-          ),
-          const SizedBox(height: 24),
         ],
+      ),
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _StepHeader(title: 'Нэмэлт мэдээлэл', subtitle: _vehicleLine(prov)),
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.fromLTRB(20, 14, 20, bottomInset + 16),
+                children: [
+                  // ─── Дүн ──────────────────────────────────────────────────
+                  OpsCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const OpsSectionLabel('Оношилгооны дүн'),
+                        const SizedBox(height: 12),
+                        StatCounterRow(
+                          good: prov.answeredGood,
+                          warning: prov.answeredWarning,
+                          danger: prov.answeredDanger,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // ─── Машины мэдээлэл ──────────────────────────────────────
+                  OpsCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const OpsSectionLabel('Машин'),
+                        const SizedBox(height: 10),
+                        if (prov.vehicle != null) ...[
+                          _SummaryRow(
+                            label: 'Дугаар',
+                            value: plateLabel(
+                              prov.vehicle!.plate,
+                              prov.vehicle!.vin,
+                            ),
+                          ),
+                          _SummaryRow(
+                            label: 'Марка',
+                            value: prov.vehicle!.displayName,
+                          ),
+                        ],
+                        if (prov.customer != null)
+                          _SummaryRow(
+                            label: 'Үйлчлүүлэгч',
+                            value: prov.customer!.displayName,
+                          ),
+                        const SizedBox(height: 12),
+                        AppTextField(
+                          label: 'Явсан км',
+                          hint: '0',
+                          controller: _mileageCtrl,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            LengthLimitingTextInputFormatter(
+                              kMileageMaxDigits + 2,
+                            ),
+                          ],
+                          onChanged: (v) => prov.setMileage(
+                            int.tryParse(v.replaceAll(',', '')) ?? 0,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // ─── Тайлбар ──────────────────────────────────────────────
+                  OpsCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const OpsSectionLabel('Нийт тайлбар'),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _noteCtrl,
+                          minLines: 3,
+                          maxLines: 6,
+                          decoration: _filledDecoration(
+                            context,
+                            hint: 'Нэмэлт тайлбар...',
+                          ),
+                          style: TextStyle(fontSize: 14, color: t.ink),
+                          onChanged: prov.setGeneralNote,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1755,85 +2258,177 @@ class _PhotoInputState extends State<_PhotoInput> {
 
   @override
   Widget build(BuildContext context) {
+    final t = CarserviceTheme.of(context);
     final photos = widget.prov.getPhotos(widget.fieldKey);
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        ...photos.asMap().entries.map(
-          (e) => Stack(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(AppDimens.radiusSM),
-                child: Image.file(
-                  File(e.value),
-                  width: 80,
-                  height: 80,
-                  fit: BoxFit.cover,
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (final (i, path) in photos.indexed) ...[
+            Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.file(
+                    File(path),
+                    width: 76,
+                    height: 76,
+                    fit: BoxFit.cover,
+                  ),
                 ),
-              ),
-              Positioned(
-                top: 2,
-                right: 2,
-                child: GestureDetector(
-                  onTap: () => widget.prov.removePhoto(widget.fieldKey, e.key),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: context.colors.textPrimary.withOpacity(0.54),
-                      shape: BoxShape.circle,
+                Positioned(
+                  top: 4,
+                  right: 4,
+                  child: Semantics(
+                    button: true,
+                    label: 'Зураг устгах',
+                    child: GestureDetector(
+                      onTap: () => widget.prov.removePhoto(widget.fieldKey, i),
+                      child: Container(
+                        padding: const EdgeInsets.all(2),
+                        decoration: BoxDecoration(
+                          color: OpsDark.bg.withValues(alpha: 0.7),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.close_rounded,
+                          color: OpsDark.ink,
+                          size: 14,
+                        ),
+                      ),
                     ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(width: 8),
+          ],
+          Tooltip(
+            message: 'Зураг нэмэх',
+            child: Material(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+              child: InkWell(
+                onTap: _pick,
+                borderRadius: BorderRadius.circular(12),
+                child: CustomPaint(
+                  painter: _DashedBorderPainter(
+                    color: t.mutedText3,
+                    radius: 12,
+                  ),
+                  child: SizedBox(
+                    width: 76,
+                    height: 76,
                     child: Icon(
-                      Icons.close,
-                      color: context.colors.background,
-                      size: 16,
+                      Icons.photo_camera_outlined,
+                      color: t.ink,
+                      size: 22,
                     ),
                   ),
                 ),
               ),
-            ],
-          ),
-        ),
-        GestureDetector(
-          onTap: _pick,
-          child: Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              color: context.colors.surface,
-              borderRadius: BorderRadius.circular(AppDimens.radiusSM),
-              border: Border.all(color: context.colors.divider),
-            ),
-            child: Icon(
-              Icons.add_a_photo_outlined,
-              color: context.colors.textHint,
-              size: 28,
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
 
+/// Dashed rounded outline of the "add photo" tile.
+class _DashedBorderPainter extends CustomPainter {
+  const _DashedBorderPainter({required this.color, required this.radius});
+
+  final Color color;
+  final double radius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    final outline = Path()
+      ..addRRect(
+        RRect.fromRectAndRadius(
+          (Offset.zero & size).deflate(0.75),
+          Radius.circular(radius),
+        ),
+      );
+    for (final metric in outline.computeMetrics()) {
+      for (var d = 0.0; d < metric.length; d += 9) {
+        canvas.drawPath(metric.extractPath(d, d + 5), paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedBorderPainter old) =>
+      old.color != color || old.radius != radius;
+}
+
 // ─── Note field ───────────────────────────────────────────────────────────────
 
-class _NoteField extends StatelessWidget {
+/// «+ Тэмдэглэл» until opened (already open when the field has a note), then
+/// the design's ТЭМДЭГЛЭЛ textarea.
+class _NoteField extends StatefulWidget {
   final NewInspectionController prov;
   final String fieldKey;
   const _NoteField({required this.prov, required this.fieldKey});
 
   @override
+  State<_NoteField> createState() => _NoteFieldState();
+}
+
+class _NoteFieldState extends State<_NoteField> {
+  late bool _open = widget.prov.getNote(widget.fieldKey)?.isNotEmpty ?? false;
+  bool _openedByTap = false;
+
+  @override
   Widget build(BuildContext context) {
-    return _ControlledTextField(
-      key: ValueKey('note:$fieldKey'),
-      initialText: prov.getNote(fieldKey) ?? '',
-      onChanged: (v) => prov.setNote(fieldKey, v),
-      decoration: const InputDecoration(
-        hintText: 'Тайлбар (заавал биш)...',
-        isDense: true,
-      ),
-      style: context.textStyles.caption.copyWith(
-        color: context.colors.textPrimary,
+    final t = CarserviceTheme.of(context);
+    if (!_open) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: () => setState(() {
+              _open = true;
+              _openedByTap = true;
+            }),
+            style: TextButton.styleFrom(
+              foregroundColor: t.mutedText,
+              minimumSize: const Size(0, 36),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+            ),
+            icon: const Icon(Icons.add_rounded, size: 16),
+            label: const Text('Тэмдэглэл', style: TextStyle(fontSize: 13)),
+          ),
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const OpsSectionLabel('Тэмдэглэл'),
+          const SizedBox(height: 6),
+          _ControlledTextField(
+            key: ValueKey('note:${widget.fieldKey}'),
+            initialText: widget.prov.getNote(widget.fieldKey) ?? '',
+            onChanged: (v) => widget.prov.setNote(widget.fieldKey, v),
+            decoration: _filledDecoration(
+              context,
+              hint: 'Тайлбар (заавал биш)...',
+            ),
+            minLines: 2,
+            maxLines: 4,
+            autofocus: _openedByTap,
+            style: TextStyle(fontSize: 14, color: t.ink),
+          ),
+        ],
       ),
     );
   }

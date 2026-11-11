@@ -6,6 +6,7 @@ import 'package:carservice_business/app/theme/app_theme.dart';
 import 'package:carservice_business/core/utils/async_value.dart';
 import 'package:carservice_business/core/utils/money_format.dart';
 import 'package:carservice_business/core/widgets/app_dropdown.dart';
+import 'package:carservice_business/core/widgets/common/ops_kit.dart';
 import 'package:carservice_business/features/orders/domain/order.dart';
 import 'package:carservice_business/features/orders/presentation/controllers/order_item_controller.dart';
 import 'package:carservice_business/features/orders/presentation/feature_theme.dart';
@@ -117,11 +118,13 @@ class OrderItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = context.itemKindColor(item.kind);
+    final t = CarserviceTheme.of(context);
+    final isPart = item.kind == ItemKind.PART;
     final qty = item.quantityMoney?.raw ?? item.quantity.toString();
     final price = _itemMoney(item.unitPriceMoney, item.unitPrice);
     final total = _itemMoney(item.totalMoney, item.total);
     final status = pendingStatus ?? item.status;
+    final done = status == ServiceItemStatus.COMPLETED;
     final actions = <Widget>[];
     final lineLocked = isLineCompletedLocked(item);
     final statusLocked = isLineStatusLocked(item);
@@ -135,6 +138,7 @@ class OrderItemCard extends StatelessWidget {
           tooltip: lineLocked ? completedLineLockedHint : 'Засах',
           onPressed: lineLocked ? null : onEdit,
           icon: const Icon(Icons.edit_outlined, size: 18),
+          color: t.mutedText,
           visualDensity: VisualDensity.compact,
         ),
       );
@@ -152,144 +156,172 @@ class OrderItemCard extends StatelessWidget {
               ? null
               : onCancel,
           icon: const Icon(Icons.cancel_outlined, size: 18),
+          color: t.mutedText,
           visualDensity: VisualDensity.compact,
         ),
       );
     }
 
-    // Controls get the card's full width: next to the total they would be
-    // squeezed on a phone.
+    final controls = <Widget>[
+      if (statusControls)
+        _ItemStatusMenu(
+          item: item,
+          status: status,
+          busy: statusBusy,
+          lockedReason: statusLocked ? diagnosticReportLinkedHint : null,
+          onSelect: onStatus,
+        )
+      // Read-only: the check box already says pending / done; only work in
+      // progress gets a pill, as in the design.
+      else if (!isPart && status == ServiceItemStatus.IN_PROGRESS)
+        _ItemStatusPill(status: status),
+      if (next != null)
+        FilledButton.tonalIcon(
+          key: const ValueKey('item_next_status_button'),
+          onPressed: statusBusy || onStatus == null
+              ? null
+              : () => onStatus!(next),
+          icon: Icon(
+            next == ServiceItemStatus.IN_PROGRESS
+                ? Icons.play_arrow_rounded
+                : Icons.check,
+            size: 16,
+          ),
+          label: Text(
+            next == ServiceItemStatus.IN_PROGRESS ? 'Эхлүүлэх' : 'Дуусгах',
+          ),
+          style: FilledButton.styleFrom(
+            backgroundColor: OpsTone.accent.background(t),
+            foregroundColor: t.accent,
+            minimumSize: const Size(0, 34),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            visualDensity: VisualDensity.compact,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        ),
+      if (item.kind == ItemKind.DIAGNOSTIC)
+        if (item.diagnosticReportId != null)
+          _LineTextButton(
+            onPressed: onDiagnosticView,
+            icon: Icons.visibility_outlined,
+            label: 'Тайлан үзэх',
+          )
+        else if (diagnosticEditable && item.diagnosticTemplateId != null)
+          _LineTextButton(
+            onPressed: onDiagnosticFill,
+            icon: Icons.playlist_add_check,
+            label: 'Бөглөх',
+          )
+        else if (diagnosticEditable)
+          _LineTextButton(
+            onPressed: onDiagnosticCreate,
+            icon: Icons.add_task,
+            label: 'Оношилгоо үүсгэх',
+          ),
+    ];
+
+    // The design's checklist row: check box, the work, its amount. Parts are
+    // plain rows (quantity × price) without a box, their edit/cancel inline.
+    // A work line's controls get the row's full width under the text: next
+    // to the total they would be squeezed on a phone.
+    final inlineActions = isPart && controls.isEmpty;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
-                decoration: BoxDecoration(
-                  color: accent.withOpacity(.12),
-                  borderRadius: BorderRadius.circular(AppDimens.radiusSM),
-                ),
-                child: Text(
-                  item.kind.label,
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: accent,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
+              if (!isPart) ...[
+                _LineCheck(status: status),
+                const SizedBox(width: 12),
+              ],
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       item.description,
-                      style: context.textStyles.captionMedium,
+                      style: TextStyle(
+                        fontSize: 14,
+                        height: 20 / 14,
+                        fontWeight: status == ServiceItemStatus.IN_PROGRESS
+                            ? FontWeight.w500
+                            : FontWeight.w400,
+                        color: done ? t.mutedText : t.ink,
+                        decoration: done ? TextDecoration.lineThrough : null,
+                        decorationColor: t.mutedText,
+                      ),
                     ),
-                    const SizedBox(height: 3),
-                    Text('$qty × $price', style: context.textStyles.caption),
+                    const SizedBox(height: 2),
+                    Text.rich(
+                      TextSpan(
+                        children: [
+                          // Within «Ажлууд» a plain labour line needs no tag.
+                          if (item.kind == ItemKind.DIAGNOSTIC ||
+                              item.kind == ItemKind.FEE)
+                            TextSpan(
+                              text: '${item.kind.label} · ',
+                              style: TextStyle(
+                                color: context.itemKindColor(item.kind),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          TextSpan(
+                            text: '$qty × $price',
+                            style: opsMono(context, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                      style: TextStyle(fontSize: 12, color: t.mutedText),
+                    ),
                     if (lineLocked && actions.isNotEmpty) ...[
                       const SizedBox(height: 2),
                       Text(
                         completedLineLockedHint,
                         key: const ValueKey('item_completed_locked_hint'),
-                        style: context.textStyles.caption,
+                        style: TextStyle(fontSize: 12, color: t.mutedText),
                       ),
                     ],
                   ],
                 ),
               ),
               const SizedBox(width: 8),
-              Text(total, style: context.textStyles.captionMedium),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              Expanded(
-                child: Wrap(
-                  spacing: 6,
-                  runSpacing: 4,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    if (statusControls)
-                      _ItemStatusMenu(
-                        item: item,
-                        status: status,
-                        busy: statusBusy,
-                        lockedReason: statusLocked
-                            ? diagnosticReportLinkedHint
-                            : null,
-                        onSelect: onStatus,
-                      )
-                    else
-                      _ItemStatusPill(status: status),
-                    if (next != null)
-                      FilledButton.tonalIcon(
-                        key: const ValueKey('item_next_status_button'),
-                        onPressed: statusBusy || onStatus == null
-                            ? null
-                            : () => onStatus!(next),
-                        icon: Icon(
-                          next == ServiceItemStatus.IN_PROGRESS
-                              ? Icons.play_arrow_rounded
-                              : Icons.check_rounded,
-                          size: 16,
-                        ),
-                        label: Text(
-                          next == ServiceItemStatus.IN_PROGRESS
-                              ? 'Эхлүүлэх'
-                              : 'Дуусгах',
-                        ),
-                        style: FilledButton.styleFrom(
-                          minimumSize: const Size(0, 32),
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          visualDensity: VisualDensity.compact,
-                        ),
-                      ),
-                    if (item.kind == ItemKind.DIAGNOSTIC)
-                      if (item.diagnosticReportId != null)
-                        TextButton.icon(
-                          onPressed: onDiagnosticView,
-                          icon: const Icon(Icons.visibility_outlined, size: 15),
-                          label: const Text('Тайлан үзэх'),
-                          style: TextButton.styleFrom(
-                            padding: EdgeInsets.zero,
-                            minimumSize: const Size(0, 32),
-                          ),
-                        )
-                      else if (diagnosticEditable &&
-                          item.diagnosticTemplateId != null)
-                        TextButton.icon(
-                          onPressed: onDiagnosticFill,
-                          icon: const Icon(Icons.playlist_add_check, size: 15),
-                          label: const Text('Бөглөх'),
-                          style: TextButton.styleFrom(
-                            padding: EdgeInsets.zero,
-                            minimumSize: const Size(0, 32),
-                          ),
-                        )
-                      else if (diagnosticEditable)
-                        TextButton.icon(
-                          onPressed: onDiagnosticCreate,
-                          icon: const Icon(Icons.add_task, size: 15),
-                          label: const Text('Оношилгоо үүсгэх'),
-                          style: TextButton.styleFrom(
-                            padding: EdgeInsets.zero,
-                            minimumSize: const Size(0, 32),
-                          ),
-                        ),
-                  ],
+              Text(
+                total,
+                style: opsMono(
+                  context,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: done ? t.mutedText : t.ink,
                 ),
               ),
-              ...actions,
+              if (inlineActions && actions.isNotEmpty) ...[
+                const SizedBox(width: 4),
+                ...actions,
+              ],
             ],
           ),
+          if (controls.isNotEmpty || (actions.isNotEmpty && !inlineActions))
+            Padding(
+              padding: EdgeInsets.only(left: isPart ? 0 : 36, top: 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: controls,
+                    ),
+                  ),
+                  ...actions,
+                ],
+              ),
+            ),
         ],
       ),
     );
@@ -431,12 +463,20 @@ class _ItemStatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = context.itemStatusColor(status);
+    final t = CarserviceTheme.of(context);
+    final tone = switch (status) {
+      ServiceItemStatus.IN_PROGRESS => OpsTone.accent,
+      ServiceItemStatus.COMPLETED => OpsTone.ok,
+      _ => OpsTone.neutral,
+    };
+    final color = tone.foreground(t);
     return Container(
-      padding: EdgeInsets.fromLTRB(8, 4, trailing == null ? 8 : 4, 4),
+      constraints: const BoxConstraints(minHeight: 28),
+      padding: EdgeInsets.fromLTRB(10, 4, trailing == null ? 10 : 6, 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(.1),
+        color: tone == OpsTone.neutral ? t.panel2 : tone.background(t),
         borderRadius: BorderRadius.circular(AppDimens.radiusFull),
+        border: tone == OpsTone.neutral ? Border.all(color: t.border) : null,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -447,9 +487,9 @@ class _ItemStatusPill extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 12,
                 color: color,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ),
@@ -461,6 +501,67 @@ class _ItemStatusPill extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The line's check box: navy tick when done, accent ring while in progress,
+/// grey ring while waiting.
+class _LineCheck extends StatelessWidget {
+  const _LineCheck({required this.status});
+  final ServiceItemStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CarserviceTheme.of(context);
+    final done = status == ServiceItemStatus.COMPLETED;
+    return Semantics(
+      label: status.label,
+      child: Container(
+        width: 24,
+        height: 24,
+        decoration: BoxDecoration(
+          color: done ? t.ink : null,
+          borderRadius: BorderRadius.circular(7),
+          border: done
+              ? null
+              : Border.all(
+                  color: status == ServiceItemStatus.IN_PROGRESS
+                      ? t.accentHi
+                      : t.mutedText3,
+                  width: 2,
+                ),
+        ),
+        child: done ? Icon(Icons.check, size: 14, color: t.panel) : null,
+      ),
+    );
+  }
+}
+
+class _LineTextButton extends StatelessWidget {
+  const _LineTextButton({
+    required this.onPressed,
+    required this.icon,
+    required this.label,
+  });
+
+  final VoidCallback? onPressed;
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => TextButton.icon(
+    onPressed: onPressed,
+    icon: Icon(icon, size: 15),
+    // Style on the Text: a button textStyle would drop the theme font.
+    label: Text(
+      label,
+      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+    ),
+    style: TextButton.styleFrom(
+      foregroundColor: CarserviceTheme.of(context).accent,
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      minimumSize: const Size(0, 34),
+    ),
+  );
 }
 
 class _PillSpinner extends StatelessWidget {

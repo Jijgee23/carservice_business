@@ -18,6 +18,7 @@ import 'package:carservice_business/core/utils/result.dart';
 import 'package:carservice_business/core/widgets/adaptive/breakpoints.dart';
 import 'package:carservice_business/core/widgets/adaptive/record_views.dart';
 import 'package:carservice_business/core/widgets/common/common_widgets.dart';
+import 'package:carservice_business/core/widgets/common/ops_kit.dart';
 import 'package:carservice_business/core/widgets/list_search_bar.dart';
 import 'package:carservice_business/core/widgets/dialogs/message.dart';
 import 'package:carservice_business/core/widgets/date_picker/app_date_picker.dart';
@@ -30,6 +31,7 @@ import 'package:carservice_business/features/appointments/presentation/screens/a
 import 'package:carservice_business/features/appointments/presentation/screens/create_appointment_screen.dart';
 import 'package:carservice_business/features/appointments/presentation/widgets/appointment_filter_sheet.dart';
 import 'package:carservice_business/features/appointments/presentation/widgets/appointment_list_widgets.dart';
+import 'package:carservice_business/features/appointments/presentation/widgets/calendar/calendar_week_strip.dart';
 import 'package:carservice_business/features/orders/presentation/feature_theme.dart';
 import 'package:carservice_business/features/shell/presentation/controllers/working_branch_controller.dart';
 import 'package:carservice_business/core/navigation/app_nav.dart';
@@ -84,6 +86,16 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
   int? _sortColumnIndex;
   bool _sortAscending = true;
 
+  /// The week the strip shows when the user paged it away from the
+  /// selected day; reset whenever the selected day changes.
+  DateTime? _weekAnchor;
+  DateTime? _lastSelectedDate;
+
+  /// Booking counts per branch and day (`getMonthCounts`) — decoration for
+  /// the strip's dots only, never list truth. Absent means no dot.
+  final Map<String, Map<DateTime, int>> _monthCounts = {};
+  final Set<String> _countsRequested = {};
+
   @override
   void initState() {
     super.initState();
@@ -137,6 +149,7 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
       const CreateAppointmentScreen(),
     );
     if (result != null && mounted) {
+      _forgetMonthCounts();
       final requestedAt = result.requestedAt;
       // The every-date list stays put; a day view follows the new booking.
       if (requestedAt != null && !ctrl.allDates) {
@@ -201,6 +214,44 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
       return;
     }
     _showDetailFor(context, appointment, ctrl, user);
+  }
+
+  /// Same branch rule as the calendar: explicit list filter → the shell's
+  /// working branch → the home branch. Null (tenant-wide) has no counts.
+  String? _countsBranch(AppointmentListController ctrl, User? user) =>
+      ctrl.selectedBranchId ?? workingBranchIdOf(context) ?? user?.branchId;
+
+  /// Fetches the month(s) the strip's week touches, once per branch and
+  /// month. A failure leaves the days undecorated.
+  void _ensureMonthCounts(
+    AppointmentListController ctrl,
+    String? branchId,
+    DateTime weekStart,
+  ) {
+    if (branchId == null) return;
+    final weekEnd = weekStart.add(const Duration(days: 6));
+    for (final month in {
+      DateTime(weekStart.year, weekStart.month),
+      DateTime(weekEnd.year, weekEnd.month),
+    }) {
+      final key = '$branchId|${month.year}-${month.month}';
+      if (!_countsRequested.add(key)) continue;
+      ctrl.repository.getMonthCounts(branchId: branchId, month: month).then((
+        result,
+      ) {
+        if (!mounted) return;
+        if (result case Ok(:final value)) {
+          setState(
+            () => _monthCounts.putIfAbsent(branchId, () => {}).addAll(value),
+          );
+        }
+      });
+    }
+  }
+
+  void _forgetMonthCounts() {
+    _monthCounts.clear();
+    _countsRequested.clear();
   }
 
   Future<void> _changeBulkCategory(AppointmentListController ctrl) async {
@@ -268,6 +319,24 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
     // a per-list branch filter only makes sense for an owner while it is "all".
     final showBranches =
         user?.isOwner == true && _showLegacyBranchFilter(context);
+
+    final selectedDate = ctrl.selectedDate;
+    final sameSelection =
+        (selectedDate == null && _lastSelectedDate == null) ||
+        (selectedDate != null &&
+            _lastSelectedDate != null &&
+            DateUtils.isSameDay(selectedDate, _lastSelectedDate));
+    if (!sameSelection) {
+      _lastSelectedDate = selectedDate;
+      _weekAnchor = null;
+    }
+    final weekStart = calendarWeekStart(
+      _weekAnchor ?? selectedDate ?? DateTime.now(),
+    );
+    final countsBranch = _countsBranch(ctrl, user);
+    _ensureMonthCounts(ctrl, countsBranch, weekStart);
+    final counts = countsBranch == null ? null : _monthCounts[countsBranch];
+
     return Material(
       color: context.opsBackground,
       child: Column(
@@ -277,10 +346,39 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
               children: [
                 TightHeightFallback(
                   controls: [
-                    _DayBar(
+                    _Header(
                       ctrl: ctrl,
                       onCalendar: () => _openCalendar(context, ctrl, user),
+                      onCreate: _canCreate(user)
+                          ? () => _openCreate(context, ctrl)
+                          : null,
                     ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: CalendarWeekStrip(
+                        weekOf: weekStart,
+                        selected: selectedDate,
+                        onSelect: ctrl.setDate,
+                        onPreviousWeek: () => setState(
+                          () => _weekAnchor = weekStart.subtract(
+                            const Duration(days: 7),
+                          ),
+                        ),
+                        onNextWeek: () => setState(
+                          () => _weekAnchor = weekStart.add(
+                            const Duration(days: 7),
+                          ),
+                        ),
+                        hasBookings: counts == null
+                            ? null
+                            : (day) =>
+                                  (counts[DateUtils.dateOnly(day)] ?? 0) > 0,
+                        dayKeyPrefix: 'appointments_week_day',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _ScopeChips(ctrl: ctrl),
+                    const SizedBox(height: 4),
                     ListSearchBar(
                       controller: _searchController,
                       hintText: 'Үйлчлүүлэгч, утас, тэмдэглэл...',
@@ -300,20 +398,6 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                   ],
                   results: _buildResults(ctrl, ctrl.listState, user, filter),
                 ),
-                if (_canCreate(user))
-                  Positioned(
-                    right: 16,
-                    bottom: 16,
-                    child: FloatingActionButton(
-                      key: const ValueKey('appointments_create_fab'),
-                      heroTag: 'appointments_create_fab',
-                      tooltip: 'Цаг захиалга нэмэх',
-                      backgroundColor: context.opsAccent,
-                      foregroundColor: context.opsTextOnDark,
-                      onPressed: () => _openCreate(context, ctrl),
-                      child: const Icon(Icons.add),
-                    ),
-                  ),
               ],
             ),
           ),
@@ -420,16 +504,20 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
   }
 }
 
-// ─── Day switcher ────────────────────────────────────────────────────────────
+// ─── Header, scope chips ─────────────────────────────────────────────────────
 
-/// ‹ day › in a flat panel: tap the date to pick one, the calendar button
-/// opens the day's time grid, and "Бүгд" returns to the default every-date
-/// list. In that list the bar offers the date picker and an "Өнөөдөр" chip.
-class _DayBar extends StatelessWidget {
-  const _DayBar({required this.ctrl, required this.onCalendar});
+/// "Цаг захиалга" over the day (tap: date picker), then the calendar and,
+/// with `appointments.create`, the accent "+".
+class _Header extends StatelessWidget {
+  const _Header({
+    required this.ctrl,
+    required this.onCalendar,
+    required this.onCreate,
+  });
 
   final AppointmentListController ctrl;
   final VoidCallback onCalendar;
+  final VoidCallback? onCreate;
 
   static const _weekdays = [
     'Даваа',
@@ -444,86 +532,89 @@ class _DayBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = CarserviceTheme.of(context);
     final d = ctrl.selectedDate;
+    final muted = TextStyle(fontSize: 13, color: t.mutedText);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-      child: Material(
-        color: context.opsSurface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppDimens.radiusLG),
-          side: BorderSide(color: context.opsDivider),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-          child: Row(
-            children: [
-              if (d != null)
-                IconButton(
-                  tooltip: 'Өмнөх өдөр',
-                  icon: const Icon(Icons.chevron_left_rounded),
-                  onPressed: ctrl.prevDay,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Цаг захиалга',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.22,
+                    color: t.ink,
+                  ),
                 ),
-              Expanded(
-                child: InkWell(
+                InkWell(
                   key: const ValueKey('appointments_date_picker'),
-                  borderRadius: BorderRadius.circular(AppDimens.radiusMD),
+                  borderRadius: BorderRadius.circular(8),
                   onTap: () => _pickDate(context),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Column(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          d == null ? 'Бүх цаг захиалга' : _fmt.format(d),
-                          maxLines: 1,
-                          style: context.textStyles.h3.copyWith(
-                            fontFeatures: const [FontFeature.tabularFigures()],
+                        Flexible(
+                          child: Text(
+                            d == null ? 'Бүх цаг захиалга' : _fmt.format(d),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: muted,
                           ),
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          d == null
-                              ? 'Сүүлийнх нь эхэндээ'
-                              : '${_weekdays[d.weekday - 1]} гараг',
-                          maxLines: 1,
-                          style: context.textStyles.caption,
+                        if (d != null)
+                          Flexible(
+                            child: Text(
+                              ' · ${_weekdays[d.weekday - 1]} гараг',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: muted,
+                            ),
+                          ),
+                        Icon(
+                          Icons.expand_more_rounded,
+                          size: 16,
+                          color: t.mutedText,
                         ),
                       ],
                     ),
                   ),
                 ),
-              ),
-              if (d != null)
-                IconButton(
-                  tooltip: 'Дараах өдөр',
-                  icon: const Icon(Icons.chevron_right_rounded),
-                  onPressed: ctrl.nextDay,
-                ),
-              Padding(
-                padding: const EdgeInsets.only(right: 4),
-                child: d == null
-                    ? ActionChip(
-                        key: const ValueKey('appointments_today_chip'),
-                        label: const Text('Өнөөдөр'),
-                        onPressed: ctrl.goToday,
-                        visualDensity: VisualDensity.compact,
-                      )
-                    : ActionChip(
-                        key: const ValueKey('appointments_all_dates_chip'),
-                        label: const Text('Бүгд'),
-                        onPressed: ctrl.showAllDates,
-                        visualDensity: VisualDensity.compact,
-                      ),
-              ),
-              Container(width: 1, height: 28, color: context.opsDivider),
-              IconButton(
-                key: const ValueKey('appointments_calendar_button'),
-                tooltip: 'Хуанли',
-                icon: const Icon(Icons.calendar_month_outlined),
-                onPressed: onCalendar,
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
+          const SizedBox(width: 8),
+          OpsCircleButton(
+            key: const ValueKey('appointments_calendar_button'),
+            icon: Icons.calendar_month_outlined,
+            tooltip: 'Хуанли',
+            onPressed: onCalendar,
+          ),
+          if (onCreate != null) ...[
+            const SizedBox(width: 8),
+            IconButton(
+              key: const ValueKey('appointments_create_fab'),
+              tooltip: 'Цаг захиалга нэмэх',
+              onPressed: onCreate,
+              style: IconButton.styleFrom(
+                backgroundColor: t.accent,
+                foregroundColor: t.onAccent,
+                fixedSize: const Size.square(44),
+                minimumSize: const Size.square(44),
+              ),
+              icon: const Icon(Icons.add_rounded, size: 22),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -536,6 +627,45 @@ class _DayBar extends StatelessWidget {
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
     if (picked != null) await ctrl.setDate(picked);
+  }
+}
+
+/// The list's date scope as the design's chips: every date (the default)
+/// or today, the active one navy with the server's total. Status filters
+/// stay in the filter sheet.
+class _ScopeChips extends StatelessWidget {
+  const _ScopeChips({required this.ctrl});
+
+  final AppointmentListController ctrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final d = ctrl.selectedDate;
+    final isToday = d != null && DateUtils.isSameDay(d, DateTime.now());
+    final loaded = ctrl.listState is AsyncData;
+    String label(String name, bool active) =>
+        active && loaded ? '$name · ${ctrl.total}' : name;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          CalendarFilterChip(
+            key: const ValueKey('appointments_all_dates_chip'),
+            label: label('Бүгд', ctrl.allDates),
+            selected: ctrl.allDates,
+            onTap: ctrl.showAllDates,
+          ),
+          const SizedBox(width: 6),
+          CalendarFilterChip(
+            key: const ValueKey('appointments_today_chip'),
+            label: label('Өнөөдөр', isToday),
+            selected: isToday,
+            onTap: ctrl.goToday,
+          ),
+        ],
+      ),
+    );
   }
 }
 

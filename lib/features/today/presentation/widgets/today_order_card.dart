@@ -3,6 +3,7 @@ import 'package:carservice_business/core/utils/vehicle_plate.dart';
 import 'package:intl/intl.dart';
 
 import 'package:carservice_business/app/theme/app_theme.dart';
+import 'package:carservice_business/core/widgets/common/ops_kit.dart';
 import 'package:carservice_business/features/orders/domain/order.dart';
 import 'package:carservice_business/features/orders/presentation/feature_theme.dart';
 import 'package:carservice_business/features/orders/presentation/widgets/list/order_list_widgets.dart';
@@ -11,8 +12,9 @@ import 'package:carservice_business/features/orders/presentation/widgets/list/or
 /// [finishWork] completes the open work lines, [complete] the order itself.
 enum TodayCardAction { start, finishWork, pay, complete }
 
-/// A work card for the Today board. The plate is the largest text because
-/// that is how workshop staff identify a car at a glance.
+/// A work card for the Today board (tenant-app design "Миний ажлууд"):
+/// vehicle, plate · order number and a status pill, the work summary with
+/// its progress, then who, when, the payment state and the next step.
 class TodayOrderCard extends StatelessWidget {
   const TodayOrderCard({
     super.key,
@@ -37,10 +39,18 @@ class TodayOrderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = CarserviceTheme.of(context);
     final time = _timeLine(context);
-    return Card(
-      margin: EdgeInsets.zero,
-      clipBehavior: Clip.antiAlias,
+    final name = order.vehicle.displayName.trim();
+    final progress = order.progress;
+    final showProgress =
+        order.status == OrderStatus.IN_PROGRESS &&
+        progress != null &&
+        progress.total > 0;
+    final summary = order.servicePreview.join(' · ');
+    final (statusLabel, tone) = _status;
+    return OpsCard(
+      padding: EdgeInsets.zero,
       child: InkWell(
         key: ValueKey('today_order_${order.id}'),
         onTap: onTap,
@@ -49,33 +59,128 @@ class TodayOrderCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // The plate gets its own row so it is never squeezed by the
-              // payment badge; FittedBox scales it down rather than
-              // truncating when the card is narrow.
-              SizedBox(
-                width: double.infinity,
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    plateLabel(order.vehicle.plate, order.vehicle.vin),
-                    maxLines: 1,
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.5,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (name.isNotEmpty) ...[
+                          Text(
+                            name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: t.ink,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                        ],
+                        // Plate · order number. FittedBox scales the plate
+                        // down rather than truncating it on a narrow card:
+                        // staff find a car by its plate.
+                        SizedBox(
+                          width: double.infinity,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  plateLabel(
+                                    order.vehicle.plate,
+                                    order.vehicle.vin,
+                                  ),
+                                  maxLines: 1,
+                                  style: opsMono(
+                                    context,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: t.ink,
+                                    letterSpacing: 0.3,
+                                  ),
+                                ),
+                                Text(
+                                  ' · #${order.number}',
+                                  maxLines: 1,
+                                  style: opsMono(context),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
+                  const SizedBox(width: 10),
+                  OpsPill(statusLabel, tone: tone),
+                ],
               ),
-              const SizedBox(height: 4),
+              if (summary.isNotEmpty || showProgress) ...[
+                const SizedBox(height: 10),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: summary.isEmpty
+                          ? const SizedBox.shrink()
+                          : Text(
+                              summary,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 13,
+                                height: 18 / 13,
+                                color: t.mutedText,
+                              ),
+                            ),
+                    ),
+                    if (showProgress) ...[
+                      const SizedBox(width: 8),
+                      Text(
+                        '${progress.completed}/${progress.total}',
+                        style: opsMono(context),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+              if (showProgress) ...[
+                const SizedBox(height: 8),
+                OpsProgressBar(value: progress.completed / progress.total),
+              ],
+              const SizedBox(height: 10),
               Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      '${order.vehicle.displayName} · #${order.number}',
-                      style: context.textStyles.captionMedium,
-                      overflow: TextOverflow.ellipsis,
+                    child: _InfoRow(
+                      icon: Icons.person_outline,
+                      text: order.customer.displayName,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _InfoRow(
+                      icon: Icons.engineering_outlined,
+                      text: order.assignedTo?.fullName ?? 'Хуваарилаагүй',
+                      muted: order.assignedTo == null,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: _InfoRow(
+                      icon: time.icon,
+                      text: time.text,
+                      color: time.color,
+                      emphasised: time.color != null,
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -89,38 +194,6 @@ class TodayOrderCard extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              if (order.servicePreview.isNotEmpty) ...[
-                Text(
-                  order.servicePreview.join(' · '),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: context.textStyles.bodyMedium,
-                ),
-                const SizedBox(height: 8),
-              ],
-              _InfoRow(
-                icon: Icons.person_outline,
-                text: order.customer.displayName,
-              ),
-              const SizedBox(height: 4),
-              _InfoRow(
-                icon: Icons.engineering_outlined,
-                text: order.assignedTo?.fullName ?? 'Хуваарилаагүй',
-                muted: order.assignedTo == null,
-              ),
-              const SizedBox(height: 4),
-              _InfoRow(
-                icon: time.icon,
-                text: time.text,
-                color: time.color,
-                emphasised: time.color != null,
-              ),
-              if (order.status == OrderStatus.IN_PROGRESS &&
-                  order.progress != null) ...[
-                const SizedBox(height: 10),
-                OrderProgressView(progress: order.progress),
-              ],
               if (action != null || onMore != null) ...[
                 const SizedBox(height: 12),
                 Row(
@@ -146,6 +219,11 @@ class TodayOrderCard extends StatelessWidget {
                         tooltip: 'Бусад үйлдэл',
                         style: IconButton.styleFrom(
                           minimumSize: const Size.square(48),
+                          foregroundColor: t.ink,
+                          side: BorderSide(color: t.border),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                         onPressed: busy ? null : onMore,
                         icon: const Icon(Icons.more_horiz_rounded),
@@ -160,6 +238,14 @@ class TodayOrderCard extends StatelessWidget {
       ),
     );
   }
+
+  /// The status pill: waiting (amber), in the shop (accent), done (green).
+  (String, OpsTone) get _status => switch (order.status) {
+    OrderStatus.SCHEDULED => ('Хүлээгдэж', OpsTone.warn),
+    OrderStatus.IN_PROGRESS => ('Засварт', OpsTone.accent),
+    OrderStatus.COMPLETED => ('Дууссан', OpsTone.ok),
+    OrderStatus.CANCELLED => ('Цуцалсан', OpsTone.neutral),
+  };
 
   ({IconData icon, String text, Color? color}) _timeLine(BuildContext context) {
     final hm = DateFormat('HH:mm');
@@ -250,13 +336,13 @@ class _InfoRow extends StatelessWidget {
     final c = color ?? (muted ? context.opsTextHint : context.opsTextSecondary);
     return Row(
       children: [
-        Icon(icon, size: 16, color: c),
+        Icon(icon, size: 15, color: c),
         const SizedBox(width: 6),
         Expanded(
           child: Text(
             text,
             style: TextStyle(
-              fontSize: 14,
+              fontSize: 13,
               color: c,
               fontWeight: emphasised ? FontWeight.w600 : FontWeight.w400,
               fontFeatures: const [FontFeature.tabularFigures()],
@@ -306,9 +392,16 @@ class _ActionButton extends StatelessWidget {
         : Icon(icon);
     final key = ValueKey('today_action_${action.name}_$orderId');
     // Payment is secondary to doing the work; keep it visually quieter.
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12),
+    );
     if (action == TodayCardAction.pay) {
       return OutlinedButton.icon(
         key: key,
+        style: OutlinedButton.styleFrom(
+          shape: shape,
+          side: BorderSide(color: CarserviceTheme.of(context).border),
+        ),
         onPressed: onPressed,
         icon: child,
         label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -316,9 +409,12 @@ class _ActionButton extends StatelessWidget {
     }
     return FilledButton.icon(
       key: key,
-      style: action == TodayCardAction.complete
-          ? FilledButton.styleFrom(backgroundColor: context.opsGood)
-          : null,
+      style: FilledButton.styleFrom(
+        shape: shape,
+        backgroundColor: action == TodayCardAction.complete
+            ? context.opsGood
+            : null,
+      ),
       onPressed: onPressed,
       icon: child,
       label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),

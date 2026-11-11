@@ -42,19 +42,24 @@ void main() {
       await tester.tap(find.text('Утсаар нууц үг сэргээх'));
       await tester.pumpAndSettle();
       expect(find.text('Нууц үг сэргээх'), findsOneWidget);
-      expect(find.text('99***33 дугаарт код илгээлээ'), findsOneWidget);
-      expect(find.textContaining('Дахин илгээх ('), findsOneWidget);
+      expect(find.text('99***33 дугаарт илгээсэн 6 оронтой кодыг оруулна уу.'), findsOneWidget);
+      expect(find.textContaining('Код дахин авах'), findsOneWidget);
 
+      // A full code moves on to the new-password screen by itself.
       await tester.enterText(find.byKey(const ValueKey('login_code_field')), '123456');
+      await tester.pumpAndSettle();
       await tester.enterText(find.byKey(const ValueKey('login_new_password_field')), 'newpass12');
       await tester.enterText(
         find.byKey(const ValueKey('login_confirm_password_field')),
         'newpass12',
       );
-      await tester.ensureVisible(find.text('Нууц үг шинэчлэх'));
-      await tester.tap(find.text('Нууц үг шинэчлэх'));
+      await tester.ensureVisible(find.text('Хадгалах'));
       await tester.pumpAndSettle();
+      await tester.tap(find.text('Хадгалах'));
+      await tester.pumpAndSettle();
+      // A wrong code goes back to the code screen with the server message.
       expect(find.text('Код буруу байна.'), findsOneWidget);
+      expect(find.byKey(const ValueKey('login_code_field')), findsOneWidget);
       expect(tester.takeException(), isNull);
 
       // Stop the resend countdown so no timer outlives the test.

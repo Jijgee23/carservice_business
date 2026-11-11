@@ -34,12 +34,19 @@ import 'package:carservice_business/features/today/presentation/controllers/toda
 import 'package:carservice_business/features/today/presentation/widgets/today_appointments_timeline.dart';
 import 'package:carservice_business/features/today/presentation/widgets/today_order_card.dart';
 import 'package:carservice_business/core/navigation/app_nav.dart';
+import 'package:carservice_business/core/widgets/adaptive/permission_gate.dart';
+import 'package:carservice_business/core/widgets/common/ops_kit.dart';
+import 'package:carservice_business/features/diagnostics/presentation/controllers/new_inspection_controller.dart';
+import 'package:carservice_business/features/diagnostics/presentation/screens/new_inspection_screen.dart';
+import 'package:carservice_business/features/shell/presentation/controllers/working_branch_controller.dart';
+import 'package:carservice_business/features/today/presentation/widgets/today_home_widgets.dart';
 
-/// The work-first home: today's orders grouped by lane, each card carrying
-/// its order's next step (start, finish the work, take payment, complete)
-/// and a ⋯ sheet with the rest (diagnostics, reports, payment). Tablets
-/// (≥840dp) show all three lanes side by side; narrower screens switch
-/// lanes with a segmented control.
+/// The work-first home (tenant-app design "Нүүр"): a navy card with today's
+/// counts, quick actions, then today's orders grouped by lane, each card
+/// carrying its order's next step (start, finish the work, take payment,
+/// complete) and a ⋯ sheet with the rest (diagnostics, reports, payment).
+/// Tablets (≥840dp) show all three lanes side by side; narrower screens
+/// switch lanes with a segmented control.
 class TodayScreen extends StatefulWidget {
   const TodayScreen({
     super.key,
@@ -363,6 +370,47 @@ class _TodayScreenState extends State<TodayScreen> {
     if (created != null && mounted) await _open(created);
   }
 
+  void _newInspection() => AppNav.to<void>(
+    ChangeNotifierProvider(
+      create: (_) => NewInspectionController(),
+      child: const NewInspectionScreen(),
+    ),
+  );
+
+  /// Existing features only, each behind the permission its screen needs.
+  /// (The design's plate scanner has no counterpart in the app; search by
+  /// plate takes its place.)
+  List<HomeQuickAction> get _quickActions => [
+    if (_canCreate)
+      HomeQuickAction(
+        key: const ValueKey('today_create_order'),
+        icon: Icons.add_rounded,
+        label: 'Хүлээн авах',
+        onTap: _create,
+      ),
+    if (_canFillDiagnostics)
+      HomeQuickAction(
+        key: const ValueKey('today_new_inspection'),
+        icon: Icons.fact_check_outlined,
+        label: 'Оношилгоо',
+        onTap: _newInspection,
+      ),
+    if (canSeeView(_user, 'customers') || canSeeView(_user, 'vehicles'))
+      HomeQuickAction(
+        key: const ValueKey('today_search'),
+        icon: Icons.manage_search_rounded,
+        label: 'Дугаар хайх',
+        onTap: () => AppNav.push<void>(AppRoutes.search),
+      ),
+    if (canSeeView(_user, 'services'))
+      HomeQuickAction(
+        key: const ValueKey('today_goods'),
+        icon: Icons.inventory_2_outlined,
+        label: 'Сэлбэг',
+        onTap: () => AppNav.push<void>('${AppRoutes.services}?type=goods'),
+      ),
+  ];
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -394,7 +442,12 @@ class _TodayScreenState extends State<TodayScreen> {
           final boardWide = wide && boardWidth >= AdaptiveBreakpoints.expanded;
           final header = _Header(
             controller: _controller,
-            onCreate: _canCreate ? _create : null,
+            board: switch (_controller.state) {
+              AsyncData(:final value) => value,
+              _ => null,
+            },
+            branchName: _workingBranchName(context),
+            quickActions: _quickActions,
             subscription: _sub,
           );
           return switch (_controller.state) {
@@ -541,26 +594,40 @@ class _TodayScreenState extends State<TodayScreen> {
 
 // ─── Header ──────────────────────────────────────────────────────────────────
 
+/// The working branch's name for the hero pill, when the shell knows it.
+String? _workingBranchName(BuildContext context) {
+  try {
+    final c = context.watch<WorkingBranchController>();
+    if (c.isAllBranches) return 'Бүх салбар';
+    final branches = c.options.branches;
+    final id = c.selectedBranchId ?? c.options.lockedBranchId;
+    for (final b in branches) {
+      if (b.id == id) return b.name;
+    }
+    return branches.length == 1 ? branches.first.name : null;
+  } on ProviderNotFoundException {
+    return null;
+  }
+}
+
+/// Subscription warning, the navy day card, quick actions and the
+/// "Өнөөдрийн ажлууд" title with refresh and «Бүгд».
 class _Header extends StatelessWidget {
   const _Header({
     required this.controller,
-    required this.onCreate,
+    required this.board,
+    required this.branchName,
+    required this.quickActions,
     required this.subscription,
   });
 
   final TodayOrdersController controller;
-  final VoidCallback? onCreate;
-  final SubscriptionStatus? subscription;
 
-  static const _weekdays = [
-    'Даваа',
-    'Мягмар',
-    'Лхагва',
-    'Пүрэв',
-    'Баасан',
-    'Бямба',
-    'Ням',
-  ];
+  /// Null while loading or after an error: the counts show "—".
+  final TodayBoard? board;
+  final String? branchName;
+  final List<HomeQuickAction> quickActions;
+  final SubscriptionStatus? subscription;
 
   @override
   Widget build(BuildContext context) {
@@ -578,12 +645,35 @@ class _Header extends StatelessWidget {
     final updated = controller.lastUpdated;
     final sub = subscription;
     // Large text scaling needs the same compact treatment as a narrow phone
-    // — the full "updated at" text plus a labelled create button no longer
-    // fit the row, so both collapse to their icon-only forms.
+    // — the "updated at" text no longer fits beside the title.
     final largeText = MediaQuery.textScalerOf(context).scale(14) > 20;
     final compact = availableWidth < AdaptiveBreakpoints.compact || largeText;
+    // Hero and quick actions side by side once there is room for both.
+    final sideBySide = availableWidth >= 720 && quickActions.isNotEmpty;
+    final b = board;
+    final hero = TodayHeroCard(
+      label: 'Өнөөдөр · ${homeDateLabel(now)}',
+      badge: branchName,
+      stats: [
+        TodayHeroStat(label: 'Хүлээгдэж', value: b?.waiting.length),
+        TodayHeroStat(
+          label: 'Засварт',
+          value: b?.inProgress.length,
+          highlight: true,
+        ),
+        TodayHeroStat(label: 'Дууссан', value: b?.completed.length),
+      ],
+      segments: b == null
+          ? const []
+          : [
+              TodayHeroSegment(b.completed.length, OpsDark.ink),
+              TodayHeroSegment(b.inProgress.length, OpsDark.accent),
+              TodayHeroSegment(b.waiting.length, OpsDark.line),
+            ],
+    );
+    final t = CarserviceTheme.of(context);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -594,40 +684,41 @@ class _Header extends StatelessWidget {
             ),
             const SizedBox(height: 12),
           ],
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Өнөөдөр', style: context.textStyles.h2),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${_weekdays[now.weekday - 1]}, '
-                      '${now.month}-р сарын ${now.day}',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: context.opsTextSecondary,
-                      ),
-                    ),
-                  ],
+          if (sideBySide)
+            Row(
+              children: [
+                Expanded(child: hero),
+                const SizedBox(width: 16),
+                SizedBox(
+                  width: 80.0 * quickActions.length,
+                  child: HomeQuickActions(actions: quickActions),
                 ),
-              ),
+              ],
+            )
+          else ...[
+            hero,
+            if (quickActions.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              HomeQuickActions(actions: quickActions),
+            ],
+          ],
+          const SizedBox(height: 16),
+          HomeSectionHeader(
+            title: 'Өнөөдрийн ажлууд',
+            trailing: [
               if (updated != null && !compact)
                 Text(
                   controller.refreshError != null
                       ? 'Шинэчилж чадсангүй'
-                      : 'Шинэчлэгдсэн ${DateFormat('HH:mm').format(updated)}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: controller.refreshError != null
-                        ? context.opsDanger
-                        : context.opsTextHint,
-                  ),
+                      : DateFormat('HH:mm').format(updated),
+                  style: controller.refreshError != null
+                      ? TextStyle(fontSize: 12, color: t.danger)
+                      : opsMono(context),
                 ),
               IconButton(
                 key: const ValueKey('today_refresh'),
                 tooltip: 'Шинэчлэх',
+                color: t.mutedText,
                 onPressed: controller.refreshing ? null : controller.load,
                 icon: controller.refreshing
                     ? const SizedBox(
@@ -635,32 +726,28 @@ class _Header extends StatelessWidget {
                         height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Icon(Icons.refresh),
+                    : const Icon(Icons.refresh_rounded, size: 20),
               ),
-              if (onCreate != null && compact)
-                IconButton.filled(
-                  key: const ValueKey('today_create_order'),
-                  tooltip: 'Шинэ засварын хуудас',
-                  style: IconButton.styleFrom(minimumSize: const Size(48, 48)),
-                  onPressed: onCreate,
-                  icon: const Icon(Icons.add),
-                )
-              else if (onCreate != null) ...[
-                const SizedBox(width: 4),
-                FilledButton.icon(
-                  key: const ValueKey('today_create_order'),
-                  style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
-                  onPressed: onCreate,
-                  icon: const Icon(Icons.add),
-                  label: const Text('Шинэ засварын хуудас'),
-                ),
-              ],
+              HomeSeeAllButton(onPressed: () => AppNav.go(AppRoutes.orders)),
             ],
           ),
         ],
       ),
     );
   }
+}
+
+/// The lane and section switches, in the design's ink-on-white style.
+ButtonStyle _segmentStyle(BuildContext context) {
+  final t = CarserviceTheme.of(context);
+  return SegmentedButton.styleFrom(
+    backgroundColor: t.panel,
+    foregroundColor: t.ink,
+    selectedBackgroundColor: t.ink,
+    selectedForegroundColor: t.shellBackground,
+    side: BorderSide(color: t.border),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+  );
 }
 
 // ─── Layouts ─────────────────────────────────────────────────────────────────
@@ -829,9 +916,9 @@ class _CollapsibleAppointments extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: context.opsSurface,
-          borderRadius: BorderRadius.circular(AppDimens.radiusLG),
-          border: Border.all(color: context.opsDivider),
+          color: CarserviceTheme.of(context).panel,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: CarserviceTheme.of(context).border),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -839,7 +926,7 @@ class _CollapsibleAppointments extends StatelessWidget {
             InkWell(
               key: const ValueKey('today_appointments_toggle'),
               onTap: onToggle,
-              borderRadius: BorderRadius.circular(AppDimens.radiusLG),
+              borderRadius: BorderRadius.circular(16),
               child: Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 14,
@@ -900,11 +987,13 @@ class _LaneColumn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = CarserviceTheme.of(context);
+    // A pale panel, so the white cards still stand out inside it.
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: context.opsSurface,
-        borderRadius: BorderRadius.circular(AppDimens.radiusLG),
-        border: Border.all(color: context.opsDivider),
+        color: t.panel2,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: t.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -988,10 +1077,11 @@ class _NarrowBoard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final showTopSplit = canViewAppointments && tier == AdaptiveSize.phone;
+    // The section switch stays on top in both sections; the day card and
+    // quick actions belong to the orders side.
     if (showTopSplit && section == _TodaySection.appointments) {
       return Column(
         children: [
-          header,
           _SectionSelector(section: section, onSection: onSection),
           Expanded(child: appointmentsPaneBuilder!()),
         ],
@@ -1007,11 +1097,11 @@ class _NarrowBoard extends StatelessWidget {
       onRefresh: onRefresh,
       child: CustomScrollView(
         slivers: [
-          SliverToBoxAdapter(child: header),
           if (showTopSplit)
             SliverToBoxAdapter(
               child: _SectionSelector(section: section, onSection: onSection),
             ),
+          SliverToBoxAdapter(child: header),
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -1019,6 +1109,7 @@ class _NarrowBoard extends StatelessWidget {
                 width: double.infinity,
                 child: SegmentedButton<TodayLane>(
                   key: const ValueKey('today_lane_selector'),
+                  style: _segmentStyle(context),
                   showSelectedIcon: false,
                   segments: [
                     for (final l in TodayLane.values)
@@ -1082,11 +1173,12 @@ class _SectionSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       child: SizedBox(
         width: double.infinity,
         child: SegmentedButton<_TodaySection>(
           key: const ValueKey('today_section_selector'),
+          style: _segmentStyle(context),
           showSelectedIcon: false,
           segments: const [
             ButtonSegment(
@@ -1123,6 +1215,7 @@ class _BoardNotes extends StatelessWidget {
         'Дууссан засварын хуудасны жагсаалт дутуу байж магадгүй',
     ];
     if (notes.isEmpty) return const SizedBox.shrink();
+    // «Бүгд» in the header opens the full list.
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
       child: Row(
@@ -1134,10 +1227,6 @@ class _BoardNotes extends StatelessWidget {
               notes.join(' · '),
               style: TextStyle(fontSize: 12, color: context.opsTextSecondary),
             ),
-          ),
-          TextButton(
-            onPressed: () => AppNav.go('/orders'),
-            child: const Text('Бүх засварын хуудас'),
           ),
         ],
       ),
@@ -1175,14 +1264,16 @@ class _CountBadge extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
     decoration: BoxDecoration(
-      color: context.opsCardBg,
+      color: CarserviceTheme.of(context).panel,
       borderRadius: BorderRadius.circular(AppDimens.radiusFull),
+      border: Border.all(color: CarserviceTheme.of(context).border),
     ),
     child: Text(
       '$count',
-      style: const TextStyle(
-        fontWeight: FontWeight.w700,
-        fontFeatures: [FontFeature.tabularFigures()],
+      style: opsMono(
+        context,
+        fontWeight: FontWeight.w500,
+        color: CarserviceTheme.of(context).ink,
       ),
     ),
   );
