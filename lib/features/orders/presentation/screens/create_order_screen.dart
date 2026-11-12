@@ -10,8 +10,12 @@ import 'package:carservice_business/core/services/auth_storage.dart';
 import 'package:carservice_business/app/theme/app_theme.dart';
 import 'package:carservice_business/core/domain/diagnostic.dart';
 import 'package:carservice_business/core/widgets/org_badge.dart';
+import 'package:carservice_business/core/utils/money_format.dart';
 import 'package:carservice_business/features/orders/domain/order.dart';
+import 'package:carservice_business/features/orders/domain/order_item_draft.dart';
 import 'package:carservice_business/features/orders/presentation/screens/new_customer_sheet.dart';
+import 'package:carservice_business/features/orders/presentation/screens/order_detail_screen.dart'
+    show ItemFormScreen;
 import 'package:carservice_business/features/vehicles/presentation/screens/vehicle_create_screen.dart';
 import 'package:carservice_business/core/utils/result.dart';
 import 'package:carservice_business/core/services/diagnostic_service.dart';
@@ -106,6 +110,10 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   String? _assigneeFieldError;
   int _assigneesSeq = 0;
 
+  // Ажил, сэлбэг — сангаас сонгосон эсвэл гараар бүртгэсэн мөрүүд. Үүсгэх
+  // хүсэлт мөр хүлээж авдаггүй тул хуудас үүссэний дараа нэг нэгээр нэмнэ.
+  final List<OrderItemDraft> _items = [];
+
   final _dateFmt = DateFormat('yyyy-MM-dd HH:mm');
 
   @override
@@ -157,6 +165,68 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     final user = Authenticator.user;
     return user?.isOwner == true ||
         user?.role?.permissions.contains('orders.assign') == true;
+  }
+
+  bool _hasPermission(String permission) {
+    final user = Authenticator.user;
+    return user?.isOwner == true ||
+        user?.role?.permissions.contains(permission) == true;
+  }
+
+  /// Lines need edit rights on the new order (server `canEditOrder`):
+  /// `orders.edit`, or `orders.editOwn` on an order assigned to the user.
+  bool get _mayAddItems =>
+      _hasPermission('orders.edit') || _hasPermission('orders.editOwn');
+
+  /// [_mayAddItems] for the chosen master: without `orders.assign` the server
+  /// assigns the order to its creator.
+  bool get _canAddItems =>
+      _hasPermission('orders.edit') ||
+      (_hasPermission('orders.editOwn') &&
+          (!_canAssign || _assignee?.id == Authenticator.user?.id));
+
+  /// Without `orders.itemPrice` the server takes the catalog price and
+  /// refuses hand-entered lines (`ITEM_PRICE_FORBIDDEN`).
+  bool get _canItemPrice => _hasPermission('orders.itemPrice');
+
+  /// Staged lines the server would refuse: a master other than the user was
+  /// chosen by someone who may only edit their own orders.
+  String? get _itemsBlockedHint => _items.isNotEmpty && !_canAddItems
+      ? 'Өөрт оноосон хуудсанд л ажил нэмэх эрхтэй'
+      : null;
+
+  Future<void> _addItem({required bool manual}) async {
+    final draft = await AppNav.to<OrderItemDraft>(
+      ItemFormScreen.draft(manual: manual, canEditPrice: _canItemPrice),
+    );
+    if (draft == null || !mounted || _isDuplicateDiagnostic(draft)) return;
+    setState(() => _items.add(draft));
+  }
+
+  Future<void> _editItem(int index) async {
+    final draft = await AppNav.to<OrderItemDraft>(
+      ItemFormScreen.draft(
+        editDraft: _items[index],
+        canEditPrice: _canItemPrice,
+      ),
+    );
+    if (draft == null || !mounted || _isDuplicateDiagnostic(draft, index)) {
+      return;
+    }
+    setState(() => _items[index] = draft);
+  }
+
+  /// The server takes a diagnostic once per order (`DUPLICATE_DIAGNOSTIC`).
+  bool _isDuplicateDiagnostic(OrderItemDraft draft, [int? except]) {
+    final templateId = draft.diagnosticTemplateId;
+    if (templateId == null) return false;
+    for (final (i, item) in _items.indexed) {
+      if (i != except && item.diagnosticTemplateId == templateId) {
+        messageWarning('Энэ оношилгоо аль хэдийн нэмэгдсэн байна.');
+        return true;
+      }
+    }
+    return false;
   }
 
   void _selectBranch(BranchSummary b) {
@@ -405,18 +475,33 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       isPostpaid: _paymentMode.isPostpaid,
       isInternal: _paymentMode.isInternal,
     );
+    if (result case Ok(:final value)) {
+      // The order exists now: its lines go in even if the screen was left.
+      if (_items.isNotEmpty) {
+        final added = await addOrderItemDrafts(
+          widget.repository,
+          value.id,
+          List.of(_items),
+        );
+        if (added.firstError case final error?) {
+          messageError(
+            '${added.failed} мөр нэмэгдсэнгүй: ${error.display} '
+            'Засварын хуудаснаас дахин нэмнэ үү.',
+          );
+        }
+      }
+      if (mounted) AppNav.back(value);
+      return;
+    }
     if (!mounted) return;
     setState(() => _submitting = false);
-    switch (result) {
-      case Ok(:final value):
-        AppNav.back(value);
-      case Err(:final error):
-        final fieldMsg = error.fieldErrors?['assignedToId'];
-        if (fieldMsg != null && _canAssign) {
-          setState(() => _assigneeFieldError = fieldMsg);
-        } else {
-          messageError(error.display);
-        }
+    if (result case Err(:final error)) {
+      final fieldMsg = error.fieldErrors?['assignedToId'];
+      if (fieldMsg != null && _canAssign) {
+        setState(() => _assigneeFieldError = fieldMsg);
+      } else {
+        messageError(error.display);
+      }
     }
   }
 
@@ -425,10 +510,13 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       _vehicle != null &&
       _branch != null &&
       (!_canAssign || _assignee != null) &&
+      _itemsBlockedHint == null &&
       _intake.blockReason == null;
 
   @override
   Widget build(BuildContext context) {
+    // Sections after the branch (3) are numbered by which ones are shown.
+    var step = 3;
     return Scaffold(
       backgroundColor: context.opsBackground,
       appBar: AppBar(
@@ -525,7 +613,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                   // ── 4. Хариуцах мастер ─────────────────────────────────
                   if (_canAssign) ...[
                     _SectionLabel(
-                      number: '4',
+                      number: '${++step}',
                       title: 'Хариуцах мастер',
                       done: _assignee != null,
                     ),
@@ -545,9 +633,30 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                     const SizedBox(height: 24),
                   ],
 
-                  // ── 5. Нэмэлт ──────────────────────────────────────────
+                  // ── Ажил, сэлбэг: сангаас эсвэл гараар ─────────────────
+                  if (_mayAddItems) ...[
+                    _SectionLabel(
+                      number: '${++step}',
+                      title: 'Ажил, сэлбэг',
+                      done: _items.isNotEmpty,
+                      optional: true,
+                    ),
+                    const SizedBox(height: 10),
+                    _ItemsSection(
+                      items: _items,
+                      canManual: _canItemPrice,
+                      blockedHint: _itemsBlockedHint,
+                      onPickCatalog: () => _addItem(manual: false),
+                      onAddManual: () => _addItem(manual: true),
+                      onEdit: _editItem,
+                      onRemove: (i) => setState(() => _items.removeAt(i)),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+
+                  // ── Нэмэлт ─────────────────────────────────────────────
                   _SectionLabel(
-                    number: _canAssign ? '5' : '4',
+                    number: '${++step}',
                     title: 'Нэмэлт мэдээлэл',
                     done: _scheduledAt != null || _notesCtrl.text.isNotEmpty,
                     optional: true,
@@ -581,6 +690,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             branch: _branch,
             scheduledAt: _scheduledAt,
             dateFmt: _dateFmt,
+            itemCount: _items.length,
+            blockedHint: _itemsBlockedHint,
             canSubmit: _canSubmit,
             submitting: _submitting,
             onSubmit: _submit,
@@ -1006,11 +1117,20 @@ class _PickRow extends StatelessWidget {
 
 class _AddButton extends StatelessWidget {
   final String label;
-  final VoidCallback onTap;
-  const _AddButton({required this.label, required this.onTap});
+  final IconData icon;
+
+  /// Null disables the button.
+  final VoidCallback? onTap;
+  const _AddButton({
+    super.key,
+    required this.label,
+    required this.onTap,
+    this.icon = Icons.add_circle_outline,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final color = onTap == null ? context.opsTextHint : context.opsAccent;
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -1018,19 +1138,214 @@ class _AddButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: context.opsSurface,
           borderRadius: BorderRadius.circular(AppDimens.radiusMD),
-          border: Border.all(color: context.opsAccent.withOpacity(0.35)),
+          border: Border.all(
+            color: onTap == null
+                ? context.opsDivider
+                : context.opsAccent.withOpacity(0.35),
+          ),
         ),
         child: Row(
           children: [
-            Icon(Icons.add_circle_outline, size: 18, color: context.opsAccent),
+            Icon(icon, size: 18, color: color),
             const SizedBox(width: 10),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: context.opsAccent,
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: color,
+                ),
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Items section ─────────────────────────────────────────────────────────────
+
+/// Staged lines and the two ways to add one: a catalog pick or hand entry.
+/// Tapping a line reopens it; nothing reaches the server until the order is
+/// created.
+class _ItemsSection extends StatelessWidget {
+  final List<OrderItemDraft> items;
+
+  /// Hand entry needs `orders.itemPrice`.
+  final bool canManual;
+  final String? blockedHint;
+  final VoidCallback onPickCatalog;
+  final VoidCallback onAddManual;
+  final ValueChanged<int> onEdit;
+  final ValueChanged<int> onRemove;
+
+  const _ItemsSection({
+    required this.items,
+    required this.canManual,
+    required this.blockedHint,
+    required this.onPickCatalog,
+    required this.onAddManual,
+    required this.onEdit,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final total = items.fold<double>(0, (sum, i) => sum + i.total);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (items.isNotEmpty) ...[
+          Container(
+            key: const ValueKey('create_order_items'),
+            clipBehavior: Clip.antiAlias,
+            decoration: _cardDecoration(context),
+            child: Column(
+              children: [
+                for (final (i, item) in items.indexed)
+                  _DraftItemRow(
+                    key: ValueKey('create_order_item_$i'),
+                    item: item,
+                    onTap: () => onEdit(i),
+                    onRemove: () => onRemove(i),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Нийт (урьдчилсан)',
+                          style: context.textStyles.caption,
+                        ),
+                      ),
+                      Text(
+                        formatMoneyNum(total),
+                        key: const ValueKey('create_order_items_total'),
+                        style: context.textStyles.bodyMedium.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
+        Row(
+          children: [
+            Expanded(
+              child: _AddButton(
+                key: const ValueKey('create_order_item_catalog'),
+                label: 'Сангаас сонгох',
+                icon: Icons.manage_search_rounded,
+                onTap: onPickCatalog,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _AddButton(
+                key: const ValueKey('create_order_item_manual'),
+                label: 'Гараар бүртгэх',
+                icon: Icons.edit_note_rounded,
+                onTap: canManual ? onAddManual : null,
+              ),
+            ),
+          ],
+        ),
+        if (!canManual || blockedHint != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            blockedHint ??
+                'Гараар үнэ оруулах эрх байхгүй — сангаас сонгоно уу.',
+            style: context.textStyles.caption.copyWith(
+              color: blockedHint != null
+                  ? context.opsWarning
+                  : context.opsTextHint,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _DraftItemRow extends StatelessWidget {
+  final OrderItemDraft item;
+  final VoidCallback onTap;
+  final VoidCallback onRemove;
+
+  const _DraftItemRow({
+    super.key,
+    required this.item,
+    required this.onTap,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final kindColor = context.itemKindColor(item.kind);
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: context.opsDivider)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+              decoration: BoxDecoration(
+                color: context.itemKindBackground(item.kind),
+                borderRadius: BorderRadius.circular(AppDimens.radiusSM),
+              ),
+              child: Text(
+                item.kind.label,
+                style: context.textStyles.label.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: kindColor,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.description,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: context.textStyles.bodyMedium,
+                  ),
+                  Text(
+                    '${item.quantity.raw} × ${formatMoney(item.unitPrice.raw)}'
+                    ' · ${item.fromCatalog ? 'Сангаас' : 'Гараар'}',
+                    style: context.textStyles.caption,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              formatMoneyNum(item.total),
+              style: context.textStyles.captionMedium,
+            ),
+            IconButton(
+              tooltip: 'Хасах',
+              onPressed: onRemove,
+              icon: Icon(Icons.close, size: 18, color: context.opsTextHint),
+              visualDensity: VisualDensity.compact,
             ),
           ],
         ),
@@ -1609,6 +1924,8 @@ class _BottomBar extends StatelessWidget {
   final BranchSummary? branch;
   final DateTime? scheduledAt;
   final DateFormat dateFmt;
+  final int itemCount;
+  final String? blockedHint;
   final bool canSubmit;
   final bool submitting;
   final VoidCallback onSubmit;
@@ -1619,6 +1936,8 @@ class _BottomBar extends StatelessWidget {
     required this.branch,
     required this.scheduledAt,
     required this.dateFmt,
+    required this.itemCount,
+    required this.blockedHint,
     required this.canSubmit,
     required this.submitting,
     required this.onSubmit,
@@ -1636,7 +1955,7 @@ class _BottomBar extends StatelessWidget {
         ? 'Харилцагч сонгоогүй байна'
         : branch == null
         ? 'Салбар сонгоогүй байна'
-        : null;
+        : blockedHint;
 
     return Container(
       decoration: BoxDecoration(
@@ -1682,6 +2001,20 @@ class _BottomBar extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                  if (itemCount > 0) ...[
+                    const SizedBox(width: 6),
+                    Icon(
+                      Icons.build_outlined,
+                      size: 13,
+                      color: context.opsTextSecondary,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '$itemCount мөр',
+                      key: const ValueKey('create_order_item_count'),
+                      style: context.textStyles.caption,
+                    ),
+                  ],
                   if (scheduledAt != null) ...[
                     SizedBox(width: 6),
                     Icon(
@@ -1711,12 +2044,14 @@ class _BottomBar extends StatelessWidget {
                   color: context.opsWarning,
                 ),
                 SizedBox(width: 6),
-                Text(
-                  missingHint,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: context.opsWarning,
-                    fontWeight: FontWeight.w500,
+                Flexible(
+                  child: Text(
+                    missingHint,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: context.opsWarning,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
               ],

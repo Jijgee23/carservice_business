@@ -35,6 +35,7 @@ import 'package:carservice_business/app/theme/app_theme.dart';
 import 'package:carservice_business/core/domain/diagnostic.dart';
 import 'package:carservice_business/core/domain/user.dart';
 import 'package:carservice_business/features/orders/domain/order.dart';
+import 'package:carservice_business/features/orders/domain/order_item_draft.dart';
 import 'package:carservice_business/features/orders/domain/orders_repository.dart';
 import 'package:carservice_business/features/diagnostics/presentation/screens/new_inspection_screen.dart';
 import 'package:carservice_business/features/diagnostics/presentation/screens/report_detail_screen.dart';
@@ -1354,8 +1355,10 @@ String _subtractMoneyStrings(String left, String right) {
 // ─── Item form screen (add + edit) ────────────────────────────────────────────
 
 class ItemFormScreen extends StatefulWidget {
-  final String orderId;
-  final OrderItemController provider;
+  final String? orderId;
+
+  /// Null in draft mode ([ItemFormScreen.draft]).
+  final OrderItemController? provider;
   final ServiceItem? editItem;
   final bool canEditFields;
   final bool canEditPrice;
@@ -1364,16 +1367,39 @@ class ItemFormScreen extends StatefulWidget {
   /// (`PAID_PAYMENT_EXISTS`), so those inputs are read-only in edit mode.
   final bool paidLocked;
   final String paidLockReason;
+
+  /// Draft mode: the staged line being changed.
+  final OrderItemDraft? editDraft;
+
+  /// Draft mode: hand entry only, without the catalog search.
+  final bool manual;
+
   const ItemFormScreen({
     super.key,
-    required this.orderId,
-    required this.provider,
+    required String this.orderId,
+    required OrderItemController this.provider,
     this.canEditFields = true,
     this.canEditPrice = true,
     this.paidLocked = false,
     this.paidLockReason = paidLockHint,
     this.editItem,
-  });
+  }) : editDraft = null,
+       manual = false;
+
+  /// For an order not created yet: nothing is saved, the form pops the line
+  /// as an [OrderItemDraft]. Without [manual] it's a catalog pick — the
+  /// search alone until a line is chosen; [editDraft] reopens a staged line.
+  const ItemFormScreen.draft({
+    super.key,
+    this.editDraft,
+    this.manual = false,
+    this.canEditPrice = true,
+  }) : orderId = null,
+       provider = null,
+       editItem = null,
+       canEditFields = true,
+       paidLocked = false,
+       paidLockReason = paidLockHint;
 
   @override
   State<ItemFormScreen> createState() => _ItemFormScreenState();
@@ -1392,6 +1418,10 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
   final Set<String> _templateIds = {};
   int _fetchSeq = 0;
   String? _selectedTemplateId;
+  // Нэгдсэн сангийн (тенант холбоогүй) мөр — catalogItemId-аар илгээхэд
+  // сервер тенантын ажил/сэлбэг болгон холбоно (вэбийн add-item-form-тэй ижил).
+  final Set<String> _sharedIds = {};
+  String? _selectedCatalogItemId;
   bool _serviceSelected = false;
   String? _validationError;
 
@@ -1402,7 +1432,12 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
   final _priceCtrl = TextEditingController();
   bool _saving = false;
 
-  bool get _isEdit => widget.editItem != null;
+  bool get _isEdit => widget.editItem != null || widget.editDraft != null;
+  bool get _draftMode => widget.provider == null;
+  bool get _showSearch => !_isEdit && !widget.manual;
+
+  /// Draft catalog pick: the form fields appear once a line is chosen.
+  bool get _catalogOnly => _draftMode && _showSearch;
   bool get _moneyLocked => _isEdit && widget.paidLocked;
   bool get _effectiveCanEditPrice => widget.canEditPrice && !_moneyLocked;
 
@@ -1434,8 +1469,7 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
   @override
   void initState() {
     super.initState();
-    if (_isEdit) {
-      final item = widget.editItem!;
+    if (widget.editItem case final item?) {
       _kind = item.kind;
       _descCtrl.text = item.description;
       _qtyCtrl.text = item.quantityMoney?.raw ?? item.quantity.toString();
@@ -1443,7 +1477,15 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
         item.unitPriceMoney?.raw ?? item.unitPrice.toString(),
       );
       _selectedServiceId = item.serviceId;
-    } else {
+    } else if (widget.editDraft case final draft?) {
+      _kind = draft.kind;
+      _descCtrl.text = draft.description;
+      _qtyCtrl.text = draft.quantity.raw;
+      _priceCtrl.text = formatPriceInput(draft.unitPrice.raw);
+      _selectedServiceId = draft.serviceId;
+      _selectedTemplateId = draft.diagnosticTemplateId;
+      _selectedCatalogItemId = draft.catalogItemId;
+    } else if (_showSearch) {
       _loadAll();
       _searchCtrl.addListener(_onSearch);
     }
@@ -1451,7 +1493,7 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
 
   @override
   void dispose() {
-    if (!_isEdit) _searchCtrl.removeListener(_onSearch);
+    if (_showSearch) _searchCtrl.removeListener(_onSearch);
     _searchCtrl.dispose();
     _descCtrl.dispose();
     _qtyCtrl.dispose();
@@ -1477,15 +1519,38 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
           if (kDebugMode) debugPrint('ItemForm templates load failed: $e\n$st');
           return <catalog.DiagnosticTemplateSummary>[];
         });
+    final sharedF = ServiceCatalogService.getCatalogItems(q: q)
+        .catchError((Object e, StackTrace st) {
+          if (kDebugMode) debugPrint('ItemForm shared catalog failed: $e\n$st');
+          return <CatalogService>[];
+        });
     final services = await servicesF;
     final templates = await templatesF;
+    final shared = await sharedF;
     if (mounted && seq == _fetchSeq) {
+      // Тенант ижил кодтойг өөрөө бүртгэсэн бол сангийн хуулбарыг давхар
+      // харуулахгүй (сервер ч тэр үед өөрийнхийг нь ашигладаг).
+      final ownCodes = {
+        for (final s in services)
+          if (s.code != null) '${s.type.name}:${s.code}',
+      };
+      final sharedShown = shared
+          .where(
+            (c) =>
+                c.code == null ||
+                !ownCodes.contains('${c.type.name}:${c.code}'),
+          )
+          .toList();
       setState(() {
         _templateIds
           ..clear()
           ..addAll(templates.map((t) => t.id));
+        _sharedIds
+          ..clear()
+          ..addAll(sharedShown.map((c) => c.id));
         _allResults = [
           ...services.where((s) => s.type != ServiceKind.DIAGNOSTIC),
+          ...sharedShown,
           ...templates.map(
             (t) => CatalogService(
               id: t.id,
@@ -1515,9 +1580,11 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
 
   void _selectService(CatalogService svc) {
     final isTemplate = _templateIds.contains(svc.id);
+    final isShared = _sharedIds.contains(svc.id);
     setState(() {
-      _selectedServiceId = isTemplate ? null : svc.id;
+      _selectedServiceId = isTemplate || isShared ? null : svc.id;
       _selectedTemplateId = isTemplate ? svc.id : null;
+      _selectedCatalogItemId = isShared ? svc.id : null;
       _kind = _toItemKind(svc.type);
       _descCtrl.text = svc.name;
       _priceCtrl.text = formatPriceInput(svc.price.toString());
@@ -1531,6 +1598,7 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
     setState(() {
       _selectedServiceId = null;
       _selectedTemplateId = null;
+      _selectedCatalogItemId = null;
       _serviceSelected = false;
       _searchCtrl.clear();
       _descCtrl.clear();
@@ -1559,31 +1627,49 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
     final price = priceResult.value!;
     if (_isEdit && !widget.canEditFields && !_effectiveCanEditPrice) return;
     // Үнэ оруулах эрхгүй бол гараар (каталоггүй) мөр нэмэх боломжгүй.
-    if (!_isEdit &&
+    // Ноорог засахад ч мөн адил: төрөл солиход каталогоос салдаг.
+    if ((!_isEdit || _draftMode) &&
         !widget.canEditPrice &&
         _selectedServiceId == null &&
-        _selectedTemplateId == null) {
+        _selectedTemplateId == null &&
+        _selectedCatalogItemId == null) {
       setState(
         () => _validationError = 'Каталогоос үйлчилгээ/сэлбэг сонгоно уу — гараар үнэ оруулах эрх байхгүй.',
       );
       return;
     }
     setState(() => _validationError = null);
+    final provider = widget.provider;
+    if (provider == null) {
+      AppNav.back(
+        OrderItemDraft(
+          kind: _kind,
+          description: desc,
+          quantity: qty,
+          unitPrice: price,
+          serviceId: _selectedServiceId,
+          diagnosticTemplateId: _selectedTemplateId,
+          catalogItemId: _selectedCatalogItemId,
+        ),
+      );
+      return;
+    }
     setState(() => _saving = true);
     Result<ServiceItem>? result;
     if (!_isEdit) {
-      result = await widget.provider.add(
+      result = await provider.add(
         kind: _kind,
         description: desc,
         quantity: qty,
         unitPrice: price,
         serviceId: _selectedServiceId,
         diagnosticTemplateId: _selectedTemplateId,
+        catalogItemId: _selectedCatalogItemId,
       );
     } else {
       final item = widget.editItem!;
       if (widget.canEditFields) {
-        result = await widget.provider.edit(
+        result = await provider.edit(
           itemId: item.id,
           kind: _kind,
           description: desc,
@@ -1595,13 +1681,13 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
       if (!widget.canEditFields &&
           _effectiveCanEditPrice &&
           price.raw != oldPrice) {
-        result = await widget.provider.changePrice(item.id, price);
+        result = await provider.changePrice(item.id, price);
       }
     }
     if (!mounted) return;
     setState(() => _saving = false);
     if (result case Ok()) {
-      if (!_isEdit && widget.provider.lastAddMerged) {
+      if (!_isEdit && provider.lastAddMerged) {
         messageComplete('Тоо нэмэгдлээ');
       }
       AppNav.back(true);
@@ -1614,7 +1700,15 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isEdit ? 'Мөр засах' : 'Мөр нэмэх'),
+        title: Text(
+          _isEdit
+              ? 'Мөр засах'
+              : !_draftMode
+              ? 'Мөр нэмэх'
+              : widget.manual
+              ? 'Гараар бүртгэх'
+              : 'Сангаас сонгох',
+        ),
         actions: const [ShellNotificationBell()],
       ),
       body: SingleChildScrollView(
@@ -1623,7 +1717,7 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // ── Service search (add mode only) ─────────────────────
-            if (!_isEdit) ...[
+            if (_showSearch) ...[
               if (!_serviceSelected) ...[
                 // Search field
                 TextField(
@@ -1777,9 +1871,14 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
                                         svc.name,
                                         style: context.textStyles.bodyMedium,
                                       ),
-                                      if (svc.laborCategory != null)
+                                      if (svc.laborCategory != null ||
+                                          _sharedIds.contains(svc.id))
                                         Text(
-                                          svc.laborCategory!.name,
+                                          [
+                                            ?svc.laborCategory?.name,
+                                            if (_sharedIds.contains(svc.id))
+                                              'Нэгдсэн сан',
+                                          ].join(' · '),
                                           style: context.textStyles.caption,
                                         ),
                                     ],
@@ -1815,23 +1914,25 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
                     ),
                   ),
 
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    const Expanded(child: Divider()),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: Text(
-                        'эсвэл гар аргаар бөглөх',
-                        style: context.textStyles.caption.copyWith(
-                          fontSize: 11,
+                if (!_catalogOnly) ...[
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      const Expanded(child: Divider()),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Text(
+                          'эсвэл гар аргаар бөглөх',
+                          style: context.textStyles.caption.copyWith(
+                            fontSize: 11,
+                          ),
                         ),
                       ),
-                    ),
-                    const Expanded(child: Divider()),
-                  ],
-                ),
-                const SizedBox(height: 16),
+                      const Expanded(child: Divider()),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                ],
               ] else ...[
                 // Selected service badge
                 Container(
@@ -1877,121 +1978,126 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
               ],
             ],
 
-            // ── Kind selector ────────────────────────────────────────
-            Text('Мөрийн төрөл', style: context.textStyles.label),
-            SizedBox(height: 8),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: ItemKind.values.map((k) {
-                  final active = k == _kind;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: GestureDetector(
-                      onTap: _moneyLocked
-                          ? null
-                          : () => setState(() {
-                              _kind = k;
-                              _selectedServiceId = null;
-                            }),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: active
-                              ? context.itemKindColor(k).withOpacity(0.12)
-                              : context.opsSurface,
-                          borderRadius: BorderRadius.circular(
-                            AppDimens.radiusFull,
+            if (!_catalogOnly || _serviceSelected) ...[
+              // ── Kind selector ────────────────────────────────────────
+              Text('Мөрийн төрөл', style: context.textStyles.label),
+              SizedBox(height: 8),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: ItemKind.values.map((k) {
+                    final active = k == _kind;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: GestureDetector(
+                        // Another kind is hand entry: the catalog link goes.
+                        onTap: _moneyLocked || k == _kind
+                            ? null
+                            : () => setState(() {
+                                _kind = k;
+                                _selectedServiceId = null;
+                                _selectedTemplateId = null;
+                                _selectedCatalogItemId = null;
+                              }),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 8,
                           ),
-                          border: Border.all(
+                          decoration: BoxDecoration(
                             color: active
-                                ? context.itemKindColor(k)
-                                : context.opsDivider,
+                                ? context.itemKindColor(k).withOpacity(0.12)
+                                : context.opsSurface,
+                            borderRadius: BorderRadius.circular(
+                              AppDimens.radiusFull,
+                            ),
+                            border: Border.all(
+                              color: active
+                                  ? context.itemKindColor(k)
+                                  : context.opsDivider,
+                            ),
                           ),
-                        ),
-                        child: Text(
-                          k.label,
-                          style: context.textStyles.body.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: active
-                                ? context.itemKindColor(k)
-                                : context.opsTextSecondary,
+                          child: Text(
+                            k.label,
+                            style: context.textStyles.body.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: active
+                                  ? context.itemKindColor(k)
+                                  : context.opsTextSecondary,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  );
-                }).toList(),
+                    );
+                  }).toList(),
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-            // ── Form fields ──────────────────────────────────────────
-            AppTextField(
-              label: 'Тайлбар *',
-              hint: 'Тосны шилжүүлэлт...',
-              controller: _descCtrl,
-              readOnly: !widget.canEditFields,
-            ),
-            const SizedBox(height: 12),
-            if (_validationError != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Text(
-                  _validationError!,
-                  style: context.textStyles.body.copyWith(
-                    color: context.opsDanger,
-                  ),
-                ),
+              // ── Form fields ──────────────────────────────────────────
+              AppTextField(
+                label: 'Тайлбар *',
+                hint: 'Тосны шилжүүлэлт...',
+                controller: _descCtrl,
+                readOnly: !widget.canEditFields,
               ),
-            Row(
-              children: [
-                Expanded(
-                  child: AppTextField(
-                    label: 'Тоо *',
-                    hint: '1',
-                    controller: _qtyCtrl,
-                    readOnly: !widget.canEditFields || _moneyLocked,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
+              const SizedBox(height: 12),
+              if (_validationError != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    _validationError!,
+                    style: context.textStyles.body.copyWith(
+                      color: context.opsDanger,
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: AppTextField(
-                    label: 'Нэгж үнэ (₮) *',
-                    hint: '0',
-                    controller: _priceCtrl,
-                    readOnly: !_effectiveCanEditPrice,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
+              Row(
+                children: [
+                  Expanded(
+                    child: AppTextField(
+                      label: 'Тоо *',
+                      hint: '1',
+                      controller: _qtyCtrl,
+                      readOnly: !widget.canEditFields || _moneyLocked,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                     ),
-                    inputFormatters: const [PriceInputFormatter()],
                   ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: AppTextField(
+                      label: 'Нэгж үнэ (₮) *',
+                      hint: '0',
+                      controller: _priceCtrl,
+                      readOnly: !_effectiveCanEditPrice,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      inputFormatters: const [PriceInputFormatter()],
+                    ),
+                  ),
+                ],
+              ),
+              if (_moneyLocked) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Төлбөр төлөгдсөн тул төрөл, тоо, үнийг өөрчлөх боломжгүй. ${widget.paidLockReason}',
+                  style: context.textStyles.caption,
                 ),
               ],
-            ),
-            if (_moneyLocked) ...[
-              const SizedBox(height: 8),
-              Text(
-                'Төлбөр төлөгдсөн тул төрөл, тоо, үнийг өөрчлөх боломжгүй. ${widget.paidLockReason}',
-                style: context.textStyles.caption,
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: AppButton(
+                  label: _isEdit ? 'Хадгалах' : 'Нэмэх',
+                  onPressed: _saving ? null : _save,
+                  loading: _saving,
+                ),
               ),
+              const SizedBox(height: 16),
             ],
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: AppButton(
-                label: _isEdit ? 'Хадгалах' : 'Нэмэх',
-                onPressed: _saving ? null : _save,
-                loading: _saving,
-              ),
-            ),
-            const SizedBox(height: 16),
           ],
         ),
       ),

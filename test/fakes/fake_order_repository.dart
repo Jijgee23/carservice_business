@@ -353,6 +353,7 @@ class FakeOrderRepository implements OrdersRepository {
     required Money unitPrice,
     String? serviceId,
     String? diagnosticTemplateId,
+    String? catalogItemId,
   }) async {
     final index = _orders.indexWhere((o) => o.id == orderId);
     if (index == -1) {
