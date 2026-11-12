@@ -173,6 +173,7 @@ class OrderItemController extends ChangeNotifier {
     required Money unitPrice,
     String? serviceId,
     String? diagnosticTemplateId,
+    String? catalogItemId,
   }) {
     final existingIds = {
       for (final i in detailController.order?.items ?? const <ServiceItem>[])
@@ -188,6 +189,7 @@ class OrderItemController extends ChangeNotifier {
         unitPrice: unitPrice,
         serviceId: serviceId,
         diagnosticTemplateId: diagnosticTemplateId,
+        catalogItemId: catalogItemId,
       );
       if (result case Ok(:final value)) {
         lastAddMerged = existingIds.contains(value.id);

@@ -38,6 +38,7 @@ class _ItemRepository extends FakeOrderRepository {
     required Money unitPrice,
     String? serviceId,
     String? diagnosticTemplateId,
+    String? catalogItemId,
   }) async {
     addCalls++;
     if (pendingAdd != null) return pendingAdd!.future;
@@ -52,6 +53,7 @@ class _ItemRepository extends FakeOrderRepository {
       unitPrice: unitPrice,
       serviceId: serviceId,
       diagnosticTemplateId: diagnosticTemplateId,
+      catalogItemId: catalogItemId,
     );
   }
 

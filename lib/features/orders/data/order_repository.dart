@@ -277,6 +277,7 @@ class RemoteOrdersRepository implements OrdersRepository {
     required Money unitPrice,
     String? serviceId,
     String? diagnosticTemplateId,
+    String? catalogItemId,
   }) async {
     try {
       final body = <String, dynamic>{
@@ -287,6 +288,7 @@ class RemoteOrdersRepository implements OrdersRepository {
         if (serviceId != null) 'serviceId': serviceId,
         if (diagnosticTemplateId != null)
           'diagnosticTemplateId': diagnosticTemplateId,
+        if (catalogItemId != null) 'catalogItemId': catalogItemId,
       };
       return Ok(
         ServiceItemDto.fromJson(

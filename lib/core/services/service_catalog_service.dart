@@ -20,6 +20,40 @@ class ServiceCatalogService {
     return list.map((e) => CatalogService.fromJson(e as Map<String, dynamic>)).toList();
   }
 
+  /// Нэгдсэн сангийн ажил/сэлбэг the tenant hasn't linked yet
+  /// (`GET orders/catalog-items`), for the order line picker. An item's [id]
+  /// is the shared `catalogItemId`, not a tenant service id. Errors throw
+  /// silently ([apiOrThrow]): the list is extra, not worth a snackbar.
+  static Future<List<CatalogService>> getCatalogItems({String? q}) async {
+    final query = q == null || q.isEmpty
+        ? ''
+        : '&q=${Uri.encodeQueryComponent(q)}';
+    final res = await apiOrThrow(
+      Api.get,
+      'orders/catalog-items?pageSize=100$query',
+    );
+    final list = res.data['items'] as List<dynamic>? ?? [];
+    return list.map((e) {
+      final j = e as Map<String, dynamic>;
+      final category = j['category'] as Map<String, dynamic>?;
+      return CatalogService(
+        id: j['id'] as String,
+        type: j['type'] == 'GOODS' ? ServiceKind.GOODS : ServiceKind.LABOR,
+        name: j['name'] as String,
+        code: j['code'] as String?,
+        price: double.tryParse('${j['price']}') ?? 0,
+        description: j['description'] as String?,
+        isActive: true,
+        laborCategory: category == null
+            ? null
+            : LaborCategory(
+                id: category['id'] as String,
+                name: category['name'] as String,
+              ),
+      );
+    }).toList();
+  }
+
   static Future<List<DiagnosticTemplateSummary>> getTemplates({String? q}) async {
     final path = (q != null && q.isNotEmpty)
         ? 'diagnostics/templates?q=${Uri.encodeQueryComponent(q)}'

@@ -144,6 +144,10 @@ abstract interface class OrdersRepository {
     required Money unitPrice,
     String? serviceId,
     String? diagnosticTemplateId,
+
+    /// A shared-catalog (Нэгдсэн сан) line the tenant hasn't linked yet: the
+    /// server links it as the tenant's service first (`catalog-adopt.ts`).
+    String? catalogItemId,
   });
 
   Future<Result<ServiceItem>> updateItem(
