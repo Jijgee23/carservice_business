@@ -27,6 +27,8 @@ import 'package:carservice_business/core/widgets/date_picker/app_date_picker.dar
 import 'package:carservice_business/core/navigation/app_nav.dart';
 import 'package:carservice_business/core/widgets/app_dropdown.dart';
 import 'package:carservice_business/features/orders/presentation/widgets/assignee_avatar.dart';
+import 'package:carservice_business/features/orders/data/order_settings_service.dart';
+import 'package:carservice_business/features/orders/domain/order_settings.dart';
 import 'package:carservice_business/features/orders/presentation/controllers/order_intake_controller.dart';
 import 'package:carservice_business/features/orders/presentation/widgets/intake/intake_section.dart';
 import 'package:carservice_business/features/orders/presentation/widgets/manual_item_sheet.dart';
@@ -101,6 +103,10 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   bool _submitting = false;
   late final OrderIntakeController _intake;
 
+  /// Tenant-ийн засварын хуудасны тохиргоо (заавал талбарууд, шалгах
+  /// жагсаалт). Ачаалагдтал cache эсвэл анхдагч (= хуучин хатуу дүрэм).
+  OrderSettings _settings = OrderSettingsService.instance.current;
+
   // Хариуцах мастер — `orders.assign` эрхтэй хэрэглэгчид заавал, сонгосон
   // салбараар шүүгдэнэ. Зөвхөн `orders.assign` эрхтэй хэрэглэгчид харагдана
   // (сервер ч мөн адил шаарддаг).
@@ -128,9 +134,32 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     _loadBranches();
     _notesCtrl.addListener(() => setState(() {}));
     _intake = OrderIntakeController(widget.repository)
+      ..applySettings(_settings)
       ..addListener(() {
         if (mounted) setState(() {});
       });
+    _loadSettings();
+  }
+
+  /// Форм нээгдэх бүрт шинэчилнэ (эзэн тохиргоогоо сольсон байж болно);
+  /// алдаа гарвал одоогийн утгаараа үргэлжилнэ — сервер өөрөө шалгадаг.
+  Future<void> _loadSettings() async {
+    final value = await OrderSettingsService.instance.get(force: true);
+    if (!mounted || value == null) return;
+    setState(() => _settings = value);
+    _intake.applySettings(value);
+  }
+
+  /// Хариуцах мастер заавал эсэх (`requireAssignee`); `orders.assign`
+  /// эрхгүй хэрэглэгчийг сервер өөрт нь онооно.
+  bool get _assigneeRequired => _canAssign && _settings.requireAssignee;
+
+  /// Илгээхийг хаах tenant-ийн шаардлага (мастер, хүлээн авалт).
+  String? get _requirementHint {
+    if (_assigneeRequired && _assignee == null) {
+      return 'Хариуцах мастер сонгоно уу';
+    }
+    return _intake.missingRequirement;
   }
 
   @override
@@ -489,7 +518,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       branchId: _branch!.id,
       customerId: _customer!.id,
       vehicleId: _vehicle!.id,
-      assignedToId: _canAssign ? _assignee!.id : null,
+      assignedToId: _canAssign ? _assignee?.id : null,
       scheduledAt: _scheduledAt,
       notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
       estimatedDurationMinutes: _estimatedDurationMinutes,
@@ -532,8 +561,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       _customer != null &&
       _vehicle != null &&
       _branch != null &&
-      (!_canAssign || _assignee != null) &&
       _itemsBlockedHint == null &&
+      _requirementHint == null &&
       _intake.blockReason == null;
 
   @override
@@ -639,6 +668,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                       number: '${++step}',
                       title: 'Хариуцах мастер',
                       done: _assignee != null,
+                      optional: !_settings.requireAssignee,
                     ),
                     const SizedBox(height: 10),
                     _AssigneeSection(
@@ -714,7 +744,10 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             scheduledAt: _scheduledAt,
             dateFmt: _dateFmt,
             itemCount: _items.length,
-            blockedHint: _itemsBlockedHint,
+            blockedHint:
+                _itemsBlockedHint ??
+                _requirementHint ??
+                _intake.blockReason,
             canSubmit: _canSubmit,
             submitting: _submitting,
             onSubmit: _submit,

@@ -406,6 +406,7 @@ class BulkSelectionBar extends StatelessWidget {
     required this.onStatus,
     required this.onAssign,
     required this.canChangeStatus,
+    this.canCancel = true,
     required this.canAssign,
     this.assignableUsers = const [],
     this.loadingAssignableUsers = false,
@@ -416,6 +417,10 @@ class BulkSelectionBar extends StatelessWidget {
   final ValueChanged<OrderStatus> onStatus;
   final ValueChanged<String> onAssign;
   final bool canChangeStatus;
+
+  /// False for `orders.editOwn`-only users (server: 403
+  /// ORDER_CANCEL_FORBIDDEN) — «Цуцлагдсан» is left out of the menu.
+  final bool canCancel;
   final bool canAssign;
   final List<AssignableUser> assignableUsers;
   final bool loadingAssignableUsers;
@@ -439,23 +444,24 @@ class BulkSelectionBar extends StatelessWidget {
                 tooltip: 'Төлөв өөрчлөх',
                 icon: const Icon(Icons.sync_alt),
                 onSelected: onStatus,
-                itemBuilder: (_) => const [
-                  PopupMenuItem(
+                itemBuilder: (_) => [
+                  const PopupMenuItem(
                     value: OrderStatus.SCHEDULED,
                     child: Text('Товлосон'),
                   ),
-                  PopupMenuItem(
+                  const PopupMenuItem(
                     value: OrderStatus.IN_PROGRESS,
                     child: Text('Хийгдэж байна'),
                   ),
-                  PopupMenuItem(
+                  const PopupMenuItem(
                     value: OrderStatus.COMPLETED,
                     child: Text('Дууссан'),
                   ),
-                  PopupMenuItem(
-                    value: OrderStatus.CANCELLED,
-                    child: Text('Цуцлагдсан'),
-                  ),
+                  if (canCancel)
+                    const PopupMenuItem(
+                      value: OrderStatus.CANCELLED,
+                      child: Text('Цуцлагдсан'),
+                    ),
                 ],
               ),
             if (canAssign)

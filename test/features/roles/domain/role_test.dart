@@ -7,6 +7,7 @@ void main() {
     test('parses the measured full row', () {
       final r = Role.fromJson({
         'id': 'role-1',
+        'key': 'MECHANIC',
         'name': 'Механик',
         'description': 'Засварчин',
         'permissions': ['orders.view', 'orders.edit'],
@@ -14,6 +15,7 @@ void main() {
         'userCount': 3,
       });
       expect(r.id, 'role-1');
+      expect(r.key, 'MECHANIC');
       expect(r.permissions, ['orders.view', 'orders.edit']);
       expect(r.userCount, 3);
     });
@@ -31,15 +33,6 @@ void main() {
       expect(r.permissions, isEmpty);
       expect(r.isActive, isTrue);
       expect(r.userCount, isNull);
-    });
-  });
-
-  group('RoleIdResult', () {
-    test('requires id', () {
-      expect(
-        () => RoleIdResult.fromJson({}),
-        throwsA(isA<RoleParseException>()),
-      );
     });
   });
 

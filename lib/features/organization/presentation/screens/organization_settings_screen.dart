@@ -13,7 +13,9 @@ import 'package:carservice_business/core/widgets/dialogs/confirm_sheet.dart';
 import 'package:carservice_business/core/widgets/dialogs/message.dart';
 import 'package:carservice_business/features/organization/domain/organization.dart';
 import 'package:carservice_business/features/organization/domain/organization_repository.dart';
+import 'package:carservice_business/core/navigation/app_nav.dart';
 import 'package:carservice_business/features/organization/presentation/controllers/organization_settings_controller.dart';
+import 'package:carservice_business/features/organization/presentation/screens/onboarding_screens.dart';
 
 /// "Байгууллагын тохиргоо" — the web's `/dashboard/settings` main card for
 /// the app: logo, name/register/contacts, online booking and the cash-shift
@@ -303,6 +305,18 @@ class _BodyState extends State<_Body> {
                       style: TextStyle(fontSize: 12, color: context.colors.danger),
                     ),
                   ],
+                  const SizedBox(height: 12),
+                  OpsGroup(
+                    children: [
+                      OpsGroupRow(
+                        key: const ValueKey('org_service_keys'),
+                        icon: Icons.handyman_outlined,
+                        title: 'Үзүүлдэг үйлчилгээ',
+                        value: canEdit ? 'Засах' : 'Харах',
+                        onTap: () => AppNav.to<void>(const ServiceKeysScreen()),
+                      ),
+                    ],
+                  ),
                   if (_leadMinutes != null) ...[
                     const SizedBox(height: 20),
                     const OpsSectionLabel('Цаг захиалгын сануулга'),

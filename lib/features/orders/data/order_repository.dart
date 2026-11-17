@@ -140,7 +140,10 @@ class RemoteOrdersRepository implements OrdersRepository {
         if (appointmentId != null) 'appointmentId': appointmentId,
         if (estimatedDurationMinutes != null)
           'estimatedDurationMinutes': estimatedDurationMinutes,
-        if (intake != null && !intake.isEmpty) 'intake': intake.toJson(),
+        if (intake != null && !intake.hasNoRecord) 'intake': intake.toJson(),
+        // Tenant-ийн шалгах жагсаалт (GET /tenant/order-settings).
+        if (intake != null && intake.checklist.isNotEmpty)
+          'intakeChecklist': intake.checklistJson(),
         if (isPostpaid != null) 'isPostpaid': isPostpaid,
         if (isInternal != null) 'isInternal': isInternal,
       };

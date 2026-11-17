@@ -117,6 +117,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       user?.role?.permissions.contains('orders.edit') == true ||
       user?.role?.permissions.contains('orders.editOwn') == true;
 
+  /// Cancelling the whole order needs `orders.edit` (or owner); an
+  /// `orders.editOwn`-only mechanic gets `403 ORDER_CANCEL_FORBIDDEN`.
+  bool _canCancelOrder(User? user) =>
+      user?.isOwner == true ||
+      user?.role?.permissions.contains('orders.edit') == true;
+
   bool _canAssign(User? user) =>
       user?.isOwner == true ||
       user?.role?.permissions.contains('orders.assign') == true;
@@ -832,6 +838,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               OrderStatusField(
                 current: o.status,
                 enabled: _canEdit(user),
+                canCancel: _canCancelOrder(user),
                 onSelect: _changeStatus,
               ),
               const SizedBox(height: 14),
@@ -1530,17 +1537,24 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
     final templates = await templatesF;
     final shared = [...await sharedLaborF, ...await sharedGoodsF];
     if (mounted && seq == _fetchSeq) {
-      // Тенант ижил кодтойг өөрөө бүртгэсэн бол сангийн хуулбарыг давхар
-      // харуулахгүй (сервер ч тэр үед өөрийнхийг нь ашигладаг).
+      // Тенант ижил код эсвэл ижил нэртэйг (том/жижиг үсэг ялгахгүй) өөрөө
+      // бүртгэсэн бол сангийн хуулбарыг давхар харуулахгүй — сервер ч тэр
+      // үед өөрийнхийг нь ашигладаг (lib/services/catalog-adopt.ts).
       final ownCodes = {
         for (final s in services)
           if (s.code != null) '${s.type.name}:${s.code}',
       };
+      final ownNames = {
+        for (final s in services) '${s.type.name}:${s.name.trim().toLowerCase()}',
+      };
       final sharedShown = shared
           .where(
             (c) =>
-                c.code == null ||
-                !ownCodes.contains('${c.type.name}:${c.code}'),
+                (c.code == null ||
+                    !ownCodes.contains('${c.type.name}:${c.code}')) &&
+                !ownNames.contains(
+                  '${c.type.name}:${c.name.trim().toLowerCase()}',
+                ),
           )
           .toList();
       setState(() {

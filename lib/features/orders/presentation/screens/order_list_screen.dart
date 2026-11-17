@@ -307,6 +307,9 @@ class _OrderListScreenState extends State<OrderListScreen> {
               count: controller.selectedCount,
               onClear: controller.clearVisibleSelection,
               canChangeStatus: _canEdit(user),
+              canCancel:
+                  user?.isOwner == true ||
+                  user?.role?.permissions.contains('orders.edit') == true,
               canAssign: _canAssign(user),
               assignableUsers:
                   controller.assignableUsersState.valueOrNull ??

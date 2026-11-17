@@ -7,46 +7,10 @@ import 'fake_role_repository.dart';
 
 void main() {
   group('FakeRoleRepository', () {
-    test('a non-owner caller is forbidden from every write', () async {
-      final repo = FakeRoleRepository(callerIsOwner: false);
-      expect(
-        (await repo.createRole(
-          name: 'X',
-          permissions: const ['orders.view'],
-        ) as Err).error.statusCode,
-        403,
-      );
-      expect(
-        (await repo.updateRole(
-          'role-1',
-          name: 'X',
-          permissions: const [],
-        ) as Err).error.statusCode,
-        403,
-      );
-      expect((await repo.deleteRole('role-1') as Err).error.statusCode, 403);
-    });
-
-    test('an empty permissions list is rejected', () async {
+    test('getRole answers the seeded system role', () async {
       final repo = FakeRoleRepository();
-      final result = await repo.createRole(name: 'X', permissions: const []);
-      expect((result as Err).error.code, 'VALIDATION');
-    });
-
-    test('a duplicate name is rejected', () async {
-      final repo = FakeRoleRepository();
-      final result = await repo.createRole(
-        name: 'Механик',
-        permissions: const ['orders.view'],
-      );
-      expect((result as Err).error.code, 'DUPLICATE');
-    });
-
-    test('delete is blocked while a role is in use', () async {
-      final repo = FakeRoleRepository();
-      repo.userCountByRole['role-1'] = 2;
-      final result = await repo.deleteRole('role-1');
-      expect((result as Err).error.code, 'ROLE_IN_USE');
+      expect((await repo.getRole('role-1') as Ok).value.id, 'role-1');
+      expect((await repo.getRole('nope') as Err).error.code, 'NOT_FOUND');
     });
   });
 

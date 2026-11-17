@@ -32,6 +32,8 @@ import 'package:carservice_business/features/notifications/presentation/screens/
 import 'package:carservice_business/features/orders/domain/orders_repository.dart';
 import 'package:carservice_business/features/orders/presentation/controllers/order_list_controller.dart';
 import 'package:carservice_business/features/orders/presentation/screens/order_list_screen.dart';
+import 'package:carservice_business/features/organization/presentation/controllers/tenant_onboarding_controller.dart';
+import 'package:carservice_business/features/organization/presentation/screens/onboarding_screens.dart';
 import 'package:carservice_business/features/overview/presentation/screens/home_screen.dart';
 import 'package:carservice_business/features/shell/data/working_branch_repository.dart';
 import 'package:carservice_business/features/shell/presentation/controllers/working_branch_controller.dart';
@@ -111,12 +113,26 @@ class AppShell extends StatelessWidget {
           },
         ),
         ChangeNotifierProvider(create: (_) => NotificationController()..load()),
+        // Owner-only mandatory steps (shop name, offered services) — the
+        // web dashboard's blocking dialogs; no-op for everyone else.
+        ChangeNotifierProvider(
+          create: (_) => TenantOnboardingController()..load(),
+        ),
         ChangeNotifierProvider<ShellDepthTracker>.value(
           value: ShellDepthTracker.instance,
         ),
       ],
       child: Builder(
         builder: (shellContext) {
+          final onboarding = shellContext.watch<TenantOnboardingController>();
+          if (onboarding.needsShopName) {
+            AppNav.currentTab = null;
+            return ShopNameGateScreen(controller: onboarding);
+          }
+          if (onboarding.needsServiceKeys) {
+            AppNav.currentTab = null;
+            return ServiceKeysGateScreen(onboarding: onboarding);
+          }
           final branch = shellContext.watch<WorkingBranchController>();
           if (branch.needsChoice) {
             AppNav.currentTab = null;
@@ -371,12 +387,6 @@ class MoreScreen extends StatefulWidget {
         'employees',
         route: AppRoutes.employees,
         count: _MenuCount.employees,
-      ),
-      _NavigationEntry(
-        'Эрхүүд',
-        Icons.admin_panel_settings_outlined,
-        'owner',
-        route: AppRoutes.roles,
       ),
       _NavigationEntry(
         'Ажлын хуваарь',

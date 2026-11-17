@@ -67,11 +67,6 @@ import 'package:carservice_business/features/employees/presentation/screens/empl
 import 'package:carservice_business/features/cash/presentation/screens/cash_shift_detail_screen.dart';
 import 'package:carservice_business/features/cash/presentation/screens/cash_shift_list_screen.dart';
 import 'package:carservice_business/features/payment_accounts/presentation/screens/payment_account_list_screen.dart';
-import 'package:carservice_business/features/roles/data/role_repository.dart';
-import 'package:carservice_business/features/roles/domain/role.dart';
-import 'package:carservice_business/features/roles/domain/roles_repository.dart';
-import 'package:carservice_business/features/roles/presentation/screens/role_form_screen.dart';
-import 'package:carservice_business/features/roles/presentation/screens/role_list_screen.dart';
 import 'package:carservice_business/features/schedules/presentation/screens/my_schedule_screen.dart';
 import 'package:carservice_business/features/schedules/presentation/screens/schedule_grid_screen.dart';
 import 'package:carservice_business/features/organization/presentation/screens/organization_settings_screen.dart';
@@ -105,7 +100,6 @@ class AppRoutes {
   static const diagnosticsReports = '/diagnostics/reports';
   static const diagnosticsTemplates = '/diagnostics/templates';
   static const employees = '/employees';
-  static const roles = '/roles';
   static const schedules = '/schedules';
   static const mySchedule = '/my-schedule';
   static const reports = '/reports';
@@ -318,25 +312,27 @@ GoRouter buildRouter(AuthController authController) {
         },
       ),
 
-      // ── Хүмүүс (Employees/Roles/Schedules) — P6-F5 ──────────────────────
+      // ── Хүмүүс (Employees/Schedules) — P6-F5 ────────────────────────────
+      //
+      // Roles («Эрхүүд») are global system roles managed by the platform's
+      // super admin since 2026-11-13 — the app no longer lists/edits them;
+      // the employee form only picks from active roles.
       //
       // Same top-level shape as Customers/Vehicles/Services above: none of
       // these is a bottom-nav destination, so each lands as a full screen
       // above the shell. `EmployeeListScreen`/`EmployeeDetailScreen`/
       // `EmployeeFormScreen`/`EmployeeBulkScreen` (P6-F2),
-      // `RoleListScreen`/`RoleFormScreen` (P6-F3), and
       // `ScheduleGridScreen`/`MyScheduleScreen` (P6-F4) all already expose
       // the same `onSelect*`/`onCreate*`/`onSaved` hooks
       // `ServiceListScreen` established, wired here without touching any of
       // those screens. Literal paths (`new`, `bulk`, `edit`) are registered
       // ahead of `:id` siblings, matching `services`'s convention.
       //
-      // Neither `EmployeeDetailScreen.onEdit` nor `RoleListScreen
-      // .onSelectRole` hands this router a full domain object to edit —
-      // the former only carries an id, and a cold deep link into
-      // `/employees/:id/edit` or `/roles/:id/edit` never has one either —
-      // so `_EmployeeEditRoute`/`_RoleEditRoute` below fetch the record by
-      // id themselves before handing it to the form screen, exactly the
+      // `EmployeeDetailScreen.onEdit` does not hand this router a full
+      // domain object to edit — it only carries an id, and a cold deep link
+      // into `/employees/:id/edit` never has one either —
+      // so `_EmployeeEditRoute` below fetches the record by
+      // id itself before handing it to the form screen, exactly the
       // shape `EmployeeDetailScreen`/`ServiceDetailScreen` already use for
       // their own id-only cold-start contract.
       GoRoute(
@@ -374,38 +370,6 @@ GoRouter buildRouter(AuthController authController) {
                     return const _MissingEmployeeRoute();
                   }
                   return _EmployeeEditRoute(employeeId: id);
-                },
-              ),
-            ],
-          ),
-        ],
-      ),
-      GoRoute(
-        path: AppRoutes.roles,
-        builder: (context, state) => _RoleListRoute(),
-        routes: [
-          GoRoute(
-            path: 'new',
-            builder: (context, state) =>
-                RoleFormScreen(onSaved: () => AppNav.back()),
-          ),
-          GoRoute(
-            // Bare `/roles/:id` has no screen of its own — roles have no
-            // standalone detail view, only the owner-only edit form — so
-            // this redirects straight to `edit` rather than needing a
-            // `builder` for a location nothing links to directly.
-            path: ':id',
-            redirect: (context, state) =>
-                '${AppRoutes.roles}/${state.pathParameters['id']}/edit',
-            routes: [
-              GoRoute(
-                path: 'edit',
-                builder: (context, state) {
-                  final id = state.pathParameters['id'];
-                  if (id == null || id.isEmpty) {
-                    return const _MissingRoleRoute();
-                  }
-                  return _RoleEditRoute(roleId: id);
                 },
               ),
             ],
@@ -962,27 +926,6 @@ class _EmployeeEditRouteState extends State<_EmployeeEditRoute> {
   );
 }
 
-/// `/roles` — wires [RoleListScreen]'s hooks straight to the edit route:
-/// there is no standalone role detail screen (see the `:id` `GoRoute`'s doc
-/// comment above).
-class _RoleListRoute extends StatelessWidget {
-  const _RoleListRoute();
-
-  @override
-  Widget build(BuildContext context) => RoleListScreen(
-    onSelectRole: (role) => AppNav.push('${AppRoutes.roles}/${role.id}/edit'),
-    onCreateRole: () => AppNav.push('${AppRoutes.roles}/new'),
-  );
-}
-
-class _MissingRoleRoute extends StatelessWidget {
-  const _MissingRoleRoute();
-
-  @override
-  Widget build(BuildContext context) =>
-      const Scaffold(body: Center(child: Text('Үүргийн дугаар буруу байна')));
-}
-
 // ── Удирдлага route wrappers — P7-F4 ────────────────────────────────────
 
 /// `/feedback` — wires [FeedbackListScreen]'s hooks: tapping a ticket pushes
@@ -1019,38 +962,3 @@ class _MissingFeedbackRoute extends StatelessWidget {
   );
 }
 
-/// `/roles/:id/edit` — fetches the [Role] by id before handing it to
-/// [RoleFormScreen], matching `_EmployeeEditRoute`'s shape: neither a cold
-/// deep link nor the `:id` redirect above carries a full [Role] object.
-class _RoleEditRoute extends StatefulWidget {
-  const _RoleEditRoute({required this.roleId});
-
-  final String roleId;
-
-  @override
-  State<_RoleEditRoute> createState() => _RoleEditRouteState();
-}
-
-class _RoleEditRouteState extends State<_RoleEditRoute> {
-  final RolesRepository _repo = RemoteRolesRepository();
-  late final Future<Result<Role>> _future = _repo.getRole(widget.roleId);
-
-  @override
-  Widget build(BuildContext context) => FutureBuilder<Result<Role>>(
-    future: _future,
-    builder: (context, snapshot) {
-      if (!snapshot.hasData) {
-        return const Scaffold(body: Center(child: CircularProgressIndicator()));
-      }
-      final result = snapshot.data!;
-      if (result is! Ok<Role>) {
-        return const _MissingRoleRoute();
-      }
-      return RoleFormScreen(
-        existing: result.value,
-        rolesRepository: _repo,
-        onSaved: () => AppNav.back(),
-      );
-    },
-  );
-}

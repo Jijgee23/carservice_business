@@ -9,6 +9,17 @@ abstract final class OrdersErrorCodes {
       'Төлбөр нь хаагдсан ээлжид бүртгэгдсэн тул мөрийг засах, цуцлах боломжгүй.';
   static const paidPaymentExists = 'PAID_PAYMENT_EXISTS';
   static const assigneeRequired = 'ASSIGNEE_REQUIRED';
+
+  /// `orders.editOwn`-only users may not cancel a whole order.
+  static const orderCancelForbidden = 'ORDER_CANCEL_FORBIDDEN';
+  static const orderAssignForbidden = 'ORDER_ASSIGN_FORBIDDEN';
+
+  /// Tenant order settings' intake requirements (`POST /orders`, 422,
+  /// `fieldErrors.intake`) — the server message is shown as is.
+  static const mileageRequired = 'MILEAGE_REQUIRED';
+  static const signatureRequired = 'SIGNATURE_REQUIRED';
+  static const intakePhotosRequired = 'INTAKE_PHOTOS_REQUIRED';
+  static const checklistRequired = 'CHECKLIST_REQUIRED';
   static const itemsNotCompleted = 'ITEMS_NOT_COMPLETED';
   static const paymentIncomplete = 'PAYMENT_INCOMPLETE';
   static const postpaidCloseForbidden = 'POSTPAID_CLOSE_FORBIDDEN';

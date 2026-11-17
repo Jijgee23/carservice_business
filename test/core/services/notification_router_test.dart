@@ -89,6 +89,12 @@ void main() {
         ),
         ({'feedbackId': 'fb-1'}, null, FeedbackDetailScreen),
         ({'reportId': 'rep-1'}, null, ReportDetailScreen),
+        // `order_assigned` (staff push when an order is assigned to you).
+        (
+          {'type': 'order_assigned', 'orderId': 'order-3'},
+          '/orders/order-3',
+          OrderDetailScreen,
+        ),
         // Order payloads also carry appointmentId; the order wins.
         (
           {'orderId': 'order-2', 'appointmentId': 'appt-2'},
@@ -124,6 +130,10 @@ void main() {
     expect(NotificationRouter.hasTarget({'type': 'broadcast_staff'}), isFalse);
     expect(NotificationRouter.hasTarget({'appointmentId': ''}), isFalse);
     expect(NotificationRouter.hasTarget({'orderId': 'o1'}), isTrue);
+    expect(
+      NotificationRouter.hasTarget({'type': 'order_assigned', 'orderId': 'o1'}),
+      isTrue,
+    );
     expect(NotificationRouter.hasTarget({'appointment_id': 'a1'}), isTrue);
     expect(NotificationRouter.hasTarget({'reportId': 'r1'}), isTrue);
     expect(NotificationRouter.hasTarget({'feedbackId': 'f1'}), isTrue);

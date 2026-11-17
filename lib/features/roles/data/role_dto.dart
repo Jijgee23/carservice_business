@@ -65,7 +65,7 @@ class RolePageDto {
   }
 }
 
-/// `GET/POST/PATCH` role detail — `{role:{...}}`.
+/// `GET /roles/[id]` role detail — `{role:{...}}`.
 class RoleDto {
   const RoleDto(this.value);
   final Role value;
@@ -73,16 +73,5 @@ class RoleDto {
   factory RoleDto.fromJson(Object? raw) {
     final json = _map(raw, 'role response');
     return RoleDto(Role.fromJson(_map(json['role'], 'role')));
-  }
-}
-
-/// `DELETE /api/v1/roles/[id]` — `{role:{id}}`.
-class RoleIdResultDto {
-  const RoleIdResultDto(this.value);
-  final RoleIdResult value;
-
-  factory RoleIdResultDto.fromJson(Object? raw) {
-    final json = _map(raw, 'role id response');
-    return RoleIdResultDto(RoleIdResult.fromJson(_map(json['role'], 'role')));
   }
 }

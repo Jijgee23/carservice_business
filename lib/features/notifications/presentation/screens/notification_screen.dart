@@ -289,6 +289,8 @@ class _TypeIcon extends StatelessWidget {
       'appointment_cancelled' => (Icons.cancel_outlined, colors.danger),
       'appointment_reminder' => (Icons.alarm_rounded, colors.warn),
       'appointment_created' => (Icons.calendar_today_rounded, colors.accent),
+      // A repair order was assigned to me (mechanic) — opens its detail.
+      'order_assigned' => (Icons.assignment_ind_outlined, colors.accent),
       _ => (Icons.notifications_none_rounded, colors.mutedText2),
     };
     return Container(

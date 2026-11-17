@@ -2,6 +2,7 @@ import 'package:carservice_business/core/domain/pagination.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:carservice_business/core/domain/diagnostic.dart';
 import 'package:carservice_business/features/orders/domain/order.dart';
+import 'package:carservice_business/features/orders/domain/order_settings.dart';
 
 // Preserve the Phase-0 import surface for tests and adapters that referenced
 // the parser failure from the DTO library.
@@ -365,11 +366,34 @@ OrderIntake? _intake(Object? raw) {
       mileageKm: json['mileageKm'] is num && (json['mileageKm'] as num).isFinite
           ? (json['mileageKm'] as num).toInt()
           : null,
+      checklist: _intakeChecklist(json['checklist']),
     );
   } on OrderParseException catch (e) {
     if (kDebugMode) debugPrint('intake parse skipped: $e');
     return null;
   }
+}
+
+/// `intake.checklist[]` — `{label, status: OK|ISSUE|NA, note}`; буруу мөр
+/// алгасагдана.
+List<IntakeChecklistEntry> _intakeChecklist(Object? raw) {
+  if (raw is! List) return const [];
+  final out = <IntakeChecklistEntry>[];
+  for (final it in raw) {
+    if (it is! Map) continue;
+    final label = it['label'];
+    final status = ChecklistStatus.tryParse(it['status']);
+    if (label is! String || label.trim().isEmpty || status == null) continue;
+    final note = it['note'];
+    out.add(
+      IntakeChecklistEntry(
+        label: label.trim(),
+        status: status,
+        note: note is String && note.trim().isNotEmpty ? note.trim() : null,
+      ),
+    );
+  }
+  return List.unmodifiable(out);
 }
 
 PaginationMeta _pagination(Object? raw) {

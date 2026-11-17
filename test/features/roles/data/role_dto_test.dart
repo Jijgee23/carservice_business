@@ -40,15 +40,6 @@ void main() {
     });
   });
 
-  group('RoleIdResultDto', () {
-    test('parses {role:{id}}', () {
-      final r = RoleIdResultDto.fromJson({
-        'role': {'id': 'role-1'},
-      }).value;
-      expect(r.id, 'role-1');
-    });
-  });
-
   group('PermissionCatalogDto', () {
     test('parses the measured groups/standalone envelope', () {
       final catalog = PermissionCatalogDto.fromJson({

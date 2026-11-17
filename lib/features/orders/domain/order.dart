@@ -776,15 +776,31 @@ class ServiceOrderSummary {
   ///
   /// A postpaid order with a balance may be closed only by a user holding
   /// `orders.closeUnpaidPostpaid` (owner implicit): [canCloseUnpaidPostpaid].
-  String? completionBlocker({bool canCloseUnpaidPostpaid = false}) {
+  ///
+  /// The tenant's order settings relax the rules (`order-complete-guard.ts`):
+  /// [requireItemsCompleted] false → the server completes open work on
+  /// close; [allowCloseUnpaid] true → a regular order may be closed with a
+  /// balance by the same users who may close an unpaid postpaid one (the
+  /// balance becomes a receivable).
+  String? completionBlocker({
+    bool canCloseUnpaidPostpaid = false,
+    bool requireItemsCompleted = true,
+    bool allowCloseUnpaid = false,
+  }) {
     final reasons = <String>[];
     final unfinished = unfinishedWorkCount;
-    if (unfinished != null && unfinished > 0) {
+    if (requireItemsCompleted && unfinished != null && unfinished > 0) {
       reasons.add('$unfinished ажил дуусаагүй');
     }
     final balance = unpaidBalance;
-    if (!isPostpaid && !isInternal && balance != null && balance > 0.004) {
+    final hasBalance = !isInternal && balance != null && balance > 0.004;
+    if (!isPostpaid && !allowCloseUnpaid && hasBalance) {
       reasons.add('${formatMoneyNum(balance)} төлөгдөөгүй');
+    }
+    if (!isPostpaid && allowCloseUnpaid && !canCloseUnpaidPostpaid && hasBalance) {
+      reasons.add(
+        '${formatMoneyNum(balance)} төлөгдөөгүй — зөвхөн эрхтэй хэрэглэгч хаана',
+      );
     }
     if (isPostpaid &&
         !canCloseUnpaidPostpaid &&

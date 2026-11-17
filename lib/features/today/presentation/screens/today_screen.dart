@@ -11,6 +11,7 @@ import 'package:carservice_business/core/domain/user.dart';
 import 'package:carservice_business/core/utils/result.dart';
 import 'package:carservice_business/core/widgets/dialogs/confirm_sheet.dart';
 import 'package:carservice_business/features/diagnostics/presentation/screens/report_detail_screen.dart';
+import 'package:carservice_business/features/orders/data/order_settings_service.dart';
 import 'package:carservice_business/features/orders/domain/postpaid_settlement.dart';
 import 'package:carservice_business/features/orders/presentation/screens/order_payment_screen.dart';
 import 'package:carservice_business/features/orders/presentation/widgets/detail/order_item_widgets.dart';
@@ -112,6 +113,10 @@ class _TodayScreenState extends State<TodayScreen> {
   void initState() {
     super.initState();
     _controller.start();
+    // Хаах дүрэм (төлбөр дутуу хаах) — карт дээрх дараагийн алхмыг тооцоход.
+    OrderSettingsService.instance.get().then((_) {
+      if (mounted) setState(() {});
+    });
     (widget.loadSubscription ?? SubscriptionService.instance.getStatus)().then((
       sub,
     ) {
@@ -153,10 +158,14 @@ class _TodayScreenState extends State<TodayScreen> {
   }
 
   /// The balance stops «Дуусгах» (see [ServiceOrderSummary.completionBlocker]).
+  /// With the tenant's `allowCloseUnpaid`, a regular order closes like a
+  /// postpaid one: only for users who may settle later.
   bool _unpaidBlocksCompletion(ServiceOrderSummary order) {
     final balance = order.unpaidBalance;
     if (order.isInternal || balance == null || balance <= 0.004) return false;
-    return !order.isPostpaid || !userCanSettlePostpaid(_user);
+    final unpaidClosable =
+        order.isPostpaid || OrderSettingsService.instance.current.allowCloseUnpaid;
+    return !unpaidClosable || !userCanSettlePostpaid(_user);
   }
 
   /// Whether the card's ⋯ sheet has anything beyond opening the detail.

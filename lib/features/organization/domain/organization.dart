@@ -19,6 +19,7 @@ class OrganizationSettings {
     this.onlineBookingInPlan = false,
     this.appointmentsInPlan = false,
     this.canEdit = false,
+    this.onboarding = TenantOnboarding.none,
   });
 
   factory OrganizationSettings.fromJson(Object? json) {
@@ -45,6 +46,7 @@ class OrganizationSettings {
       onlineBookingInPlan: modules['onlineBooking'] == true,
       appointmentsInPlan: modules['appointments'] == true,
       canEdit: json['canEdit'] == true,
+      onboarding: TenantOnboarding.fromJson(json['onboarding']),
     );
   }
 
@@ -65,11 +67,16 @@ class OrganizationSettings {
   final String plan;
   final DateTime? createdAt;
 
-  /// The plan has `online_booking` — only then may [acceptsOnlineBooking]
-  /// be turned on (the server answers 403 MODULE_DISABLED otherwise).
+  /// `modules.onlineBooking` — the plan allows online booking (since
+  /// 2026-11-17 the server derives it from `enable_appointments`; the
+  /// separate `online_booking` module is gone). Only then may
+  /// [acceptsOnlineBooking] be turned on (403 MODULE_DISABLED otherwise).
   final bool onlineBookingInPlan;
   final bool appointmentsInPlan;
   final bool canEdit;
+
+  /// Owner-only mandatory steps (web dashboard's blocking dialogs).
+  final TenantOnboarding onboarding;
 
   OrganizationSettings copyWith({String? logoUrl, bool clearLogo = false}) => OrganizationSettings(
     id: id,
@@ -88,7 +95,57 @@ class OrganizationSettings {
     onlineBookingInPlan: onlineBookingInPlan,
     appointmentsInPlan: appointmentsInPlan,
     canEdit: canEdit,
+    onboarding: onboarding,
   );
+}
+
+/// `GET /api/v1/tenant` → `onboarding` — steps the owner must finish before
+/// using the app (web: `shop-name-gate.tsx`, then `service-keys-gate.tsx`).
+/// Always false for non-owners and on servers that do not send it yet.
+class TenantOnboarding {
+  const TenantOnboarding({
+    this.needsShopName = false,
+    this.needsServiceKeys = false,
+  });
+
+  static const none = TenantOnboarding();
+
+  factory TenantOnboarding.fromJson(Object? raw) {
+    if (raw is! Map) return none;
+    return TenantOnboarding(
+      needsShopName: raw['needsShopName'] == true,
+      needsServiceKeys: raw['needsServiceKeys'] == true,
+    );
+  }
+
+  /// Individual-registered workshop whose name is still the owner's own
+  /// name → `PATCH /tenant { name }` confirms it.
+  final bool needsShopName;
+
+  /// Offered services not confirmed → `PUT /tenant/service-keys`.
+  final bool needsServiceKeys;
+
+  bool get isComplete => !needsShopName && !needsServiceKeys;
+}
+
+/// Shop name bounds (`app/_actions/tenant-shop-name.ts`).
+abstract final class ShopName {
+  static const minLength = 2;
+  static const maxLength = 100;
+
+  /// Collapses whitespace like the server.
+  static String normalize(String raw) =>
+      raw.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+  /// Client-side check; the server re-validates (409 CONFLICT when taken).
+  static String? validate(String raw) {
+    final name = normalize(raw);
+    if (name.length < minLength) return 'Засварын нэрээ оруулна уу.';
+    if (name.length > maxLength) {
+      return 'Нэр $maxLength тэмдэгтээс хэтрэхгүй.';
+    }
+    return null;
+  }
 }
 
 /// The form's values; [OrganizationDraft.patchFrom] sends only what changed.

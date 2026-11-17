@@ -178,18 +178,29 @@ class OrderStatusField extends StatelessWidget {
     required this.current,
     required this.enabled,
     required this.onSelect,
+    this.canCancel = true,
   });
 
   final OrderStatus current;
 
   /// False without edit permission: the row still shows the status.
   final bool enabled;
+
+  /// False for "own orders only" editors (`orders.editOwn` without
+  /// `orders.edit`): the server refuses cancelling the whole order with
+  /// `403 ORDER_CANCEL_FORBIDDEN`, so «Цуцлагдсан» is not offered. Line
+  /// items can still be cancelled.
+  final bool canCancel;
   final ValueChanged<OrderStatus> onSelect;
 
   @override
   Widget build(BuildContext context) {
     final t = CarserviceTheme.of(context);
-    final options = enabled ? current.nextStatuses : const <OrderStatus>[];
+    final options = enabled
+        ? current.nextStatuses
+              .where((s) => canCancel || s != OrderStatus.CANCELLED)
+              .toList(growable: false)
+        : const <OrderStatus>[];
     return OpsCard(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
       child: Column(

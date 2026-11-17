@@ -4,14 +4,17 @@ import 'package:carservice_business/app/theme/app_theme.dart';
 import 'package:carservice_business/core/utils/price_input.dart';
 import 'package:carservice_business/core/utils/upload_image.dart';
 import 'package:carservice_business/core/widgets/dialogs/message.dart';
+import 'package:carservice_business/features/orders/domain/order_settings.dart';
 import 'package:carservice_business/features/orders/presentation/controllers/order_intake_controller.dart';
 import 'package:carservice_business/features/orders/presentation/feature_theme.dart';
 import 'package:carservice_business/features/orders/presentation/widgets/intake/signature_pad.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
-/// «Хүлээн авах» — захиалга үүсгэхэд л харагдах нээгддэг хэсэг: тэмдэглэл,
-/// зураг (дээд тал нь 20), гарын үсэг. Захиалга үүссэний дараа засагдахгүй.
+/// «Хүлээн авах» — захиалга үүсгэхэд л харагдах нээгддэг хэсэг: гүйлт,
+/// шалгах жагсаалт, тэмдэглэл, зураг (дээд тал нь 20), гарын үсэг. Захиалга
+/// үүссэний дараа засагдахгүй. Tenant-ийн тохиргоогоор заавал бөглөх зүйл
+/// байвал анхнаасаа нээлттэй, тэдгээр нь «*»-тэй.
 class IntakeSection extends StatefulWidget {
   const IntakeSection({super.key, required this.controller, this.picker});
 
@@ -23,7 +26,10 @@ class IntakeSection extends StatefulWidget {
 }
 
 class _IntakeSectionState extends State<IntakeSection> {
-  bool _expanded = false;
+  /// Хэрэглэгч өөрөө нээж/хаасан эсэх; хэзээ ч дараагүй бол заавал бөглөх
+  /// зүйл байгаа эсэхээр нээгдэнэ.
+  bool? _userExpanded;
+  bool get _expanded => _userExpanded ?? _c.settings.hasIntakeRequirements;
   bool _signing = false;
   final List<List<Offset>> _strokes = [];
   final _padKey = GlobalKey<SignaturePadState>();
@@ -96,8 +102,10 @@ class _IntakeSectionState extends State<IntakeSection> {
     return ListenableBuilder(
       listenable: _c,
       builder: (context, _) {
-        final filled = !_c.isEmpty;
+        final settings = _c.settings;
+        final filled = !_c.isEmpty && _c.missingRequirement == null;
         final reason = _c.blockReason;
+        final missing = reason == null ? _c.missingRequirement : null;
         final box = Container(
           decoration: BoxDecoration(
             color: context.opsSurface,
@@ -110,7 +118,7 @@ class _IntakeSectionState extends State<IntakeSection> {
               InkWell(
                 key: const ValueKey('intake_toggle'),
                 borderRadius: BorderRadius.circular(AppDimens.radiusMD),
-                onTap: () => setState(() => _expanded = !_expanded),
+                onTap: () => setState(() => _userExpanded = !_expanded),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 14,
@@ -126,7 +134,9 @@ class _IntakeSectionState extends State<IntakeSection> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'Хүлээн авах',
+                          settings.hasIntakeRequirements
+                              ? 'Хүлээн авах *'
+                              : 'Хүлээн авах',
                           style: context.textStyles.body.copyWith(
                             color: context.opsTextPrimary,
                             fontWeight: FontWeight.w600,
@@ -165,12 +175,18 @@ class _IntakeSectionState extends State<IntakeSection> {
                           keyboardType: TextInputType.number,
                           inputFormatters: const [IntegerInputFormatter()],
                           decoration: InputDecoration(
-                            labelText: 'Гүйлт (км)',
+                            labelText: settings.requireMileage
+                                ? 'Гүйлт (км) *'
+                                : 'Гүйлт (км)',
                             errorText: _c.mileageErrorText,
                           ),
                         ),
                       ),
                       const SizedBox(height: 12),
+                      if (settings.intakeChecklist.isNotEmpty) ...[
+                        _checklist(context, settings),
+                        const SizedBox(height: 12),
+                      ],
                       TextField(
                         key: const ValueKey('intake_notes'),
                         controller: _c.notesCtrl,
@@ -207,6 +223,17 @@ class _IntakeSectionState extends State<IntakeSection> {
                     color: context.opsDanger,
                   ),
                 ),
+              )
+            else if (missing != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 6, 4, 0),
+                child: Text(
+                  missing,
+                  key: const ValueKey('intake_missing_requirement'),
+                  style: context.textStyles.caption.copyWith(
+                    color: context.opsWarning,
+                  ),
+                ),
               ),
           ],
         );
@@ -214,13 +241,77 @@ class _IntakeSectionState extends State<IntakeSection> {
     );
   }
 
+  Widget _checklist(BuildContext context, OrderSettings settings) {
+    final items = settings.intakeChecklist;
+    return Column(
+      key: const ValueKey('intake_checklist'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Шалгах жагсаалт${settings.checklistRequired ? ' *' : ''}'
+          '  ${_c.checklistAnswered}/${items.length}',
+          style: context.textStyles.caption,
+        ),
+        const SizedBox(height: 6),
+        for (final item in items) _checklistRow(context, item),
+      ],
+    );
+  }
+
+  Widget _checklistRow(BuildContext context, ChecklistItemDef item) {
+    final current = _c.checklistStatus[item.id];
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(item.label, style: context.textStyles.body),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final status in ChecklistStatus.values)
+                ChoiceChip(
+                  key: ValueKey('intake_check_${item.id}_${status.name}'),
+                  label: Text(status.label),
+                  selected: current == status,
+                  selectedColor: switch (status) {
+                    ChecklistStatus.OK => context.opsGood,
+                    ChecklistStatus.ISSUE => context.opsDanger,
+                    ChecklistStatus.NA => context.opsTextHint,
+                  }.withValues(alpha: 0.18),
+                  onSelected: (_) => _c.setChecklistStatus(item.id, status),
+                ),
+            ],
+          ),
+          if (current == ChecklistStatus.ISSUE) ...[
+            const SizedBox(height: 6),
+            TextField(
+              key: ValueKey('intake_check_note_${item.id}'),
+              controller: _c.checklistNoteCtrl(item.id),
+              maxLength: checklistNoteMax,
+              decoration: const InputDecoration(
+                hintText: 'Тэмдэглэл',
+                isDense: true,
+                counterText: '',
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _photos(BuildContext context) {
     final full = _c.remainingPhotoSlots <= 0;
+    final min = _c.settings.minIntakePhotos;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Зураг (${_c.photos.length}/${OrderIntakeController.maxPhotos})',
+          'Зураг (${_c.photos.length}/${OrderIntakeController.maxPhotos})'
+          '${min > 0 ? ' * — хамгийн багадаа $min' : ''}',
           style: context.textStyles.caption,
         ),
         const SizedBox(height: 8),
@@ -258,7 +349,12 @@ class _IntakeSectionState extends State<IntakeSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Хэрэглэгчийн гарын үсэг', style: context.textStyles.caption),
+        Text(
+          _c.settings.requireSignature
+              ? 'Хэрэглэгчийн гарын үсэг *'
+              : 'Хэрэглэгчийн гарын үсэг',
+          style: context.textStyles.caption,
+        ),
         const SizedBox(height: 8),
         if (bytes != null)
           Stack(

@@ -9,8 +9,6 @@ import 'package:carservice_business/features/employees/presentation/screens/empl
 import 'package:carservice_business/features/employees/presentation/screens/employee_detail_screen.dart';
 import 'package:carservice_business/features/employees/presentation/screens/employee_form_screen.dart';
 import 'package:carservice_business/features/employees/presentation/screens/employee_list_screen.dart';
-import 'package:carservice_business/features/roles/presentation/screens/role_form_screen.dart';
-import 'package:carservice_business/features/roles/presentation/screens/role_list_screen.dart';
 import 'package:carservice_business/features/schedules/presentation/screens/my_schedule_screen.dart';
 import 'package:carservice_business/features/schedules/presentation/screens/schedule_grid_screen.dart';
 import 'package:flutter/material.dart';
@@ -55,18 +53,6 @@ void main() {
 
   Map<String, dynamic> emptyEmployeePage() => {
     'employees': <dynamic>[],
-    'pagination': {
-      'page': 1,
-      'pageSize': 50,
-      'total': 0,
-      'totalPages': 1,
-      'hasPrev': false,
-      'hasNext': false,
-    },
-  };
-
-  Map<String, dynamic> emptyRolePage() => {
-    'roles': <dynamic>[],
     'pagination': {
       'page': 1,
       'pageSize': 50,
@@ -184,74 +170,6 @@ void main() {
     );
   });
 
-  group('roles', () {
-    testWidgets('/roles resolves to the list screen', (tester) async {
-      FakeApiBackend.instance.onJson('GET', 'roles', emptyRolePage());
-      final harness = await boot(tester);
-
-      harness.router.go('/roles');
-      await tester.pumpAndSettle();
-
-      expect(harness.location, '/roles');
-      expect(find.byType(RoleListScreen), findsOneWidget);
-    });
-
-    testWidgets("/roles/new is not swallowed by ':id'", (tester) async {
-      FakeApiBackend.instance.onJson('GET', 'roles', emptyRolePage());
-      final harness = await boot(tester);
-
-      harness.router.go('/roles/new');
-      await tester.pumpAndSettle();
-
-      expect(harness.location, '/roles/new');
-      expect(find.byType(RoleFormScreen), findsOneWidget);
-      expect(find.text('Шинэ үүрэг'), findsOneWidget);
-    });
-
-    testWidgets(
-      '/roles/:id/edit fetches the role then opens the form',
-      (tester) async {
-        FakeApiBackend.instance.onJson('GET', 'roles/role-1', {
-          'role': {
-            'id': 'role-1',
-            'name': 'Менежер',
-            'permissions': <dynamic>[],
-          },
-        });
-        FakeApiBackend.instance.onJson('GET', 'roles', emptyRolePage());
-        final harness = await boot(tester);
-
-        harness.router.go('/roles/role-1/edit');
-        await tester.pumpAndSettle();
-
-        expect(harness.location, '/roles/role-1/edit');
-        expect(find.byType(RoleFormScreen), findsOneWidget);
-        expect(find.text('Үүрэг засах'), findsOneWidget);
-      },
-    );
-
-    testWidgets(
-      'bare /roles/:id redirects to /roles/:id/edit',
-      (tester) async {
-        FakeApiBackend.instance.onJson('GET', 'roles/role-1', {
-          'role': {
-            'id': 'role-1',
-            'name': 'Менежер',
-            'permissions': <dynamic>[],
-          },
-        });
-        FakeApiBackend.instance.onJson('GET', 'roles', emptyRolePage());
-        final harness = await boot(tester);
-
-        harness.router.go('/roles/role-1');
-        await tester.pumpAndSettle();
-
-        expect(harness.location, '/roles/role-1/edit');
-        expect(find.byType(RoleFormScreen), findsOneWidget);
-      },
-    );
-  });
-
   group('schedules', () {
     testWidgets('/schedules resolves to the schedule grid', (tester) async {
       final harness = await boot(tester);
@@ -278,11 +196,11 @@ void main() {
 
   group('More screen — Хүмүүс gating', () {
     _NavigationGroupLike peopleGroup() =>
-        MoreScreen.groups.firstWhere((g) => g.label == 'Хүмүүс');
+        MoreScreen.groups.firstWhere((g) => g.label == 'Ажилтан');
 
-    test('all four entries carry a route', () {
+    test('all three entries carry a route (roles are system-managed)', () {
       final group = peopleGroup();
-      expect(group.entries, hasLength(4));
+      expect(group.entries, hasLength(3));
       for (final entry in group.entries) {
         expect(
           entry.route,
@@ -294,19 +212,18 @@ void main() {
         group.entries.map((e) => e.route),
         containsAll(<String>[
           AppRoutes.employees,
-          AppRoutes.roles,
           AppRoutes.schedules,
           AppRoutes.mySchedule,
         ]),
       );
     });
 
-    test('owner sees all four entries', () {
+    test('owner sees all three entries', () {
       final owner = signedInUser(isOwner: true);
       final visible = peopleGroup().entries
           .where((e) => canSeeView(owner, e.permission))
           .toList();
-      expect(visible, hasLength(4));
+      expect(visible, hasLength(3));
     });
 
     test(

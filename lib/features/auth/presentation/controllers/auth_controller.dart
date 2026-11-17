@@ -11,6 +11,7 @@ import 'package:carservice_business/core/services/saved_login_store.dart';
 import 'package:carservice_business/core/services/subscription_service.dart';
 import 'package:carservice_business/core/domain/user.dart';
 import 'package:carservice_business/core/widgets/dialogs/message.dart';
+import 'package:carservice_business/features/orders/data/order_settings_service.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
@@ -390,6 +391,7 @@ class AuthController extends ChangeNotifier {
   void _clearSessionCaches() {
     SubscriptionService.instance.invalidate();
     BranchService.instance.invalidate();
+    OrderSettingsService.instance.invalidate();
   }
 
   /// Puts the last signed-in identifier back into the field (email or phone,

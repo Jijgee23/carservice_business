@@ -78,8 +78,10 @@ class _EmployeeBulkScreenState extends State<EmployeeBulkScreen> {
     if (!mounted) return;
     setState(() {
       _branches = branches;
+      // System roles (global); only active ones may be assigned.
       _roles = switch (rolesResult) {
-        Ok(:final value) => value.items,
+        Ok(:final value) =>
+          value.items.where((r) => r.isActive).toList(growable: false),
         Err() => const [],
       };
     });

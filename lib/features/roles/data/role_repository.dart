@@ -39,64 +39,6 @@ class RemoteRolesRepository implements RolesRepository {
       return Err(_error(error, 'Үүргийн мэдээлэл ачаалж чадсангүй'));
     }
   }
-
-  @override
-  Future<Result<Role>> createRole({
-    required String name,
-    String? description,
-    required List<String> permissions,
-    bool isActive = true,
-  }) async {
-    try {
-      return Ok(
-        RoleDto.fromJson(
-          await _dataSource.create({
-            'name': name,
-            'description': description,
-            'permissions': permissions,
-            'isActive': isActive,
-          }),
-        ).value,
-      );
-    } catch (error) {
-      return Err(_error(error, 'Үүрэг үүсгэж чадсангүй'));
-    }
-  }
-
-  @override
-  Future<Result<Role>> updateRole(
-    String roleId, {
-    required String name,
-    String? description,
-    required List<String> permissions,
-    bool isActive = true,
-  }) async {
-    try {
-      return Ok(
-        RoleDto.fromJson(
-          await _dataSource.update(roleId, {
-            'name': name,
-            'description': description,
-            'permissions': permissions,
-            'isActive': isActive,
-          }),
-        ).value,
-      );
-    } catch (error) {
-      return Err(_error(error, 'Үүрэг хадгалж чадсангүй'));
-    }
-  }
-
-  @override
-  Future<Result<RoleIdResult>> deleteRole(String roleId) async {
-    try {
-      return Ok(
-        RoleIdResultDto.fromJson(await _dataSource.delete(roleId)).value,
-      );
-    } catch (error) {
-      return Err(_error(error, 'Үүрэг устгаж чадсангүй'));
-    }
-  }
 }
 
 AppError _error(Object error, String fallback) => switch (error) {

@@ -3,6 +3,7 @@ import 'package:carservice_business/core/utils/async_value.dart';
 import 'package:carservice_business/core/utils/result.dart';
 import 'package:carservice_business/features/organization/domain/organization.dart';
 import 'package:carservice_business/features/organization/domain/organization_repository.dart';
+import 'package:carservice_business/features/organization/domain/service_keys.dart';
 import 'package:carservice_business/features/organization/presentation/controllers/organization_settings_controller.dart';
 import 'package:carservice_business/features/organization/presentation/screens/organization_settings_screen.dart';
 import 'package:flutter/material.dart';
@@ -63,6 +64,30 @@ class FakeOrganizationRepository implements OrganizationRepository {
 
   @override
   Future<Result<bool>> removeLogo() async => const Ok(true);
+
+  TenantServiceKeys serviceKeys = const TenantServiceKeys(
+    keys: [
+      ServiceKeyChoice(id: 'k1', name: 'Тос солих'),
+      ServiceKeyChoice(id: 'k2', name: 'Дугуй засвар', description: 'Дугуй'),
+    ],
+    canEdit: true,
+  );
+  final savedServiceKeys = <List<String>>[];
+
+  @override
+  Future<Result<TenantServiceKeys>> loadServiceKeys() async => Ok(serviceKeys);
+
+  @override
+  Future<Result<TenantServiceKeys>> saveServiceKeys(List<String> ids) async {
+    savedServiceKeys.add(ids);
+    serviceKeys = TenantServiceKeys(
+      keys: serviceKeys.keys,
+      selectedIds: ids.toSet(),
+      confirmed: true,
+      canEdit: true,
+    );
+    return Ok(serviceKeys);
+  }
 }
 
 void main() {

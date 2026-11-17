@@ -1,3 +1,5 @@
+import 'package:carservice_business/features/orders/domain/order_settings.dart';
+
 /// Хүлээн авалтын тэмдэглэл (зөвхөн захиалга үүсгэх үед бичигдэнэ, дараа нь
 /// засагдахгүй).
 class OrderIntakePhoto {
@@ -17,6 +19,7 @@ class OrderIntake {
     required this.recordedAt,
     this.recordedBy,
     this.mileageKm,
+    this.checklist = const [],
   });
 
   final String? notes;
@@ -27,6 +30,9 @@ class OrderIntake {
 
   /// Одометрийн заалт (км); оруулаагүй бол null.
   final int? mileageKm;
+
+  /// Нээх үеийн шалгах жагсаалт (snapshot); бөглөөгүй бол хоосон.
+  final List<IntakeChecklistEntry> checklist;
 }
 
 /// `152300` → `152,300 км`.
@@ -45,6 +51,7 @@ class OrderIntakeDraft {
     this.photoPaths = const [],
     this.signaturePath,
     this.mileageKm,
+    this.checklist = const [],
   });
 
   final String? notes;
@@ -52,11 +59,23 @@ class OrderIntakeDraft {
   final String? signaturePath;
   final int? mileageKm;
 
-  bool get isEmpty =>
+  /// Шалгах жагсаалтын хариулт — `intake`-ээс тусдаа `intakeChecklist`
+  /// талбараар илгээгдэнэ.
+  final List<IntakeChecklistAnswer> checklist;
+
+  /// `intake` объект (гүйлт/тэмдэглэл/зураг/гарын үсэг) хоосон эсэх.
+  bool get hasNoRecord =>
       mileageKm == null &&
       (notes == null || notes!.trim().isEmpty) &&
       photoPaths.isEmpty &&
       signaturePath == null;
+
+  bool get isEmpty => hasNoRecord && checklist.isEmpty;
+
+  /// `POST /orders`-ийн `intakeChecklist`.
+  List<Map<String, dynamic>> checklistJson() => [
+    for (final a in checklist) a.toJson(),
+  ];
 
   Map<String, dynamic> toJson() => {
     if (notes != null && notes!.trim().isNotEmpty) 'notes': notes!.trim(),

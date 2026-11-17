@@ -20,7 +20,7 @@ import '../support/hive_test_setup.dart';
 /// `P7-F4` — the first real `GoRoute`s for `/reports`, `/audit`,
 /// `/feedback`, `/feedback/new` and `/feedback/:id`, exercised through the
 /// REAL `buildRouter`, the same way `test/app/people_router_test.dart`
-/// exercises `/employees`/`/roles`/`/schedules`.
+/// exercises `/employees`/`/schedules`.
 void main() {
   setUpAll(openTestHiveBoxes);
 

@@ -4,21 +4,14 @@ import 'package:carservice_business/core/utils/result.dart';
 import 'package:carservice_business/features/roles/domain/role.dart';
 import 'package:carservice_business/features/roles/domain/roles_repository.dart';
 
-/// Hand-written fake for [RolesRepository] — P6-F1. `isOwner` on the caller
-/// is modelled with a constructor flag rather than reading it off a shared
-/// session, matching this feature's owner-only write gate (D-171).
+/// Hand-written fake for the read-only [RolesRepository] (system roles).
 class FakeRoleRepository implements RolesRepository {
-  FakeRoleRepository({List<Role>? seed, this.callerIsOwner = true})
+  FakeRoleRepository({List<Role>? seed})
     : _roles = [
         ...(seed ?? [seedRole()]),
       ];
 
   final List<Role> _roles;
-  final bool callerIsOwner;
-
-  /// Simulates `_count.users` for [deleteRole]'s in-use guard: any role id
-  /// present here with a positive count blocks the delete.
-  final Map<String, int> userCountByRole = {};
 
   static Role seedRole({
     String id = 'role-1',
@@ -34,12 +27,6 @@ class FakeRoleRepository implements RolesRepository {
     'Үүрэг олдсонгүй.',
     statusCode: 404,
     code: 'NOT_FOUND',
-  );
-
-  AppError _forbidden() => const AppError(
-    ErrorKind.forbidden,
-    'Зөвхөн тенант админ үүргийг удирдана.',
-    statusCode: 403,
   );
 
   @override
@@ -70,108 +57,5 @@ class FakeRoleRepository implements RolesRepository {
     final index = _indexOf(roleId);
     if (index < 0) return Err(_notFound());
     return Ok(_roles[index]);
-  }
-
-  @override
-  Future<Result<Role>> createRole({
-    required String name,
-    String? description,
-    required List<String> permissions,
-    bool isActive = true,
-  }) async {
-    if (!callerIsOwner) return Err(_forbidden());
-    if (name.trim().isEmpty || name.trim().length > 60) {
-      return Err(
-        const AppError(
-          ErrorKind.unknown,
-          'Нэр буруу байна.',
-          statusCode: 422,
-          code: 'VALIDATION',
-          fieldErrors: {'name': 'Нэр 1-60 тэмдэгт байна.'},
-        ),
-      );
-    }
-    if (permissions.isEmpty) {
-      return Err(
-        const AppError(
-          ErrorKind.unknown,
-          'Дор хаяж нэг эрх сонгоно уу.',
-          statusCode: 422,
-          code: 'VALIDATION',
-          fieldErrors: {'permissions': 'Дор хаяж нэг эрх сонгоно уу.'},
-        ),
-      );
-    }
-    if (_roles.any((r) => r.name == name.trim())) {
-      return Err(
-        const AppError(
-          ErrorKind.unknown,
-          'Энэ нэртэй үүрэг өмнө нь бүртгэгдсэн байна.',
-          statusCode: 422,
-          code: 'DUPLICATE',
-          fieldErrors: {'name': 'Давхардсан нэр.'},
-        ),
-      );
-    }
-    final created = Role(
-      id: 'role-${_roles.length + 1}',
-      name: name.trim(),
-      description: description,
-      permissions: permissions,
-      isActive: isActive,
-    );
-    _roles.add(created);
-    return Ok(created);
-  }
-
-  @override
-  Future<Result<Role>> updateRole(
-    String roleId, {
-    required String name,
-    String? description,
-    required List<String> permissions,
-    bool isActive = true,
-  }) async {
-    if (!callerIsOwner) return Err(_forbidden());
-    final index = _indexOf(roleId);
-    if (index < 0) return Err(_notFound());
-    if (permissions.isEmpty) {
-      return Err(
-        const AppError(
-          ErrorKind.unknown,
-          'Дор хаяж нэг эрх сонгоно уу.',
-          statusCode: 422,
-          code: 'VALIDATION',
-        ),
-      );
-    }
-    final updated = Role(
-      id: roleId,
-      name: name.trim(),
-      description: description,
-      permissions: permissions,
-      isActive: isActive,
-    );
-    _roles[index] = updated;
-    return Ok(updated);
-  }
-
-  @override
-  Future<Result<RoleIdResult>> deleteRole(String roleId) async {
-    if (!callerIsOwner) return Err(_forbidden());
-    final index = _indexOf(roleId);
-    if (index < 0) return Err(_notFound());
-    if ((userCountByRole[roleId] ?? 0) > 0) {
-      return Err(
-        const AppError(
-          ErrorKind.unknown,
-          'Энэ үүрэг хэрэглэгдэж байгаа тул устгах боломжгүй.',
-          statusCode: 409,
-          code: 'ROLE_IN_USE',
-        ),
-      );
-    }
-    _roles.removeAt(index);
-    return Ok(RoleIdResult(id: roleId));
   }
 }

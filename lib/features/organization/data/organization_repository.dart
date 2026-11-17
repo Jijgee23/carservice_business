@@ -6,6 +6,7 @@ import 'package:carservice_business/core/network/dio_error_mapper.dart';
 import 'package:carservice_business/core/utils/result.dart';
 import 'package:carservice_business/features/organization/domain/organization.dart';
 import 'package:carservice_business/features/organization/domain/organization_repository.dart';
+import 'package:carservice_business/features/organization/domain/service_keys.dart';
 
 /// Remote [OrganizationRepository] over the shared Dio client.
 class RemoteOrganizationRepository implements OrganizationRepository {
@@ -57,4 +58,23 @@ class RemoteOrganizationRepository implements OrganizationRepository {
     await _dio.delete<dynamic>('tenant/logo');
     return true;
   }, 'Лого устгаж чадсангүй');
+
+  @override
+  Future<Result<TenantServiceKeys>> loadServiceKeys() => _guard(
+    () async => TenantServiceKeys.fromJson(
+      (await _dio.get<dynamic>('tenant/service-keys')).data,
+    ),
+    'Үйлчилгээний жагсаалт ачаалж чадсангүй',
+  );
+
+  @override
+  Future<Result<TenantServiceKeys>> saveServiceKeys(List<String> ids) => _guard(
+    () async => TenantServiceKeys.fromJson(
+      (await _dio.put<dynamic>(
+        'tenant/service-keys',
+        data: {'serviceKeyIds': ids},
+      )).data,
+    ),
+    'Хадгалж чадсангүй',
+  );
 }

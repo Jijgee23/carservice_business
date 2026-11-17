@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:carservice_business/core/utils/price_input.dart';
 import 'package:carservice_business/core/utils/result.dart';
 import 'package:carservice_business/features/orders/domain/order_intake.dart';
+import 'package:carservice_business/features/orders/domain/order_settings.dart';
 import 'package:carservice_business/features/orders/domain/orders_repository.dart';
 import 'package:flutter/widgets.dart';
 
@@ -36,6 +37,15 @@ class OrderIntakeController extends ChangeNotifier {
   final notesCtrl = TextEditingController();
   final mileageCtrl = TextEditingController();
   final List<IntakePhotoItem> photos = [];
+
+  /// Tenant-ийн «нээх үеийн шаардлага» + шалгах жагсаалт.
+  OrderSettings settings = OrderSettings.defaults;
+
+  /// Шалгах жагсаалтын сонгосон төлөв (мөрийн id → төлөв).
+  final Map<String, ChecklistStatus> checklistStatus = {};
+
+  /// «Асуудалтай» мөрийн тэмдэглэл (мөрийн id → controller).
+  final Map<String, TextEditingController> checklistNotes = {};
 
   Uint8List? signatureBytes;
   String? signatureUrl;
@@ -76,6 +86,60 @@ class OrderIntakeController extends ChangeNotifier {
     return null;
   }
 
+  /// Серверээс ирсэн тохиргоог хэрэглэнэ; жагсаалтаас хасагдсан мөрийн
+  /// хариултыг цэвэрлэнэ.
+  void applySettings(OrderSettings value) {
+    settings = value;
+    final ids = {for (final c in value.intakeChecklist) c.id};
+    checklistStatus.removeWhere((id, _) => !ids.contains(id));
+    for (final id in checklistNotes.keys.toList()) {
+      if (!ids.contains(id)) checklistNotes.remove(id)?.dispose();
+    }
+    _notify();
+  }
+
+  /// Шалгах жагсаалтын мөрийн төлөвийг сонгоно; ижлийг дахин дарвал арилна.
+  void setChecklistStatus(String id, ChecklistStatus status) {
+    if (checklistStatus[id] == status) {
+      checklistStatus.remove(id);
+    } else {
+      checklistStatus[id] = status;
+    }
+    _notify();
+  }
+
+  TextEditingController checklistNoteCtrl(String id) =>
+      checklistNotes.putIfAbsent(id, TextEditingController.new);
+
+  int get checklistAnswered => settings.intakeChecklist
+      .where((c) => checklistStatus.containsKey(c.id))
+      .length;
+
+  int get donePhotoCount =>
+      photos.where((p) => p.status == IntakeUploadStatus.done).length;
+
+  /// Tenant-ийн тохиргоогоор дутуу байгаа зүйл (байхгүй бол `null`) — сервер
+  /// мөн адил шалгадаг (MILEAGE_REQUIRED, SIGNATURE_REQUIRED,
+  /// INTAKE_PHOTOS_REQUIRED, CHECKLIST_REQUIRED).
+  String? get missingRequirement {
+    final s = settings;
+    if (s.requireMileage && mileageKm == null) {
+      return 'Хүлээн авах үеийн гүйлтийг (км) оруулна уу.';
+    }
+    if (s.minIntakePhotos > 0 && donePhotoCount < s.minIntakePhotos) {
+      return 'Хүлээн авалтын зураг хамгийн багадаа ${s.minIntakePhotos} '
+          'байна (одоо $donePhotoCount).';
+    }
+    if (s.requireSignature && signatureUrl == null) {
+      return 'Үйлчлүүлэгчийн гарын үсгийг авна уу.';
+    }
+    if (s.checklistRequired) {
+      final left = s.intakeChecklist.length - checklistAnswered;
+      if (left > 0) return 'Шалгах жагсаалтын $left мөр бөглөгдөөгүй байна.';
+    }
+    return null;
+  }
+
   int get remainingPhotoSlots => maxPhotos - photos.length;
 
   bool get uploading =>
@@ -97,6 +161,18 @@ class OrderIntakeController extends ChangeNotifier {
       ],
       signaturePath: signatureUrl,
       mileageKm: mileageKm,
+      checklist: [
+        for (final c in settings.intakeChecklist)
+          if (checklistStatus[c.id] case final status?)
+            IntakeChecklistAnswer(
+              id: c.id,
+              status: status,
+              // Тэмдэглэл зөвхөн «Асуудалтай» мөрөнд (вэбтэй адил).
+              note: status == ChecklistStatus.ISSUE
+                  ? checklistNotes[c.id]?.text
+                  : null,
+            ),
+      ],
     );
     return value.isEmpty ? null : value;
   }
@@ -188,6 +264,9 @@ class OrderIntakeController extends ChangeNotifier {
     _disposed = true;
     notesCtrl.dispose();
     mileageCtrl.dispose();
+    for (final c in checklistNotes.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 }

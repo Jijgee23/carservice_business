@@ -1,6 +1,7 @@
 import 'package:carservice_business/app/theme/app_theme.dart';
 import 'package:carservice_business/core/utils/media_url.dart';
 import 'package:carservice_business/features/orders/domain/order_intake.dart';
+import 'package:carservice_business/features/orders/domain/order_settings.dart';
 import 'package:carservice_business/features/orders/presentation/feature_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -30,7 +31,8 @@ class OrderIntakeTile extends StatelessWidget {
         subtitle: Text(
           '${i.mileageKm != null ? '${formatMileageKm(i.mileageKm!)} · ' : ''}'
           '${i.photos.length} зураг'
-          '${i.signatureUrl != null ? ' · гарын үсэгтэй' : ''}',
+          '${i.signatureUrl != null ? ' · гарын үсэгтэй' : ''}'
+          '${i.checklist.isNotEmpty ? ' · шалгах жагсаалт' : ''}',
         ),
         trailing: const Icon(Icons.chevron_right),
         onTap: () => Navigator.of(context).push(
@@ -74,6 +76,12 @@ class OrderIntakePage extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 16),
+          if (intake.checklist.isNotEmpty) ...[
+            Text('Шалгах жагсаалт', style: context.textStyles.caption),
+            const SizedBox(height: 4),
+            for (final c in intake.checklist) _ChecklistRow(entry: c),
+            const SizedBox(height: 16),
+          ],
           if (intake.notes != null && intake.notes!.isNotEmpty) ...[
             Text('Тэмдэглэл', style: context.textStyles.caption),
             const SizedBox(height: 4),
@@ -115,6 +123,44 @@ class OrderIntakePage extends StatelessWidget {
               child: _NetImage(url: intake.signatureUrl!, fit: BoxFit.contain),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ChecklistRow extends StatelessWidget {
+  const _ChecklistRow({required this.entry});
+
+  final IntakeChecklistEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = switch (entry.status) {
+      ChecklistStatus.OK => context.opsGood,
+      ChecklistStatus.ISSUE => context.opsDanger,
+      ChecklistStatus.NA => context.opsTextSecondary,
+    };
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(child: Text(entry.label, style: context.textStyles.body)),
+              const SizedBox(width: 8),
+              Text(
+                entry.status.label,
+                style: context.textStyles.caption.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          if (entry.note != null)
+            Text(entry.note!, style: context.textStyles.caption),
         ],
       ),
     );

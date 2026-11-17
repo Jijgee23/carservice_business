@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:carservice_business/core/services/auth_storage.dart';
 
 import 'package:carservice_business/core/widgets/dialogs/confirm_sheet.dart';
+import 'package:carservice_business/features/orders/data/order_settings_service.dart';
 import 'package:carservice_business/features/orders/domain/order.dart';
 import 'package:carservice_business/features/orders/domain/postpaid_settlement.dart';
 import 'package:carservice_business/features/orders/presentation/feature_theme.dart';
@@ -43,8 +44,16 @@ Future<OrderStatusDecision?> promptOrderStatusChange(
   ServiceOrderSummary? order,
 }) async {
   if (status == OrderStatus.COMPLETED && order != null) {
+    // Tenant-ийн хаах дүрэм (бүх ажил дууссан байх, төлбөр дутуу хаах);
+    // ачаалж чадаагүй бол анхдагч (хатуу) дүрэм — сервер өөрөө шалгадаг.
+    final settings =
+        await OrderSettingsService.instance.get() ??
+        OrderSettingsService.instance.current;
+    if (!context.mounted) return null;
     final blocker = order.completionBlocker(
       canCloseUnpaidPostpaid: userCanSettlePostpaid(Authenticator.user),
+      requireItemsCompleted: settings.requireItemsCompleted,
+      allowCloseUnpaid: settings.allowCloseUnpaid,
     );
     if (blocker != null) {
       await ConfirmSheet.show(
