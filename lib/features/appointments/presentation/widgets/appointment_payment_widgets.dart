@@ -72,9 +72,11 @@ class AppointmentPaymentStatusChip extends StatelessWidget {
   }
 }
 
-/// Panel with the check/retry/refund actions. Permission gating happens in
-/// the screen (hides/disables buttons); this widget only renders whatever
+/// Panel with the check/retry actions. Permission gating happens in the
+/// screen (hides/disables buttons); this widget only renders whatever
 /// callbacks it is given — a null callback renders the button disabled.
+/// No refund: the booking fee goes to the platform's QPay, so only a
+/// platform admin refunds it (staff API: 403 `PLATFORM_REFUND_ONLY`).
 class AppointmentPaymentPanel extends StatelessWidget {
   const AppointmentPaymentPanel({
     super.key,
@@ -82,7 +84,6 @@ class AppointmentPaymentPanel extends StatelessWidget {
     required this.busy,
     this.onCheck,
     this.onRetry,
-    this.onRefund,
     this.detailMessage,
   });
 
@@ -90,7 +91,6 @@ class AppointmentPaymentPanel extends StatelessWidget {
   final bool busy;
   final VoidCallback? onCheck;
   final VoidCallback? onRetry;
-  final VoidCallback? onRefund;
   final String? detailMessage;
 
   @override
@@ -112,16 +112,8 @@ class AppointmentPaymentPanel extends StatelessWidget {
           icon: const Icon(Icons.replay, size: 18),
           label: const Text('Дахин үүсгэх'),
         ),
-      if (onRefund != null)
-        OutlinedButton.icon(
-          key: const ValueKey('appointment_payment_refund_button'),
-          style: appointmentOutlinedButtonStyle(context, danger: true),
-          onPressed: busy ? null : onRefund,
-          icon: const Icon(Icons.undo, size: 18),
-          label: const Text('Буцаах'),
-        ),
     ];
-    // A refunded fee is terminal: no check / retry / refund is offered.
+    // A refunded fee is terminal: no check / retry is offered.
     final showButtons =
         status != AppointmentBookingPaymentStatus.REFUNDED &&
         buttons.isNotEmpty;

@@ -88,10 +88,6 @@ class _AppointmentDetailScreenState extends State<AppointmentDetailScreen> {
       user?.isOwner == true ||
       user?.role?.permissions.contains('payments.edit') == true;
 
-  bool _canRefund(User? user) =>
-      user?.isOwner == true ||
-      user?.role?.permissions.contains('payments.delete') == true;
-
   bool _canCreateOrder(User? user) =>
       user?.isOwner == true ||
       user?.role?.permissions.contains('orders.create') == true;
@@ -116,7 +112,6 @@ class _AppointmentDetailScreenState extends State<AppointmentDetailScreen> {
         canEdit: _canEdit(_user),
         canViewPayments: _canViewPayments(_user),
         canEditPayments: _canEditPayments(_user),
-        canRefund: _canRefund(_user),
         canCreateOrder: _canCreateOrder(_user),
         canViewOrders: _canViewOrders(_user),
         canAssign: _canAssign(_user),
@@ -130,7 +125,6 @@ class _AppointmentDetailBody extends StatelessWidget {
     required this.canEdit,
     required this.canViewPayments,
     required this.canEditPayments,
-    required this.canRefund,
     required this.canCreateOrder,
     required this.canViewOrders,
     this.canAssign = false,
@@ -141,7 +135,6 @@ class _AppointmentDetailBody extends StatelessWidget {
   final bool canEdit;
   final bool canViewPayments;
   final bool canEditPayments;
-  final bool canRefund;
   final bool canCreateOrder;
   final bool canViewOrders;
 
@@ -271,64 +264,6 @@ class _AppointmentDetailBody extends StatelessWidget {
     if (result case Err(:final error)) messageError(error.display);
   }
 
-  Future<void> _refund(BuildContext context) async {
-    final controller = context.read<AppointmentDetailController>();
-    // Controller-free dialog input: a local `String` closed over by
-    // `onChanged`, not a `TextEditingController` owned by this short-lived
-    // dialog — the same pattern `order_detail_screen.dart` uses for its
-    // duration-input dialog, avoiding the
-    // TextEditingController-used-after-disposed crash a dialog-owned
-    // controller caused elsewhere in this repo.
-    var note = '';
-    final proceed = await AppNav.dialog<bool>(
-      AlertDialog(
-        title: const Text('Төлбөр буцаах'),
-        content: TextFormField(
-          key: const ValueKey('appointment_refund_note_input'),
-          autofocus: true,
-          maxLines: 3,
-          decoration: const InputDecoration(labelText: 'Шалтгаан (заавал)'),
-          onChanged: (value) => note = value,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => AppNav.back(false),
-            child: const Text('Болих'),
-          ),
-          FilledButton(
-            onPressed: () => AppNav.back(true),
-            child: const Text('Үргэлжлүүлэх'),
-          ),
-        ],
-      ),
-    );
-    if (proceed != true || !context.mounted) return;
-    final trimmedNote = note.trim();
-    if (trimmedNote.isEmpty) {
-      messageError('Шалтгаан заавал шаардлагатай');
-      return;
-    }
-    // Refund is destructive — an explicit, separate confirm step precedes
-    // the request beyond the note dialog itself.
-    final ok = await ConfirmSheet.show(
-      context,
-      title: 'Төлбөрийг буцаах уу?',
-      message: 'Энэ үйлдлийг буцаах боломжгүй.',
-      confirmLabel: 'Буцаах',
-      isDangerous: true,
-      icon: Icons.undo,
-    );
-    if (!ok || !context.mounted) return;
-    final result = await controller.refundPayment(note: trimmedNote);
-    if (!context.mounted) return;
-    switch (result) {
-      case Ok():
-        messageComplete('Төлбөр буцаагдлаа');
-      case Err(:final error):
-        messageError(error.display);
-    }
-  }
-
   Future<void> _convertToOrder(BuildContext context) async {
     final controller = context.read<AppointmentDetailController>();
     final appointment = controller.appointment;
@@ -402,7 +337,6 @@ class _AppointmentDetailBody extends StatelessWidget {
             canEdit: canEdit,
             canViewPayments: canViewPayments,
             canEditPayments: canEditPayments,
-            canRefund: canRefund,
             canCreateOrder: canCreateOrder,
             canViewOrders: canViewOrders,
             onConfirm: () => _confirm(context),
@@ -430,7 +364,6 @@ class _AppointmentDetailBody extends StatelessWidget {
               context,
               () => context.read<AppointmentDetailController>().retryPayment(),
             ),
-            onRefund: () => _refund(context),
             onConvertToOrder: () => _convertToOrder(context),
           );
           final padded = Padding(
@@ -469,7 +402,6 @@ class _DetailContent extends StatelessWidget {
     required this.canEdit,
     required this.canViewPayments,
     required this.canEditPayments,
-    required this.canRefund,
     required this.canCreateOrder,
     required this.canViewOrders,
     required this.onConfirm,
@@ -480,7 +412,6 @@ class _DetailContent extends StatelessWidget {
     required this.onReschedule,
     required this.onCheckPayment,
     required this.onRetryPayment,
-    required this.onRefund,
     required this.onConvertToOrder,
     required this.canAssign,
     required this.onChangeAssignee,
@@ -493,7 +424,6 @@ class _DetailContent extends StatelessWidget {
   final bool canEdit;
   final bool canViewPayments;
   final bool canEditPayments;
-  final bool canRefund;
   final bool canCreateOrder;
   final bool canViewOrders;
   final VoidCallback onConfirm;
@@ -504,7 +434,6 @@ class _DetailContent extends StatelessWidget {
   final VoidCallback onReschedule;
   final VoidCallback onCheckPayment;
   final VoidCallback onRetryPayment;
-  final VoidCallback onRefund;
   final VoidCallback onConvertToOrder;
 
   @override
@@ -611,12 +540,10 @@ class _DetailContent extends StatelessWidget {
           onConvertToOrder: canConvert ? onConvertToOrder : null,
         ),
         // Веб dashboard-тай адил: хураамж шаардаагүй цагт төлбөрийн хэсэг
-        // харагдахгүй. Энэ дэлгэц дээр буцаалт хийсний дараа (мөн
-        // NOT_REQUIRED болдог) үр дүнгийн мессежийг харуулахаар үлдээнэ.
+        // харагдахгүй.
         if (canViewPayments &&
             (controller.paymentStatus !=
                     AppointmentBookingPaymentStatus.NOT_REQUIRED ||
-                controller.lastRefund != null ||
                 controller.lastPaymentRetry != null)) ...[
           gap,
           AppointmentPaymentPanel(
@@ -629,7 +556,6 @@ class _DetailContent extends StatelessWidget {
                     : null),
             onCheck: onCheckPayment,
             onRetry: canEditPayments ? onRetryPayment : null,
-            onRefund: canRefund ? onRefund : null,
           ),
         ],
       ],

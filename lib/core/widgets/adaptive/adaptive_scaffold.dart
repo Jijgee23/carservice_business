@@ -28,6 +28,7 @@ class AdaptiveScaffold extends StatelessWidget {
     this.backgroundColor,
     this.bottomNavigationBar,
     this.showHeader = true,
+    this.floatNavOverContent = false,
   });
 
   final Widget body;
@@ -56,6 +57,13 @@ class AdaptiveScaffold extends StatelessWidget {
   /// False on pushed screens: they carry their own app bar (← + title +
   /// bell), so the persistent header would only stack a second bar.
   final bool showHeader;
+
+  /// Phone: the page runs under the floating nav pill (seen through its
+  /// blur) instead of stopping above it on the scaffold background. The
+  /// page's bottom `MediaQuery` padding then covers the pill, so lists and
+  /// bottom-anchored controls must add it. Tab roots set it; pushed pages,
+  /// with their own bottom bars, don't.
+  final bool floatNavOverContent;
 
   int get _safeIndex =>
       destinations.isEmpty ? 0 : selectedIndex.clamp(0, destinations.length - 1).toInt();
@@ -89,6 +97,7 @@ class AdaptiveScaffold extends StatelessWidget {
         // Labels beside rail icons cost ~180dp; only spend it on large screens
         // so tablet landscape keeps room for the orders + appointments panes.
         final extended = constraints.maxWidth >= AdaptiveBreakpoints.extendedRail;
+        final floating = !rail && floatNavOverContent;
         // The header lives in the content column at every width, never in
         // the compact rail.
         final persistentHeader = showHeader ? header ?? _defaultHeader() : null;
@@ -103,6 +112,7 @@ class AdaptiveScaffold extends StatelessWidget {
 
         return Scaffold(
           key: scaffoldKey,
+          extendBody: floating,
           drawer: drawer,
           backgroundColor: backgroundColor,
           floatingActionButton: floatingActionButton,
@@ -132,7 +142,12 @@ class AdaptiveScaffold extends StatelessWidget {
               // A pushed screen's own app bar pads itself under the status
               // bar; insetting it here too left a background strip above it.
               Expanded(
-                child: SafeArea(left: false, top: showHeader, child: content),
+                child: SafeArea(
+                  left: false,
+                  top: showHeader,
+                  bottom: !floating,
+                  child: content,
+                ),
               ),
             ],
           ),

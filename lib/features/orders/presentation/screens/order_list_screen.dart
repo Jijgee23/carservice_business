@@ -236,58 +236,70 @@ class _OrderListScreenState extends State<OrderListScreen> {
         controller.filter.activeCount +
         (controller.selectedBranchId != null ? 1 : 0);
     final canCreate = _canCreate(user);
+    // Room for the shell's floating nav (see AdaptiveScaffold
+    // .floatNavOverContent); the selection bar takes it when shown.
+    final navInset = showBulkBar ? 0.0 : MediaQuery.paddingOf(context).bottom;
     return Material(
       color: context.opsBackground,
       child: Column(
         children: [
           Expanded(
-            child: Stack(
-              children: [
-                TightHeightFallback(
-                  controls: _controls(
-                    controller,
-                    user,
-                    hasRows,
-                    showBranches,
-                    activeFilters,
+            child: MediaQuery.removePadding(
+              context: context,
+              removeBottom: showBulkBar,
+              child: Stack(
+                children: [
+                  TightHeightFallback(
+                    controls: _controls(
+                      controller,
+                      user,
+                      hasRows,
+                      showBranches,
+                      activeFilters,
+                    ),
+                    results: _buildResults(
+                      controller,
+                      state,
+                      user,
+                      showBranches,
+                    ),
                   ),
-                  results: _buildResults(controller, state, user, showBranches),
-                ),
-                Positioned(
-                  right: 16,
-                  bottom: 16,
-                  child: _QuickActionsFab(
-                    actions: [
-                      if (canCreate)
+                  Positioned(
+                    right: 16,
+                    bottom: 16 + navInset,
+                    child: _QuickActionsFab(
+                      actions: [
+                        if (canCreate)
+                          _QuickAction(
+                            key: 'order_create_button',
+                            icon: Icons.add_circle_outline_rounded,
+                            label: 'Шинэ засварын хуудас',
+                            primary: true,
+                            onTap: () => _createOrder(controller),
+                          ),
                         _QuickAction(
-                          key: 'order_create_button',
-                          icon: Icons.add_circle_outline_rounded,
-                          label: 'Шинэ засварын хуудас',
-                          primary: true,
-                          onTap: () => _createOrder(controller),
+                          key: 'orders_in_progress_nav',
+                          icon: Icons.build_circle_outlined,
+                          label: 'Хийгдэж буй ажил',
+                          onTap: () => AppNav.push('/orders/in-progress'),
                         ),
-                      _QuickAction(
-                        key: 'orders_in_progress_nav',
-                        icon: Icons.build_circle_outlined,
-                        label: 'Хийгдэж буй ажил',
-                        onTap: () => AppNav.push('/orders/in-progress'),
-                      ),
-                      _QuickAction(
-                        key: 'orders_postpaid_nav',
-                        icon: Icons.account_balance_wallet_outlined,
-                        label: 'Дараа төлөх засварын хуудас',
-                        onTap: () => AppNav.push('/orders/postpaid'),
-                      ),
-                      _QuickAction(
-                        key: 'orders_refresh',
-                        icon: Icons.refresh,
-                        label: 'Шинэчлэх',
-                        onTap: controller.refresh,
-                      ),
-                    ],
+                        _QuickAction(
+                          key: 'orders_postpaid_nav',
+                          icon: Icons.account_balance_wallet_outlined,
+                          label: 'Дараа төлөх засварын хуудас',
+                          onTap: () => AppNav.push('/orders/postpaid'),
+                        ),
+                        _QuickAction(
+                          key: 'orders_refresh',
+                          icon: Icons.refresh,
+                          label: 'Шинэчлэх',
+                          onTap: controller.refresh,
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           if (showBulkBar)
@@ -317,6 +329,23 @@ class _OrderListScreenState extends State<OrderListScreen> {
     int activeFilters,
   ) {
     return [
+      // The tab's own page title: the shell header (greeting, search, bell)
+      // only sits on Өнөөдөр. Styled like Цаг's «Цаг захиалга».
+      Padding(
+        key: const ValueKey('orders_page_title'),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+        child: Text(
+          'Засварын хуудас',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.22,
+            color: CarserviceTheme.of(context).ink,
+          ),
+        ),
+      ),
       ListSearchBar(
         controller: _searchController,
         hintText: 'Дугаар, улсын/арлын дугаар, үйлчлүүлэгч...',
@@ -879,7 +908,12 @@ class _PhoneOrders extends StatelessWidget {
     child: ListView.separated(
       controller: scroll,
       // Extra bottom room so the last card and the footer clear the FAB.
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
+      padding: EdgeInsets.fromLTRB(
+        16,
+        16,
+        16,
+        88 + MediaQuery.paddingOf(context).bottom,
+      ),
       itemCount: orders.length + 1,
       separatorBuilder: (_, index) =>
           SizedBox(height: index == orders.length - 1 ? 4 : 10),

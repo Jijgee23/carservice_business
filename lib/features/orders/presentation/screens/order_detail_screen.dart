@@ -27,6 +27,7 @@ import 'package:carservice_business/features/orders/domain/postpaid_settlement.d
 import 'package:carservice_business/features/orders/presentation/widgets/list/order_list_widgets.dart';
 import 'package:carservice_business/features/orders/presentation/widgets/order_status_prompt.dart';
 import 'package:carservice_business/features/orders/presentation/widgets/intake/order_intake_view.dart';
+import 'package:carservice_business/features/orders/presentation/widgets/manual_item_sheet.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:carservice_business/core/utils/async_value.dart';
@@ -1371,9 +1372,6 @@ class ItemFormScreen extends StatefulWidget {
   /// Draft mode: the staged line being changed.
   final OrderItemDraft? editDraft;
 
-  /// Draft mode: hand entry only, without the catalog search.
-  final bool manual;
-
   const ItemFormScreen({
     super.key,
     required String this.orderId,
@@ -1383,16 +1381,14 @@ class ItemFormScreen extends StatefulWidget {
     this.paidLocked = false,
     this.paidLockReason = paidLockHint,
     this.editItem,
-  }) : editDraft = null,
-       manual = false;
+  }) : editDraft = null;
 
   /// For an order not created yet: nothing is saved, the form pops the line
-  /// as an [OrderItemDraft]. Without [manual] it's a catalog pick — the
-  /// search alone until a line is chosen; [editDraft] reopens a staged line.
+  /// as an [OrderItemDraft] — a catalog pick, or a hand-entered one from its
+  /// «Гараар бүртгэх» sheet; [editDraft] reopens a staged catalog line.
   const ItemFormScreen.draft({
     super.key,
     this.editDraft,
-    this.manual = false,
     this.canEditPrice = true,
   }) : orderId = null,
        provider = null,
@@ -1434,10 +1430,10 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
 
   bool get _isEdit => widget.editItem != null || widget.editDraft != null;
   bool get _draftMode => widget.provider == null;
-  bool get _showSearch => !_isEdit && !widget.manual;
 
-  /// Draft catalog pick: the form fields appear once a line is chosen.
-  bool get _catalogOnly => _draftMode && _showSearch;
+  /// Adding: the catalog list first, its fields once a line is chosen; hand
+  /// entry is the «Гараар бүртгэх» sheet ([_openManual]).
+  bool get _showSearch => !_isEdit;
   bool get _moneyLocked => _isEdit && widget.paidLocked;
   bool get _effectiveCanEditPrice => widget.canEditPrice && !_moneyLocked;
 
@@ -1519,14 +1515,20 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
           if (kDebugMode) debugPrint('ItemForm templates load failed: $e\n$st');
           return <catalog.DiagnosticTemplateSummary>[];
         });
-    final sharedF = ServiceCatalogService.getCatalogItems(q: q)
-        .catchError((Object e, StackTrace st) {
+    // Labor and goods apart, so neither crowds the other out of a page.
+    Future<List<CatalogService>> sharedOf(ServiceKind type) =>
+        ServiceCatalogService.getCatalogItems(q: q, type: type).catchError((
+          Object e,
+          StackTrace st,
+        ) {
           if (kDebugMode) debugPrint('ItemForm shared catalog failed: $e\n$st');
           return <CatalogService>[];
         });
+    final sharedLaborF = sharedOf(ServiceKind.LABOR);
+    final sharedGoodsF = sharedOf(ServiceKind.GOODS);
     final services = await servicesF;
     final templates = await templatesF;
-    final shared = await sharedF;
+    final shared = [...await sharedLaborF, ...await sharedGoodsF];
     if (mounted && seq == _fetchSeq) {
       // Тенант ижил кодтойг өөрөө бүртгэсэн бол сангийн хуулбарыг давхар
       // харуулахгүй (сервер ч тэр үед өөрийнхийг нь ашигладаг).
@@ -1607,6 +1609,39 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
       _kind = ItemKind.LABOR;
     });
     _loadAll();
+  }
+
+  /// «Гараар бүртгэх»: the sheet, prefilled with what was searched. On the
+  /// order the line is added from the sheet (it stays open on an error);
+  /// in draft mode it's handed back. Either way this page closes after.
+  Future<void> _openManual() async {
+    OrderItemDraft? entered;
+    final provider = widget.provider;
+    final saved = await showManualItemSheet(
+      initialDescription: _searchCtrl.text.trim(),
+      onSubmit: (draft) async {
+        entered = draft;
+        if (provider == null) return true;
+        final result = await provider.add(
+          kind: draft.kind,
+          description: draft.description,
+          quantity: draft.quantity,
+          unitPrice: draft.unitPrice,
+        );
+        if (result case Err(:final error)) {
+          messageError(error.display);
+          return false;
+        }
+        if (provider.lastAddMerged) messageComplete('Тоо нэмэгдлээ');
+        return true;
+      },
+    );
+    if (saved != true || !mounted) return;
+    if (_draftMode) {
+      AppNav.back(entered);
+    } else {
+      AppNav.back(true);
+    }
   }
 
   Future<void> _save() async {
@@ -1703,11 +1738,9 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
         title: Text(
           _isEdit
               ? 'Мөр засах'
-              : !_draftMode
-              ? 'Мөр нэмэх'
-              : widget.manual
-              ? 'Гараар бүртгэх'
-              : 'Сангаас сонгох',
+              : _draftMode
+              ? 'Сангаас сонгох'
+              : 'Мөр нэмэх',
         ),
         actions: const [ShellNotificationBell()],
       ),
@@ -1750,6 +1783,24 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
+                // Hand entry first, not below the whole list. Without
+                // `orders.itemPrice` the server refuses a line without a
+                // catalog link, so it's not offered.
+                if (widget.canEditPrice) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      key: const ValueKey('item_form_manual'),
+                      onPressed: _openManual,
+                      icon: const Icon(Icons.edit_note_rounded, size: 20),
+                      label: const Text('Гараар бүртгэх'),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(44),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                ],
 
                 // Kind filter chips
                 SingleChildScrollView(
@@ -1907,32 +1958,24 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
                   Center(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 20),
-                      child: Text(
-                        'Үр дүн олдсонгүй',
-                        style: context.textStyles.caption,
+                      child: Column(
+                        children: [
+                          Text(
+                            'Үр дүн олдсонгүй',
+                            style: context.textStyles.caption,
+                          ),
+                          if (widget.canEditPrice &&
+                              _searchCtrl.text.trim().isNotEmpty)
+                            TextButton(
+                              onPressed: _openManual,
+                              child: Text(
+                                '«${_searchCtrl.text.trim()}»-г гараар бүртгэх',
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                   ),
-
-                if (!_catalogOnly) ...[
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      const Expanded(child: Divider()),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: Text(
-                          'эсвэл гар аргаар бөглөх',
-                          style: context.textStyles.caption.copyWith(
-                            fontSize: 11,
-                          ),
-                        ),
-                      ),
-                      const Expanded(child: Divider()),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                ],
               ] else ...[
                 // Selected service badge
                 Container(
@@ -1978,7 +2021,7 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
               ],
             ],
 
-            if (!_catalogOnly || _serviceSelected) ...[
+            if (!_showSearch || _serviceSelected) ...[
               // ── Kind selector ────────────────────────────────────────
               Text('Мөрийн төрөл', style: context.textStyles.label),
               SizedBox(height: 8),

@@ -554,7 +554,12 @@ class AuthController extends ChangeNotifier {
       errorText = res.error ?? 'Код илгээхэд алдаа гарлаа.';
       return notifyListeners();
     }
-    maskedPhone = res.data['maskedPhone'] as String? ?? maskedPhone;
+    // The request-otp routes always answer "**" (enumeration-safe), so a
+    // resend must not replace the real mask `check-email` already gave.
+    final masked = res.data['maskedPhone'] as String?;
+    if (masked != null && (masked != '**' || maskedPhone == null)) {
+      maskedPhone = masked;
+    }
     _startCooldown();
     notifyListeners();
   }

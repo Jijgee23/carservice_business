@@ -107,19 +107,19 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('phone width uses a lane selector, opening in-progress first', (
+  testWidgets('phone width lists every order in one list, in progress first', (
     tester,
   ) async {
-    _viewport(tester, 375, 812);
+    _viewport(tester, 375, 1400);
     await _pump(tester, user: _user(owner: true), byStatus: _board);
 
-    expect(find.byKey(const ValueKey('today_lane_selector')), findsOneWidget);
+    expect(find.byKey(const ValueKey('today_lane_selector')), findsNothing);
     expect(find.text('2222УБА'), findsOneWidget);
-    expect(find.text('1111УБА'), findsNothing);
-
-    await tester.tap(find.text('Хүлээгдэж 1'));
-    await tester.pumpAndSettle();
     expect(find.text('1111УБА'), findsOneWidget);
+    expect(find.text('3333УБА'), findsOneWidget);
+    double top(String plate) => tester.getTopLeft(find.text(plate)).dy;
+    expect(top('2222УБА'), lessThan(top('1111УБА')));
+    expect(top('1111УБА'), lessThan(top('3333УБА')));
     expect(tester.takeException(), isNull);
   });
 
@@ -290,9 +290,7 @@ void main() {
     testWidgets('phone width pushes the order detail route', (tester) async {
       await pumpWithRouter(tester, width: 375, user: _user(owner: true));
 
-      // Phone width shows the segmented lane selector, defaulting to
-      // in-progress, so switch to the waiting lane to find the card.
-      await tester.tap(find.text('Хүлээгдэж 1'));
+      await tester.ensureVisible(find.byKey(const ValueKey('today_order_w1')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('today_order_w1')));
       await tester.pumpAndSettle();
@@ -320,14 +318,17 @@ void main() {
     });
   });
 
-  group('compact tablet (<840dp) uses the single-lane selector', () {
-    testWidgets('~800dp behaves like phone: one lane at a time', (
+  group('compact tablet (<840dp) uses the single list', () {
+    testWidgets('~800dp behaves like phone: every order, no lane tabs', (
       tester,
     ) async {
-      _viewport(tester, 800, 1000);
+      _viewport(tester, 800, 1400);
       await _pump(tester, user: _user(owner: true), byStatus: _board);
 
-      expect(find.byKey(const ValueKey('today_lane_selector')), findsOneWidget);
+      expect(find.byKey(const ValueKey('today_lane_selector')), findsNothing);
+      expect(find.text('1111УБА'), findsOneWidget);
+      expect(find.text('2222УБА'), findsOneWidget);
+      expect(find.text('3333УБА'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   });
@@ -511,7 +512,9 @@ void main() {
       },
     );
 
-    testWidgets('phone shows a top-level Засварын хуудас | Цаг split', (tester) async {
+    testWidgets('phone leaves appointments to the Цаг tab: no split', (
+      tester,
+    ) async {
       await pump(
         tester,
         width: 375,
@@ -520,13 +523,10 @@ void main() {
       );
       expect(
         find.byKey(const ValueKey('today_section_selector')),
-        findsOneWidget,
+        findsNothing,
       );
       expect(find.text('5555УБА'), findsNothing);
-
-      await tester.tap(find.text('Цаг'));
-      await tester.pumpAndSettle();
-      expect(find.text('5555УБА'), findsOneWidget);
+      expect(find.byKey(const ValueKey('today_order_p1')), findsWidgets);
     });
   });
 

@@ -5,7 +5,7 @@ import 'package:carservice_business/core/widgets/common/common_widgets.dart';
 import 'package:carservice_business/features/settings/presentation/widgets/legal_widgets.dart';
 
 /// "Нууцлалын бодлого" — the same text as carservice.mn's privacy page,
-/// reachable before sign-in (login footer) and from Бусад → Ерөнхий.
+/// reachable before sign-in (login footer) and from Меню → Тусламж.
 class PrivacyPolicyScreen extends StatelessWidget {
   const PrivacyPolicyScreen({super.key});
 

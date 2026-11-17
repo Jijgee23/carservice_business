@@ -111,7 +111,7 @@ class AppRoutes {
   static const reports = '/reports';
   static const audit = '/audit';
 
-  /// «Касс» group of Бусад (cash.manage).
+  /// «Санхүү, тайлан» group of Меню (cash.manage).
   static const cashShifts = '/cash/shifts';
   static const paymentAccounts = '/payment-accounts';
   static const feedback = '/feedback';
@@ -133,7 +133,7 @@ abstract final class AppPages {
   /// Arguments: the order id.
   static const orderDetail = '/order-detail';
 
-  // The Бусад tab's profile card and Ерөнхий rows; no arguments.
+  // The Меню tab's profile card and help rows; no arguments.
   static const profile = '/profile';
   static const notifications = '/notifications';
   static const feedback = '/feedback';

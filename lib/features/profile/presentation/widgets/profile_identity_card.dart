@@ -4,7 +4,7 @@ import 'package:carservice_business/app/theme/app_theme.dart';
 import 'package:carservice_business/core/domain/user.dart';
 import 'package:carservice_business/core/widgets/common/ops_kit.dart';
 
-/// The navy identity card at the top of Бусад and Профайл (tenant-app
+/// The navy identity card at the top of Профайл (tenant-app
 /// design): initials, full name, masked phone, role and workshop pills,
 /// and an edit button.
 class ProfileIdentityCard extends StatelessWidget {
@@ -17,7 +17,7 @@ class ProfileIdentityCard extends StatelessWidget {
 
   final User user;
 
-  /// Opens the profile (Бусад); null on the profile screen itself.
+  /// Opens the profile; null on the profile screen itself.
   final VoidCallback? onTap;
 
   /// Shows the edit button when set.

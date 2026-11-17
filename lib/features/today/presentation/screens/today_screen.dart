@@ -41,12 +41,12 @@ import 'package:carservice_business/features/diagnostics/presentation/screens/ne
 import 'package:carservice_business/features/shell/presentation/controllers/working_branch_controller.dart';
 import 'package:carservice_business/features/today/presentation/widgets/today_home_widgets.dart';
 
-/// The work-first home (tenant-app design "Нүүр"): a navy card with today's
-/// counts, quick actions, then today's orders grouped by lane, each card
-/// carrying its order's next step (start, finish the work, take payment,
-/// complete) and a ⋯ sheet with the rest (diagnostics, reports, payment).
-/// Tablets (≥840dp) show all three lanes side by side; narrower screens
-/// switch lanes with a segmented control.
+/// The work-first home (tenant-app design "Нүүр"): quick actions, then
+/// today's orders, each card carrying its order's next step (start, finish
+/// the work, take payment, complete) and a ⋯ sheet with the rest
+/// (diagnostics, reports, payment). Tablets (≥840dp) show the three lanes
+/// side by side; narrower screens one list — in progress, waiting, done —
+/// each card showing its status.
 class TodayScreen extends StatefulWidget {
   const TodayScreen({
     super.key,
@@ -85,13 +85,9 @@ class _TodayScreenState extends State<TodayScreen> {
       TodayOrdersController(repository: context.read<OrdersRepository>());
   late final TodayAppointmentsController _apptController =
       widget.appointmentsController ?? TodayAppointmentsController();
-  TodayLane? _lane;
   SubscriptionStatus? _sub;
-
-  /// Phone-only top-level split. Tablets show appointments alongside orders
-  /// (landscape) or in a collapsible section (portrait/medium) instead.
-  _TodaySection _section = _TodaySection.orders;
   bool _apptSectionExpanded = false;
+  bool _apptStarted = false;
 
   User? get _user => widget.user ?? Authenticator.user;
 
@@ -116,7 +112,6 @@ class _TodayScreenState extends State<TodayScreen> {
   void initState() {
     super.initState();
     _controller.start();
-    if (_canViewAppointments) _apptController.start();
     (widget.loadSubscription ?? SubscriptionService.instance.getStatus)().then((
       sub,
     ) {
@@ -176,6 +171,17 @@ class _TodayScreenState extends State<TodayScreen> {
   Future<void> _open(ServiceOrderSummary order) async {
     await AppNav.toNamed<void>(AppPages.orderDetail, arguments: order.id);
     if (mounted) await _controller.load();
+  }
+
+  /// Appointments show on tablets only (a column or a collapsible section);
+  /// phones have the Цаг tab. Their controller starts — and starts polling —
+  /// the first time a layout shows them.
+  void _ensureAppointments() {
+    if (_apptStarted) return;
+    _apptStarted = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _apptController.start();
+    });
   }
 
   Widget _appointmentsPane() => TodayAppointmentsTimeline(
@@ -388,7 +394,9 @@ class _TodayScreenState extends State<TodayScreen> {
         label: 'Хүлээн авах',
         onTap: _create,
       ),
-    if (_canFillDiagnostics)
+    // Hidden once the plan is known to lack diagnostics (403 MODULE_DISABLED).
+    if (_canFillDiagnostics &&
+        (_sub?.allowsModule('enable_diagnostics') ?? true))
       HomeQuickAction(
         key: const ValueKey('today_new_inspection'),
         icon: Icons.fact_check_outlined,
@@ -440,13 +448,12 @@ class _TodayScreenState extends State<TodayScreen> {
           // grouped, scrollable list instead of rendering three ~180dp
           // slivers no one can read.
           final boardWide = wide && boardWidth >= AdaptiveBreakpoints.expanded;
+          if (_canViewAppointments &&
+              (wide || tier == AdaptiveSize.compactTablet)) {
+            _ensureAppointments();
+          }
           final header = _Header(
             controller: _controller,
-            board: switch (_controller.state) {
-              AsyncData(:final value) => value,
-              _ => null,
-            },
-            branchName: _workingBranchName(context),
             quickActions: _quickActions,
             subscription: _sub,
           );
@@ -544,14 +551,10 @@ class _TodayScreenState extends State<TodayScreen> {
         : _NarrowBoard(
             header: header,
             board: value,
-            lane: _lane ?? _defaultLane(value),
-            onLane: (lane) => setState(() => _lane = lane),
             onRefresh: _controller.load,
             cardFor: _card,
-            tier: tier,
-            canViewAppointments: _canViewAppointments,
-            section: _section,
-            onSection: (s) => setState(() => _section = s),
+            showAppointments:
+                _canViewAppointments && tier == AdaptiveSize.compactTablet,
             apptExpanded: _apptSectionExpanded,
             onApptToggle: () =>
                 setState(() => _apptSectionExpanded = !_apptSectionExpanded),
@@ -571,13 +574,6 @@ class _TodayScreenState extends State<TodayScreen> {
     );
   }
 
-  /// Open the lane with work in it: in-progress first, then the queue.
-  TodayLane _defaultLane(TodayBoard board) => board.inProgress.isNotEmpty
-      ? TodayLane.inProgress
-      : board.waiting.isNotEmpty
-      ? TodayLane.waiting
-      : TodayLane.inProgress;
-
   Widget _card(ServiceOrderSummary order) {
     final action = _actionFor(order);
     return TodayOrderCard(
@@ -594,38 +590,16 @@ class _TodayScreenState extends State<TodayScreen> {
 
 // ─── Header ──────────────────────────────────────────────────────────────────
 
-/// The working branch's name for the hero pill, when the shell knows it.
-String? _workingBranchName(BuildContext context) {
-  try {
-    final c = context.watch<WorkingBranchController>();
-    if (c.isAllBranches) return 'Бүх салбар';
-    final branches = c.options.branches;
-    final id = c.selectedBranchId ?? c.options.lockedBranchId;
-    for (final b in branches) {
-      if (b.id == id) return b.name;
-    }
-    return branches.length == 1 ? branches.first.name : null;
-  } on ProviderNotFoundException {
-    return null;
-  }
-}
-
-/// Subscription warning, the navy day card, quick actions and the
-/// "Өнөөдрийн ажлууд" title with refresh and «Бүгд».
+/// Subscription warning, quick actions and the "Өнөөдрийн ажлууд" title
+/// with refresh and «Бүгд».
 class _Header extends StatelessWidget {
   const _Header({
     required this.controller,
-    required this.board,
-    required this.branchName,
     required this.quickActions,
     required this.subscription,
   });
 
   final TodayOrdersController controller;
-
-  /// Null while loading or after an error: the counts show "—".
-  final TodayBoard? board;
-  final String? branchName;
   final List<HomeQuickAction> quickActions;
   final SubscriptionStatus? subscription;
 
@@ -641,36 +615,12 @@ class _Header extends StatelessWidget {
   }
 
   Widget _build(BuildContext context, double availableWidth) {
-    final now = controller.now();
     final updated = controller.lastUpdated;
     final sub = subscription;
     // Large text scaling needs the same compact treatment as a narrow phone
     // — the "updated at" text no longer fits beside the title.
     final largeText = MediaQuery.textScalerOf(context).scale(14) > 20;
     final compact = availableWidth < AdaptiveBreakpoints.compact || largeText;
-    // Hero and quick actions side by side once there is room for both.
-    final sideBySide = availableWidth >= 720 && quickActions.isNotEmpty;
-    final b = board;
-    final hero = TodayHeroCard(
-      label: 'Өнөөдөр · ${homeDateLabel(now)}',
-      badge: branchName,
-      stats: [
-        TodayHeroStat(label: 'Хүлээгдэж', value: b?.waiting.length),
-        TodayHeroStat(
-          label: 'Засварт',
-          value: b?.inProgress.length,
-          highlight: true,
-        ),
-        TodayHeroStat(label: 'Дууссан', value: b?.completed.length),
-      ],
-      segments: b == null
-          ? const []
-          : [
-              TodayHeroSegment(b.completed.length, OpsDark.ink),
-              TodayHeroSegment(b.inProgress.length, OpsDark.accent),
-              TodayHeroSegment(b.waiting.length, OpsDark.line),
-            ],
-    );
     final t = CarserviceTheme.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
@@ -684,23 +634,19 @@ class _Header extends StatelessWidget {
             ),
             const SizedBox(height: 12),
           ],
-          if (sideBySide)
-            Row(
-              children: [
-                Expanded(child: hero),
-                const SizedBox(width: 16),
-                SizedBox(
+          if (quickActions.isNotEmpty) ...[
+            // Full width on a phone; wider screens keep the tiles at their
+            // own size instead of stretching them across the board.
+            if (availableWidth >= 720)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: SizedBox(
                   width: 80.0 * quickActions.length,
                   child: HomeQuickActions(actions: quickActions),
                 ),
-              ],
-            )
-          else ...[
-            hero,
-            if (quickActions.isNotEmpty) ...[
-              const SizedBox(height: 16),
+              )
+            else
               HomeQuickActions(actions: quickActions),
-            ],
           ],
           const SizedBox(height: 16),
           HomeSectionHeader(
@@ -735,19 +681,6 @@ class _Header extends StatelessWidget {
       ),
     );
   }
-}
-
-/// The lane and section switches, in the design's ink-on-white style.
-ButtonStyle _segmentStyle(BuildContext context) {
-  final t = CarserviceTheme.of(context);
-  return SegmentedButton.styleFrom(
-    backgroundColor: t.panel,
-    foregroundColor: t.ink,
-    selectedBackgroundColor: t.ink,
-    selectedForegroundColor: t.shellBackground,
-    side: BorderSide(color: t.border),
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-  );
 }
 
 // ─── Layouts ─────────────────────────────────────────────────────────────────
@@ -1034,22 +967,16 @@ class _LaneColumn extends StatelessWidget {
   }
 }
 
-/// Phone-only top-level split between the orders board and the appointments
-/// timeline. Tablet widths never use this — see `TodayScreen.build`.
-enum _TodaySection { orders, appointments }
-
+/// Phones and compact tablets: one list of today's orders — in progress,
+/// then waiting, then done; each card shows its status — under the header.
+/// Compact tablets add the collapsible appointments; phones have the Цаг tab.
 class _NarrowBoard extends StatelessWidget {
   const _NarrowBoard({
     required this.header,
     required this.board,
-    required this.lane,
-    required this.onLane,
     required this.onRefresh,
     required this.cardFor,
-    required this.tier,
-    required this.canViewAppointments,
-    required this.section,
-    required this.onSection,
+    required this.showAppointments,
     required this.apptExpanded,
     required this.onApptToggle,
     required this.appointmentsPaneBuilder,
@@ -1058,14 +985,9 @@ class _NarrowBoard extends StatelessWidget {
 
   final Widget header;
   final TodayBoard board;
-  final TodayLane lane;
-  final ValueChanged<TodayLane> onLane;
   final Future<void> Function() onRefresh;
   final _CardBuilder cardFor;
-  final AdaptiveSize tier;
-  final bool canViewAppointments;
-  final _TodaySection section;
-  final ValueChanged<_TodaySection> onSection;
+  final bool showAppointments;
   final bool apptExpanded;
   final VoidCallback onApptToggle;
 
@@ -1076,76 +998,36 @@ class _NarrowBoard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final showTopSplit = canViewAppointments && tier == AdaptiveSize.phone;
-    // The section switch stays on top in both sections; the day card and
-    // quick actions belong to the orders side.
-    if (showTopSplit && section == _TodaySection.appointments) {
-      return Column(
-        children: [
-          _SectionSelector(section: section, onSection: onSection),
-          Expanded(child: appointmentsPaneBuilder!()),
-        ],
-      );
-    }
-
-    final orders = board.lane(lane);
-    final showCollapsibleAppointments =
-        canViewAppointments &&
-        tier == AdaptiveSize.compactTablet &&
-        appointmentsPaneBuilder != null;
+    final orders = [...board.inProgress, ...board.waiting, ...board.completed];
+    final paneBuilder = appointmentsPaneBuilder;
+    // Room for the shell's floating nav (AdaptiveScaffold.floatNavOverContent).
+    final navInset = MediaQuery.paddingOf(context).bottom;
     return RefreshIndicator(
       onRefresh: onRefresh,
       child: CustomScrollView(
         slivers: [
-          if (showTopSplit)
-            SliverToBoxAdapter(
-              child: _SectionSelector(section: section, onSection: onSection),
-            ),
           SliverToBoxAdapter(child: header),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: SizedBox(
-                width: double.infinity,
-                child: SegmentedButton<TodayLane>(
-                  key: const ValueKey('today_lane_selector'),
-                  style: _segmentStyle(context),
-                  showSelectedIcon: false,
-                  segments: [
-                    for (final l in TodayLane.values)
-                      ButtonSegment(
-                        value: l,
-                        label: Text(
-                          '${_shortLabel(l)} ${board.lane(l).length}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                  ],
-                  selected: {lane},
-                  onSelectionChanged: (s) => onLane(s.first),
-                ),
-              ),
-            ),
-          ),
           SliverToBoxAdapter(child: _BoardNotes(board: board)),
-          if (showCollapsibleAppointments)
+          if (showAppointments && paneBuilder != null)
             SliverToBoxAdapter(
               child: _CollapsibleAppointments(
                 controller: appointmentsController,
                 expanded: apptExpanded,
                 onToggle: onApptToggle,
-                child: appointmentsPaneBuilder!(),
+                child: paneBuilder(),
               ),
             ),
           if (orders.isEmpty)
             SliverFillRemaining(
               hasScrollBody: false,
-              child: _EmptyLane(lane: lane),
+              child: Padding(
+                padding: EdgeInsets.only(bottom: navInset),
+                child: const _EmptyBoard(),
+              ),
             )
           else
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 24 + navInset),
               sliver: SliverList.separated(
                 itemCount: orders.length,
                 separatorBuilder: (_, _) => const SizedBox(height: 10),
@@ -1153,46 +1035,6 @@ class _NarrowBoard extends StatelessWidget {
               ),
             ),
         ],
-      ),
-    );
-  }
-
-  static String _shortLabel(TodayLane lane) => switch (lane) {
-    TodayLane.waiting => 'Хүлээгдэж',
-    TodayLane.inProgress => 'Хийгдэж',
-    TodayLane.completed => 'Дууссан',
-  };
-}
-
-/// Phone top-level "Засварын хуудас | Цаг" split (`TENANT_UI_UX_PLAN.md` Phase 4).
-class _SectionSelector extends StatelessWidget {
-  const _SectionSelector({required this.section, required this.onSection});
-  final _TodaySection section;
-  final ValueChanged<_TodaySection> onSection;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-      child: SizedBox(
-        width: double.infinity,
-        child: SegmentedButton<_TodaySection>(
-          key: const ValueKey('today_section_selector'),
-          style: _segmentStyle(context),
-          showSelectedIcon: false,
-          segments: const [
-            ButtonSegment(
-              value: _TodaySection.orders,
-              label: Text('Засварын хуудас'),
-            ),
-            ButtonSegment(
-              value: _TodaySection.appointments,
-              label: Text('Цаг'),
-            ),
-          ],
-          selected: {section},
-          onSelectionChanged: (s) => onSection(s.first),
-        ),
       ),
     );
   }
@@ -1301,6 +1143,23 @@ class _EmptyLane extends StatelessWidget {
       ),
     );
   }
+}
+
+class _EmptyBoard extends StatelessWidget {
+  const _EmptyBoard();
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Text(
+        'Өнөөдөр засварын хуудас алга',
+        key: const ValueKey('today_empty'),
+        textAlign: TextAlign.center,
+        style: TextStyle(color: context.opsTextHint),
+      ),
+    ),
+  );
 }
 
 String _upcomingLabel(AppointmentSummary a) {

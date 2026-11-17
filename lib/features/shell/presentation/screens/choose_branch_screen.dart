@@ -17,7 +17,7 @@ import 'package:carservice_business/features/shell/presentation/controllers/work
 /// Shown by the shell while [WorkingBranchController.needsChoice] is true.
 /// The user marks a branch (the primary one to start with) and confirms with
 /// "Үргэлжлүүлэх"; the pick is persisted by the controller and survives
-/// restarts until the user switches it from Бусад or signs out.
+/// restarts until the user switches it from Меню or signs out.
 class ChooseBranchScreen extends StatefulWidget {
   final WorkingBranchController controller;
 
@@ -130,7 +130,7 @@ class _ChooseBranchScreenState extends State<ChooseBranchScreen> {
                           Text(
                             'Өнөөдөр аль салбарт ажиллах вэ? Засварын хуудас, цаг '
                             'захиалга, тайлан энэ салбараар харагдана. Дараа нь '
-                            '«Бусад» цэснээс солих боломжтой.',
+                            '«Меню» цэснээс солих боломжтой.',
                             style: TextStyle(
                               fontSize: 15,
                               height: 22 / 15,

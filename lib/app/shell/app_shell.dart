@@ -1,14 +1,31 @@
+import 'dart:math' as math;
+
 import 'package:carservice_business/app/shell/shell_chrome.dart';
 import 'package:carservice_business/app/router.dart';
 import 'package:carservice_business/app/theme/app_theme.dart';
 import 'package:carservice_business/core/services/auth_storage.dart';
+import 'package:carservice_business/core/domain/subscription.dart';
+import 'package:carservice_business/core/services/subscription_service.dart';
 import 'package:carservice_business/core/domain/user.dart';
 import 'package:carservice_business/core/navigation/app_nav.dart';
 import 'package:carservice_business/core/widgets/adaptive/adaptive.dart';
 import 'package:carservice_business/core/widgets/common/ops_kit.dart';
 import 'package:carservice_business/core/widgets/dialogs/confirm_sheet.dart';
 import 'package:carservice_business/features/appointments/presentation/screens/appointment_screen.dart';
+import 'package:carservice_business/core/utils/result.dart';
 import 'package:carservice_business/features/controllers.dart';
+import 'package:carservice_business/features/customers/data/customer_repository.dart'
+    show RemoteCustomersRepository;
+import 'package:carservice_business/features/customers/domain/customers_repository.dart'
+    show CustomerListQuery;
+import 'package:carservice_business/features/employees/data/employee_repository.dart'
+    show RemoteEmployeesRepository;
+import 'package:carservice_business/features/employees/domain/employees_repository.dart'
+    show EmployeeListQuery;
+import 'package:carservice_business/features/vehicles/data/vehicle_repository.dart'
+    show RemoteVehiclesRepository;
+import 'package:carservice_business/features/vehicles/domain/vehicles_repository.dart'
+    show VehicleListQuery;
 import 'package:carservice_business/features/feedback/domain/feedback.dart';
 import 'package:carservice_business/features/notifications/presentation/controllers/notification_controller.dart';
 import 'package:carservice_business/features/notifications/presentation/screens/notification_screen.dart';
@@ -16,18 +33,22 @@ import 'package:carservice_business/features/orders/domain/orders_repository.dar
 import 'package:carservice_business/features/orders/presentation/controllers/order_list_controller.dart';
 import 'package:carservice_business/features/orders/presentation/screens/order_list_screen.dart';
 import 'package:carservice_business/features/overview/presentation/screens/home_screen.dart';
-import 'package:carservice_business/features/profile/presentation/widgets/profile_identity_card.dart';
 import 'package:carservice_business/features/shell/data/working_branch_repository.dart';
 import 'package:carservice_business/features/shell/presentation/controllers/working_branch_controller.dart';
 import 'package:carservice_business/features/shell/presentation/screens/choose_branch_screen.dart';
 import 'package:carservice_business/features/shell/presentation/widgets/working_branch_switcher.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart' show NumberFormat;
 import 'package:provider/provider.dart';
 
 class AppShell extends StatelessWidget {
   const AppShell({super.key, required this.navigationShell});
   final StatefulNavigationShell navigationShell;
+
+  /// The only tab under the shell header (greeting, search, bell); the
+  /// others open on their own page title, as on the design canvas.
+  static const _todayIndex = 0;
 
   static const _destinations = [
     AdaptiveNavigationDestination(
@@ -46,9 +67,9 @@ class AppShell extends StatelessWidget {
       label: 'Цаг',
     ),
     AdaptiveNavigationDestination(
-      icon: Icons.more_horiz_rounded,
-      selectedIcon: Icons.more_horiz_rounded,
-      label: 'Бусад',
+      icon: Icons.grid_view_outlined,
+      selectedIcon: Icons.grid_view_rounded,
+      label: 'Меню',
     ),
   ];
 
@@ -117,6 +138,10 @@ class AppShell extends StatelessWidget {
             _destinations[2],
             _destinations[3],
           ];
+          final onToday = navigationShell.currentIndex == _todayIndex;
+          final subPage = ShellDepthTracker.instance.isSubPage(
+            navigationShell.currentIndex,
+          );
           final canSearch =
               canSeeView(user, 'customers') || canSeeView(user, 'vehicles');
           return AdaptiveScaffold(
@@ -135,13 +160,18 @@ class AppShell extends StatelessWidget {
                     onPressed: () => shellContext.push(AppRoutes.search),
                   )
                 : null,
-            // Just the greeting; the branch switcher lives on Бусад.
+            // Just the greeting; the branch switcher lives on Меню.
             title: _ShellGreeting(user: user),
             // Pushed screens own a single app bar with the bell (D: shell
             // header only on top-level tabs; no branch switch mid-flow).
-            showHeader: !ShellDepthTracker.instance.isSubPage(
-              navigationShell.currentIndex,
-            ),
+            showHeader: !subPage,
+            // Tab roots scroll under the floating nav; pushed pages keep
+            // their bottom bars above it.
+            floatNavOverContent: !subPage,
+            // Other tabs carry their own page title: an empty header drops
+            // the greeting bar but, unlike `showHeader: false`, keeps the
+            // content below the status bar.
+            header: onToday ? null : const SizedBox.shrink(),
             notificationAction: _NotificationAction(
               unreadCount: shellContext
                   .watch<NotificationController>()
@@ -239,6 +269,25 @@ class _ShellGreeting extends StatelessWidget {
   }
 }
 
+/// «Меню», the large page title atop [MoreScreen] (the canvas board's).
+class _MenuTitle extends StatelessWidget {
+  const _MenuTitle();
+
+  @override
+  Widget build(BuildContext context) => Text(
+    'Меню',
+    key: const ValueKey('menu_title'),
+    maxLines: 1,
+    style: TextStyle(
+      fontSize: 28,
+      height: 1.15,
+      fontWeight: FontWeight.w700,
+      letterSpacing: -0.5,
+      color: CarserviceTheme.of(context).ink,
+    ),
+  );
+}
+
 class _NotificationAction extends StatelessWidget {
   const _NotificationAction({
     required this.unreadCount,
@@ -265,33 +314,35 @@ class _NotificationAction extends StatelessWidget {
   }
 }
 
-class MoreScreen extends StatelessWidget {
+/// The «Меню» tab (canvas board «Tenant app — Бусад (шинэчилсэн)»): its own
+/// title with the bell and «Гарах» beside it, a navy identity card with the
+/// working branch, a menu search, then each group as a grid of tinted tiles —
+/// the customer pair as wide cards with their counts — and the app/help lists
+/// below.
+class MoreScreen extends StatefulWidget {
   const MoreScreen({super.key});
 
   static const groups = <_NavigationGroup>[
-    _NavigationGroup('Үйлчлүүлэгчид', [
+    _NavigationGroup('Үйлчлүүлэгч', wide: true, [
       _NavigationEntry(
         'Үйлчлүүлэгчид',
         Icons.people_outline,
         'customers',
         route: AppRoutes.customers,
+        count: _MenuCount.customers,
       ),
       _NavigationEntry(
         'Машин',
         Icons.directions_car_outlined,
         'vehicles',
         route: AppRoutes.vehicles,
+        count: _MenuCount.vehicles,
       ),
     ]),
-    // D-164: Units ("Нэгж") and Categories ("Ангилал") management is
-    // out of mobile scope — both stay owner-gated reference tables on the
-    // web's Settings → System page. Their rows are removed here rather
-    // than filled in; do not re-add them (see the Phase 4 entry state in
-    // `TENANT_MOBILE_SLICES.md`). Хөдөлмөр/Бараа route into `/services`
-    // with the corresponding kind preselected via the `type` query param
-    // `_ServiceListRoute`/`ServiceListScreen.initialType` consume
-    // (`lib/app/router.dart`, P4-F4).
-    _NavigationGroup('Үйлчилгээ', [
+    // D-164: Units ("Нэгж") and Categories ("Ангилал") stay on the web's
+    // Settings → System page; do not re-add them. Ажил/Сэлбэг open
+    // `/services` with the kind preselected via `type` (P4-F4).
+    _NavigationGroup('Үйлчилгээ', tone: _MenuTone.accent, [
       _NavigationEntry(
         'Ажил/Үйлчилгээ',
         Icons.build_outlined,
@@ -309,26 +360,17 @@ class MoreScreen extends StatelessWidget {
         Icons.description_outlined,
         'diagnostics',
         route: AppRoutes.diagnosticsTemplates,
+        module: 'enable_diagnostics',
       ),
     ]),
-    // _NavigationGroup('Оношилгоо', [
-    //   _NavigationEntry(
-    //     'Түүх',
-    //     Icons.assessment_outlined,
-    //     'diagnostics',
-    //     route: AppRoutes.diagnosticsReports,
-    //   ),
-    // ]),
-    // P6-F5: the four rows below finally get real destinations. Gating
-    // matches each screen's own in-screen gate exactly (D-163) — see each
-    // route's registration in `lib/app/router.dart` and the screens'
-    // "Not wired to a route" doc comments this slice resolves.
-    _NavigationGroup('Ажилын хувиар', [
+    // Gating matches each screen's own in-screen gate (D-163).
+    _NavigationGroup('Ажилтан', tone: _MenuTone.ok, [
       _NavigationEntry(
         'Ажилтнууд',
         Icons.badge_outlined,
         'employees',
         route: AppRoutes.employees,
+        count: _MenuCount.employees,
       ),
       _NavigationEntry(
         'Эрхүүд',
@@ -341,18 +383,27 @@ class MoreScreen extends StatelessWidget {
         Icons.calendar_view_week_outlined,
         'employees',
         route: AppRoutes.schedules,
+        module: 'enable_staff_schedule',
       ),
       _NavigationEntry(
         'Миний хуваарь',
         Icons.event_available_outlined,
         null,
         route: AppRoutes.mySchedule,
+        module: 'enable_staff_schedule',
       ),
     ]),
-    // Касс: register shifts and payment accounts — both `cash.manage`
-    // (owner always), the permission every `/cash/sessions*` and
-    // `/payment-accounts*` endpoint requires.
-    _NavigationGroup('Касс', [
+    // Тайлан: any signed-in user (D-174); Касс rows: `cash.manage`, which
+    // every `/cash/sessions*` and `/payment-accounts*` endpoint requires;
+    // Аудит: `audit.view` via `canSeeView`'s 'audit' case.
+    _NavigationGroup('Санхүү, тайлан', [
+      _NavigationEntry(
+        'Тайлан',
+        Icons.bar_chart_outlined,
+        null,
+        route: AppRoutes.reports,
+        module: 'enable_reports',
+      ),
       _NavigationEntry(
         'Кассын ээлж',
         Icons.point_of_sale_outlined,
@@ -365,27 +416,15 @@ class MoreScreen extends StatelessWidget {
         'cash.manage',
         route: AppRoutes.paymentAccounts,
       ),
-    ]),
-    // P7-F4: the three rows below get real destinations. Тайлан and Санал
-    // хүсэлт are visible to any authenticated user (D-174/D-176, matching
-    // the web's `requireUser()`-only gate); Аудит stays gated on
-    // `audit.view` via `canSeeView`'s existing 'audit' special-case.
-    _NavigationGroup('Удирдлага', [
-      _NavigationEntry(
-        'Тайлан',
-        Icons.bar_chart_outlined,
-        null,
-        route: AppRoutes.reports,
-      ),
       _NavigationEntry(
         'Аудит',
         Icons.fact_check_outlined,
         'audit',
         route: AppRoutes.audit,
+        module: 'enable_audit',
       ),
     ]),
-    // Тохиргоо: the workshop's settings (owner only — the screen is
-    // read-only for others, but the row stays owner-gated like the web's
+    // The workshop's settings (owner only, like the web's
     // /dashboard/settings) and branch management (`branches.view`).
     _NavigationGroup('Тохиргоо', [
       _NavigationEntry(
@@ -404,6 +443,110 @@ class MoreScreen extends StatelessWidget {
   ];
 
   @override
+  State<MoreScreen> createState() => _MoreScreenState();
+}
+
+class _MoreScreenState extends State<MoreScreen> {
+  final _searchCtrl = TextEditingController();
+  String _query = '';
+  final Map<_MenuCount, int> _counts = {};
+
+  /// The plan's modules: entries outside it are hidden (their endpoints
+  /// answer 403 `MODULE_DISABLED`). Until it loads, everything shows.
+  SubscriptionStatus? _subscription = SubscriptionService.instance.cached;
+
+  @override
+  void initState() {
+    super.initState();
+    SubscriptionService.instance.getStatus().then((status) {
+      if (status != null && mounted) setState(() => _subscription = status);
+    });
+    _searchCtrl.addListener(() {
+      final query = _searchCtrl.text.trim();
+      if (query != _query) setState(() => _query = query);
+    });
+    _loadCounts();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  /// Totals for the count badges: one `pageSize=1` list request each, only
+  /// for entries the user can open. A failure just leaves the number off.
+  Future<void> _loadCounts() async {
+    final user = Authenticator.user;
+    final wanted = {
+      for (final group in MoreScreen.groups)
+        for (final entry in group.entries)
+          if (entry.count != null && canSeeView(user, entry.permission))
+            entry.count!,
+    };
+    await Future.wait([
+      for (final key in wanted)
+        _fetchCount(key).then((total) {
+          if (total != null && mounted) setState(() => _counts[key] = total);
+        }),
+    ]);
+  }
+
+  Future<int?> _fetchCount(_MenuCount key) async {
+    try {
+      switch (key) {
+        case _MenuCount.customers:
+          final result = await RemoteCustomersRepository().getCustomers(
+            query: const CustomerListQuery(pageSize: 1),
+          );
+          if (result case Ok(:final value)) return value.pagination.total;
+        case _MenuCount.vehicles:
+          final result = await RemoteVehiclesRepository().getVehicles(
+            query: const VehicleListQuery(pageSize: 1),
+          );
+          if (result case Ok(:final value)) return value.pagination.total;
+        case _MenuCount.employees:
+          final result = await RemoteEmployeesRepository().getEmployees(
+            query: const EmployeeListQuery(pageSize: 1),
+          );
+          if (result case Ok(:final value)) return value.page.pagination.total;
+      }
+    } catch (_) {
+      // A count is extra: no number rather than an error.
+    }
+    return null;
+  }
+
+  void _openEntry(_NavigationEntry entry) {
+    final route = entry.route;
+    if (route != null) {
+      AppNav.push(route);
+    } else {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('${entry.label}: удахгүй')));
+    }
+  }
+
+  List<_MenuAction> _groupActions(_NavigationGroup group, User? user) => [
+    for (final entry in group.entries)
+      if (canSeeView(user, entry.permission) &&
+          (_subscription?.allowsModule(entry.module) ?? true))
+        _MenuAction(
+          entry.label,
+          entry.icon,
+          () => _openEntry(entry),
+          tone: group.tone,
+          count: entry.count == null ? null : _counts[entry.count],
+        ),
+  ];
+
+  void _openNotifications() {
+    AppNav.to(const NotificationScreen()).then((_) {
+      if (mounted) context.read<NotificationController>().load();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final user = Authenticator.user;
     final unreadCount = context.watch<NotificationController>().unreadCount;
@@ -412,83 +555,144 @@ class MoreScreen extends StatelessWidget {
     // top-level routes.
     void open(String page) => AppNav.toNamed<void>(page);
 
+    final help = [
+      _MenuAction(
+        'Гарын авлага',
+        Icons.menu_book_outlined,
+        () => open(AppPages.help),
+      ),
+      _MenuAction(
+        'Санал хүсэлт',
+        Icons.chat_bubble_outline_rounded,
+        () => open(AppPages.feedback),
+      ),
+      _MenuAction(
+        'Үйлчилгээний нөхцөл',
+        Icons.gavel_rounded,
+        () => open(AppPages.terms),
+      ),
+      _MenuAction(
+        'Нууцлалын бодлого',
+        Icons.privacy_tip_outlined,
+        () => open(AppPages.privacy),
+      ),
+      _MenuAction(
+        'Тухай',
+        Icons.info_outline_rounded,
+        () => open(AppPages.about),
+      ),
+    ];
+    final notifications = _MenuAction(
+      'Мэдэгдэл',
+      Icons.notifications_none_rounded,
+      _openNotifications,
+    );
+
+    final query = _query.toLowerCase();
+    final results = query.isEmpty
+        ? const <_MenuAction>[]
+        : [
+            for (final group in MoreScreen.groups)
+              ..._groupActions(group, user),
+            notifications,
+            ...help,
+          ].where((a) => a.label.toLowerCase().contains(query)).toList();
+
     return Scaffold(
       backgroundColor: context.colors.background,
       body: LayoutBuilder(
         builder: (context, constraints) {
-          // Keep rows at a readable width on tablets instead of stretching
-          // them across the whole content pane.
+          // Keep content at a readable width on tablets instead of
+          // stretching it across the whole content pane.
           final gutter = ((constraints.maxWidth - 640) / 2).clamp(
             20.0,
             double.infinity,
           );
           return ListView(
-            padding: EdgeInsets.fromLTRB(gutter, 8, gutter, 32),
+            // Bottom: room for the floating nav the page runs under.
+            padding: EdgeInsets.fromLTRB(
+              gutter,
+              12,
+              gutter,
+              32 + MediaQuery.paddingOf(context).bottom,
+            ),
             children: [
-              if (user != null)
-                ProfileIdentityCard(
+              Row(
+                children: [
+                  const Expanded(child: _MenuTitle()),
+                  _NotificationAction(
+                    unreadCount: unreadCount,
+                    onPressed: _openNotifications,
+                  ),
+                  const SizedBox(width: 8),
+                  OpsCircleButton(
+                    key: const ValueKey('more_logout'),
+                    icon: Icons.logout_rounded,
+                    tooltip: 'Гарах',
+                    onPressed: () => _logout(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              if (user != null) ...[
+                _MenuIdentityCard(
                   user: user,
-                  onTap: () => open(AppPages.profile),
-                  onEdit: () => AppNav.push<void>(AppRoutes.profileEdit),
+                  onOpenProfile: () => open(AppPages.profile),
                 ),
-              const _BranchRow(),
-              for (final group in groups)
-                _NavigationGroupView(group: group, user: user),
-              _MoreSection(
-                label: 'Апп',
-                tiles: [
-                  _MoreTile(
-                    icon: Icons.notifications_none_rounded,
-                    label: 'Мэдэгдэл',
-                    trailing: unreadCount > 0
-                        ? OpsPill(
-                            unreadCount > 99 ? '99+' : '$unreadCount шинэ',
-                            tone: OpsTone.accent,
-                          )
-                        : null,
-                    // Back from the list, the count above shows what is left.
-                    onTap: () =>
-                        AppNav.toNamed<void>(AppPages.notifications).then((_) {
-                          if (context.mounted) {
-                            context.read<NotificationController>().load();
-                          }
-                        }),
+                const SizedBox(height: 12),
+              ],
+              _MenuSearchField(controller: _searchCtrl),
+              if (query.isNotEmpty && results.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 32),
+                  child: Text(
+                    'Олдсонгүй',
+                    key: const ValueKey('menu_search_empty'),
+                    textAlign: TextAlign.center,
+                    style: context.textStyles.caption,
                   ),
-                  ?_AppearanceTile.maybe(context),
-                ],
-              ),
-              _MoreSection(
-                label: 'Тусламж',
-                tiles: [
-                  _MoreTile(
-                    icon: Icons.menu_book_outlined,
-                    label: 'Гарын авлага',
-                    onTap: () => open(AppPages.help),
-                  ),
-                  _MoreTile(
-                    icon: Icons.chat_bubble_outline_rounded,
-                    label: 'Санал хүсэлт',
-                    onTap: () => open(AppPages.feedback),
-                  ),
-                  _MoreTile(
-                    icon: Icons.gavel_rounded,
-                    label: 'Үйлчилгээний нөхцөл',
-                    onTap: () => open(AppPages.terms),
-                  ),
-                  _MoreTile(
-                    icon: Icons.privacy_tip_outlined,
-                    label: 'Нууцлалын бодлого',
-                    onTap: () => open(AppPages.privacy),
-                  ),
-                  _MoreTile(
-                    icon: Icons.info_outline_rounded,
-                    label: 'Тухай',
-                    onTap: () => open(AppPages.about),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              _LogoutButton(onTap: () => _logout(context)),
+                )
+              else if (query.isNotEmpty)
+                _MenuGroupView(label: 'Илэрц', actions: results)
+              else ...[
+                for (final group in MoreScreen.groups)
+                  if (_groupActions(group, user) case final actions
+                      when actions.isNotEmpty)
+                    _MenuGroupView(
+                      label: group.label,
+                      actions: actions,
+                      wide: group.wide,
+                    ),
+                _MoreSection(
+                  label: 'Апп',
+                  tiles: [
+                    _MoreTile(
+                      icon: notifications.icon,
+                      label: notifications.label,
+                      trailing: unreadCount > 0
+                          ? OpsPill(
+                              unreadCount > 99 ? '99+' : '$unreadCount шинэ',
+                              tone: OpsTone.accent,
+                            )
+                          : null,
+                      // Back from the list, the count above shows what is left.
+                      onTap: notifications.onTap,
+                    ),
+                    ?_AppearanceTile.maybe(context),
+                  ],
+                ),
+                _MoreSection(
+                  label: 'Тусламж',
+                  tiles: [
+                    for (final action in help)
+                      _MoreTile(
+                        icon: action.icon,
+                        label: action.label,
+                        onTap: action.onTap,
+                      ),
+                  ],
+                ),
+              ],
             ],
           );
         },
@@ -509,49 +713,353 @@ class MoreScreen extends StatelessWidget {
   }
 }
 
-class _NavigationGroupView extends StatelessWidget {
-  const _NavigationGroupView({required this.group, required this.user});
-  final _NavigationGroup group;
-  final User? user;
+/// One tappable menu item, from a group entry or an app/help row; the
+/// search lists them all in one grid.
+class _MenuAction {
+  const _MenuAction(
+    this.label,
+    this.icon,
+    this.onTap, {
+    this.tone = _MenuTone.navy,
+    this.count,
+  });
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+  final _MenuTone tone;
+  final int? count;
+}
+
+/// Icon tint of a menu group, from the canvas: navy (customers, finance,
+/// settings), accent (services), green (staff).
+enum _MenuTone { navy, accent, ok }
+
+extension on _MenuTone {
+  Color background(CarserviceTheme t) => switch (this) {
+    _MenuTone.navy => Color.alphaBlend(t.ink.withValues(alpha: 0.1), t.panel),
+    _MenuTone.accent => OpsTone.accent.background(t),
+    _MenuTone.ok => OpsTone.ok.background(t),
+  };
+
+  Color foreground(CarserviceTheme t) => switch (this) {
+    _MenuTone.navy => t.ink,
+    _MenuTone.accent => t.accent,
+    _MenuTone.ok => t.ok,
+  };
+}
+
+/// Which total a menu entry shows.
+enum _MenuCount { customers, vehicles, employees }
+
+/// A mono section label over its actions: wide two-column cards for the
+/// customer pair, a grid of tiles otherwise.
+class _MenuGroupView extends StatelessWidget {
+  const _MenuGroupView({
+    required this.label,
+    required this.actions,
+    this.wide = false,
+  });
+  final String label;
+  final List<_MenuAction> actions;
+  final bool wide;
 
   @override
   Widget build(BuildContext context) {
-    final visible = group.entries
-        .where((entry) => canSeeView(user, entry.permission))
-        .toList();
-    if (visible.isEmpty) return const SizedBox.shrink();
-    return _MoreSection(
-      label: group.label,
-      tiles: [
-        for (final entry in visible)
-          _MoreTile(
-            icon: entry.icon,
-            label: entry.label,
-            onTap: () {
-              final route = entry.route;
-              if (route != null) {
-                AppNav.push(route);
-              } else {
-                _showUnavailable(context, entry);
-              }
-            },
-          ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 20, 4, 8),
+          child: OpsSectionLabel(label),
+        ),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            // Height follows the text scale so large text doesn't overflow
+            // (+4 slack for line-height rounding). Tile columns keep a tile
+            // ~100 logical px wide per text scale, so a word like
+            // «Байгууллага» isn't split mid-word: 3 on a phone, 2 on a
+            // narrow one or with large text, up to 4 on a tablet.
+            final text = MediaQuery.textScalerOf(context).scale(13);
+            final columns = wide
+                ? 2
+                : ((constraints.maxWidth + 10) / (100 * text / 13 + 10))
+                      .floor()
+                      .clamp(2, 4);
+            final extent = wide
+                ? math.max(104.0, 14 + 42 + 8 + text / 13 * 14 * 1.3 + 14 + 4)
+                : math.max(104.0, 12 + 42 + 8 + text * 1.3 * 2 + 12 + 4);
+            return GridView(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              padding: EdgeInsets.zero,
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: columns,
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
+                mainAxisExtent: extent,
+              ),
+              children: [
+                for (final action in actions)
+                  wide
+                      ? _MenuWideCard(action: action)
+                      : _MenuTile(action: action),
+              ],
+            );
+          },
+        ),
       ],
     );
   }
+}
 
-  void _showUnavailable(BuildContext context, _NavigationEntry entry) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text('${entry.label}: удахгүй')));
+/// The group-tinted rounded icon square of a menu item.
+class _MenuIcon extends StatelessWidget {
+  const _MenuIcon({required this.icon, required this.tone});
+  final IconData icon;
+  final _MenuTone tone;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CarserviceTheme.of(context);
+    return Container(
+      width: 42,
+      height: 42,
+      decoration: BoxDecoration(
+        color: tone.background(t),
+        borderRadius: BorderRadius.circular(13),
+      ),
+      child: Icon(icon, size: 21, color: tone.foreground(t)),
+    );
   }
 }
 
-/// "Идэвхтэй салбар" card: the working scope and "Солих" (a sheet over the
-/// same choices as the header switcher). Hidden outside the shell and when
-/// there is nothing to switch — failed load or no branches; shows a spinner
-/// while loading.
-class _BranchRow extends StatelessWidget {
-  const _BranchRow();
+final _countFormat = NumberFormat('#,##0', 'en_US');
+
+/// One menu item in a grid: tinted icon over a centred label of up to two
+/// lines, an optional count badge in the corner.
+class _MenuTile extends StatelessWidget {
+  const _MenuTile({required this.action});
+  final _MenuAction action;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CarserviceTheme.of(context);
+    final count = action.count;
+    return Semantics(
+      button: true,
+      child: OpsCard(
+        radius: 18,
+        padding: EdgeInsets.zero,
+        onTap: action.onTap,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(6, 12, 6, 12),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _MenuIcon(icon: action.icon, tone: action.tone),
+                  const SizedBox(height: 8),
+                  Flexible(
+                    child: Text(
+                      action.label,
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.3,
+                        fontWeight: FontWeight.w500,
+                        color: t.ink,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (count != null)
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: t.shellBackground,
+                    borderRadius: BorderRadius.circular(AppDimens.radiusFull),
+                  ),
+                  child: Text(
+                    _countFormat.format(count),
+                    style: opsMono(
+                      context,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: t.mutedText,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A customer-group card: tinted icon and big mono total on top, the label
+/// at the bottom. The total is left off until it loads (or if it fails).
+class _MenuWideCard extends StatelessWidget {
+  const _MenuWideCard({required this.action});
+  final _MenuAction action;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CarserviceTheme.of(context);
+    final count = action.count;
+    return Semantics(
+      button: true,
+      child: OpsCard(
+        radius: 18,
+        padding: const EdgeInsets.all(14),
+        onTap: action.onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _MenuIcon(icon: action.icon, tone: action.tone),
+                const SizedBox(width: 8),
+                // Kept within the icon's height: with large text the total
+                // shrinks instead of pushing the label out of the card.
+                if (count != null)
+                  Expanded(
+                    child: SizedBox(
+                      height: 42,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.topRight,
+                        child: Text(
+                          _countFormat.format(count),
+                          maxLines: 1,
+                          style: opsMono(
+                            context,
+                            fontSize: 26,
+                            fontWeight: FontWeight.w500,
+                            color: t.ink,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            Text(
+              action.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 14,
+                height: 1.3,
+                fontWeight: FontWeight.w500,
+                color: t.ink,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The navy card at the top of Меню: who is signed in (opens the profile)
+/// and, in a darker strip below, the working branch with «Солих».
+class _MenuIdentityCard extends StatelessWidget {
+  const _MenuIdentityCard({required this.user, required this.onOpenProfile});
+  final User user;
+  final VoidCallback onOpenProfile;
+
+  @override
+  Widget build(BuildContext context) {
+    final role = user.role?.name ?? (user.isOwner ? 'Эзэмшигч' : 'Ажилтан');
+    final tenant = user.tenant.name.trim();
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(18),
+    );
+    return Material(
+      color: OpsDark.bg,
+      shape: shape,
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InkWell(
+            key: const ValueKey('menu_profile'),
+            onTap: onOpenProfile,
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                children: [
+                  OpsAvatar(
+                    initials: opsInitials(user.firstName, user.lastName),
+                    size: 46,
+                    onDark: true,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          user.fullName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: OpsDark.ink,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          [role, if (tenant.isNotEmpty) tenant].join(' · '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: OpsDark.muted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    size: 20,
+                    color: OpsDark.muted2,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const _MenuBranchStrip(),
+        ],
+      ),
+    );
+  }
+}
+
+/// The working branch and «Солих» (a sheet over the same choices as the
+/// header switcher). Hidden outside the shell and when there is nothing to
+/// switch — failed load or no branches; a spinner while loading; a lock
+/// while today's schedule pins the branch.
+class _MenuBranchStrip extends StatelessWidget {
+  const _MenuBranchStrip();
 
   @override
   Widget build(BuildContext context) {
@@ -566,86 +1074,124 @@ class _BranchRow extends StatelessWidget {
     if (!loading && (branch.hasError || branch.options.branches.isEmpty)) {
       return const SizedBox.shrink();
     }
-    final t = CarserviceTheme.of(context);
     final name = loading ? null : workingBranchLabel(branch);
     final canSwitch = !loading && !branch.isLocked;
     final controller = branch;
-    return Padding(
-      key: const ValueKey('more_branch_switcher'),
-      padding: const EdgeInsets.only(top: 14),
-      child: OpsCard(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+    return Material(
+      color: OpsColors.lightInk2,
+      child: InkWell(
+        key: const ValueKey('more_branch_switcher'),
         onTap: canSwitch
             ? () => showWorkingBranchSheet(context, controller)
             : null,
-        child: Row(
-          children: [
-            Container(
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                color: OpsTone.accent.background(t),
-                borderRadius: BorderRadius.circular(9),
-              ),
-              child: Icon(
-                Icons.storefront_outlined,
-                size: 18,
-                color: OpsTone.accent.foreground(t),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Идэвхтэй салбар',
-                    style: TextStyle(fontSize: 12, color: t.mutedText),
-                  ),
-                  const SizedBox(height: 2),
-                  if (loading)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 2),
-                      child: SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    )
-                  else
-                    Text(
-                      name ?? 'Сонгоогүй',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 46),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.storefront_outlined,
+                  size: 17,
+                  color: OpsDark.muted2,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: loading
+                      ? const Align(
+                          alignment: Alignment.centerLeft,
+                          child: SizedBox.square(
+                            dimension: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: OpsDark.ink,
+                            ),
+                          ),
+                        )
+                      : Text(
+                          name ?? 'Салбар сонгоогүй',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: OpsDark.ink,
+                          ),
+                        ),
+                ),
+                const SizedBox(width: 8),
+                if (canSwitch)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: OpsDark.accent,
+                      borderRadius: BorderRadius.circular(AppDimens.radiusFull),
+                    ),
+                    child: const Text(
+                      'Солих',
                       style: TextStyle(
-                        fontSize: 15,
+                        fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: t.ink,
+                        color: Colors.white,
                       ),
                     ),
-                ],
-              ),
+                  )
+                else if (!loading)
+                  const Tooltip(
+                    message: 'Өнөөдрийн хуваариар түгжигдсэн',
+                    child: Icon(
+                      Icons.lock_outline_rounded,
+                      size: 18,
+                      color: OpsDark.muted,
+                    ),
+                  ),
+              ],
             ),
-            const SizedBox(width: 8),
-            if (canSwitch)
-              Text(
-                'Солих',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: t.accent,
-                ),
-              )
-            else if (!loading)
-              Tooltip(
-                message: 'Өнөөдрийн хуваариар түгжигдсэн',
-                child: Icon(
-                  Icons.lock_outline_rounded,
-                  size: 18,
-                  color: t.mutedText,
-                ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// «Цэснээс хайх»: filters every menu item by its label.
+class _MenuSearchField extends StatelessWidget {
+  const _MenuSearchField({required this.controller});
+  final TextEditingController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CarserviceTheme.of(context);
+    final border = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: BorderSide.none,
+    );
+    return TextField(
+      key: const ValueKey('menu_search'),
+      controller: controller,
+      textInputAction: TextInputAction.search,
+      style: TextStyle(fontSize: 15, color: t.ink),
+      decoration: InputDecoration(
+        hintText: 'Цэснээс хайх',
+        hintStyle: TextStyle(fontSize: 15, color: t.mutedText),
+        prefixIcon: Icon(Icons.search_rounded, size: 20, color: t.mutedText),
+        suffixIcon: controller.text.isEmpty
+            ? null
+            : IconButton(
+                tooltip: 'Арилгах',
+                icon: Icon(Icons.close_rounded, size: 18, color: t.mutedText),
+                onPressed: controller.clear,
               ),
-          ],
+        filled: true,
+        fillColor: t.borderSubtle,
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(vertical: 13),
+        border: border,
+        enabledBorder: border,
+        focusedBorder: border.copyWith(
+          borderSide: BorderSide(color: t.ink, width: 1.2),
         ),
       ),
     );
@@ -780,53 +1326,44 @@ class _MoreTile extends StatelessWidget {
   }
 }
 
-/// "Гарах" — a white card with the accent label, centred.
-class _LogoutButton extends StatelessWidget {
-  const _LogoutButton({required this.onTap});
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = CarserviceTheme.of(context);
-    return OpsCard(
-      key: const ValueKey('more_logout'),
-      padding: EdgeInsets.zero,
-      onTap: onTap,
-      child: SizedBox(
-        height: 50,
-        child: Center(
-          child: Text(
-            'Гарах',
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              color: t.accent,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _NavigationGroup {
-  const _NavigationGroup(this.label, this.entries);
+  const _NavigationGroup(
+    this.label,
+    this.entries, {
+    this.tone = _MenuTone.navy,
+    this.wide = false,
+  });
   final String label;
   final List<_NavigationEntry> entries;
+
+  /// Icon tint of the group's tiles.
+  final _MenuTone tone;
+
+  /// Two wide cards with totals (the customer pair) instead of tiles.
+  final bool wide;
 }
 
 class _NavigationEntry {
-  const _NavigationEntry(this.label, this.icon, this.permission, {this.route});
+  const _NavigationEntry(
+    this.label,
+    this.icon,
+    this.permission, {
+    this.route,
+    this.count,
+    this.module,
+  });
   final String label;
   final IconData icon;
   final String? permission;
 
-  /// A `go_router` location to push instead of the "удахгүй" placeholder
-  /// snackbar. `null` (the default, and every row outside Каталог today)
-  /// keeps the pre-existing placeholder behaviour — added by `P4-F4`
-  /// narrowly for the two rows it wires, not a blanket change to every
-  /// `MoreScreen` entry.
+  /// Plan module the screen needs (`enable_reports` …); null = core.
+  final String? module;
+
+  /// A `go_router` location to push; `null` shows the "удахгүй" snackbar.
   final String? route;
+
+  /// The total shown on the item, when it has one.
+  final _MenuCount? count;
 }
 
 class SubscriptionLockedScreen extends StatelessWidget {

@@ -152,8 +152,10 @@ abstract interface class AppointmentsRepository {
     String appointmentId,
   );
 
-  /// `POST /appointments/[id]/payment/refund` — requires `payments.delete`
-  /// server-side; `note` is mandatory (422 `REFUND_NOTE_REQUIRED` otherwise).
+  /// `POST /appointments/[id]/payment/refund`. Since 2026-11-13 the server
+  /// answers every staff caller 403 `PLATFORM_REFUND_ONLY` (the booking fee is
+  /// platform money; a platform admin refunds it), so no screen offers it —
+  /// kept for the API contract only.
   Future<Result<AppointmentRefundResult>> refundPayment(
     String appointmentId, {
     required String note,

@@ -24,13 +24,18 @@ class ServiceCatalogService {
   /// (`GET orders/catalog-items`), for the order line picker. An item's [id]
   /// is the shared `catalogItemId`, not a tenant service id. Errors throw
   /// silently ([apiOrThrow]): the list is extra, not worth a snackbar.
-  static Future<List<CatalogService>> getCatalogItems({String? q}) async {
+  /// One [type] per call: the server sorts by type, so a mixed page of 100
+  /// would be all labor once the catalog holds that many.
+  static Future<List<CatalogService>> getCatalogItems({
+    required ServiceKind type,
+    String? q,
+  }) async {
     final query = q == null || q.isEmpty
         ? ''
         : '&q=${Uri.encodeQueryComponent(q)}';
     final res = await apiOrThrow(
       Api.get,
-      'orders/catalog-items?pageSize=100$query',
+      'orders/catalog-items?type=${type.name}&pageSize=100$query',
     );
     final list = res.data['items'] as List<dynamic>? ?? [];
     return list.map((e) {

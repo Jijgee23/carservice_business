@@ -29,6 +29,7 @@ import 'package:carservice_business/core/widgets/app_dropdown.dart';
 import 'package:carservice_business/features/orders/presentation/widgets/assignee_avatar.dart';
 import 'package:carservice_business/features/orders/presentation/controllers/order_intake_controller.dart';
 import 'package:carservice_business/features/orders/presentation/widgets/intake/intake_section.dart';
+import 'package:carservice_business/features/orders/presentation/widgets/manual_item_sheet.dart';
 import 'package:carservice_business/features/orders/presentation/widgets/vehicle_picker_field.dart';
 
 class CreateOrderScreen extends StatefulWidget {
@@ -195,15 +196,37 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       ? 'Өөрт оноосон хуудсанд л ажил нэмэх эрхтэй'
       : null;
 
-  Future<void> _addItem({required bool manual}) async {
+  /// The catalog page; its own «Гараар бүртгэх» returns a hand-entered line.
+  Future<void> _pickFromCatalog() async {
     final draft = await AppNav.to<OrderItemDraft>(
-      ItemFormScreen.draft(manual: manual, canEditPrice: _canItemPrice),
+      ItemFormScreen.draft(canEditPrice: _canItemPrice),
     );
     if (draft == null || !mounted || _isDuplicateDiagnostic(draft)) return;
     setState(() => _items.add(draft));
   }
 
+  Future<void> _addManual() async {
+    await showManualItemSheet(
+      onSubmit: (draft) async {
+        if (mounted) setState(() => _items.add(draft));
+        return true;
+      },
+    );
+  }
+
+  /// A hand-entered line reopens in the sheet; a catalog pick in the form
+  /// that keeps its link.
   Future<void> _editItem(int index) async {
+    if (!_items[index].fromCatalog) {
+      await showManualItemSheet(
+        initial: _items[index],
+        onSubmit: (draft) async {
+          if (mounted) setState(() => _items[index] = draft);
+          return true;
+        },
+      );
+      return;
+    }
     final draft = await AppNav.to<OrderItemDraft>(
       ItemFormScreen.draft(
         editDraft: _items[index],
@@ -646,8 +669,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                       items: _items,
                       canManual: _canItemPrice,
                       blockedHint: _itemsBlockedHint,
-                      onPickCatalog: () => _addItem(manual: false),
-                      onAddManual: () => _addItem(manual: true),
+                      onPickCatalog: _pickFromCatalog,
+                      onAddManual: _addManual,
                       onEdit: _editItem,
                       onRemove: (i) => setState(() => _items.removeAt(i)),
                     ),

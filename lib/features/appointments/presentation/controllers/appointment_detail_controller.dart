@@ -61,13 +61,14 @@ class AppointmentDetailController extends ChangeNotifier {
 
   /// Payment section state. Seeded from the server's
   /// [AppointmentSummary.paymentStatus] (web dashboard parity) and refreshed
-  /// on [refresh]; a local check/retry/refund then overrides it. An older
+  /// on [refresh]; a local check/retry then overrides it. (No refund here:
+  /// the booking fee is platform money — staff get 403 `PLATFORM_REFUND_ONLY`
+  /// and a platform admin refunds it.) An older
   /// server that omits the field leaves it `unknown`, which must be treated
   /// neutrally (no action assumed available).
   AppointmentBookingPaymentStatus paymentStatus;
   AppointmentPaymentCheckResult? lastPaymentCheck;
   AppointmentPaymentRetryResult? lastPaymentRetry;
-  AppointmentRefundResult? lastRefund;
 
   bool mutating = false;
 
@@ -314,41 +315,6 @@ class AppointmentDetailController extends ChangeNotifier {
       paymentStatus = value.required
           ? AppointmentBookingPaymentStatus.PENDING
           : AppointmentBookingPaymentStatus.NOT_REQUIRED;
-    }
-    notifyListeners();
-    return result;
-  }
-
-  /// Destructive — the screen must confirm with the user before calling
-  /// this, and [note] is mandatory (the server 422s `REFUND_NOTE_REQUIRED`
-  /// otherwise; this method never invents a placeholder note to dodge that).
-  Future<Result<AppointmentRefundResult>> refundPayment({
-    required String note,
-  }) async {
-    final id = appointmentId;
-    if (id == null) {
-      return const Err(
-        AppError(ErrorKind.unknown, 'Цаг захиалга сонгогдоогүй байна'),
-      );
-    }
-    if (mutating) {
-      return const Err(
-        AppError(ErrorKind.unknown, 'Өөр үйлдэл боловсруулагдаж байна'),
-      );
-    }
-    final generation = _generation;
-    mutating = true;
-    notifyListeners();
-    final result = await _repo.refundPayment(id, note: note);
-    if (_disposed || generation != _generation) {
-      mutating = false;
-      return result;
-    }
-    mutating = false;
-    if (result case Ok(:final value)) {
-      lastRefund = value;
-      // Server now reports REFUNDED explicitly (appointmentBookingPaymentStatus).
-      paymentStatus = AppointmentBookingPaymentStatus.REFUNDED;
     }
     notifyListeners();
     return result;

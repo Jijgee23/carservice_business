@@ -342,63 +342,69 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
       child: Column(
         children: [
           Expanded(
-            child: Stack(
-              children: [
-                TightHeightFallback(
-                  controls: [
-                    _Header(
-                      ctrl: ctrl,
-                      onCalendar: () => _openCalendar(context, ctrl, user),
-                      onCreate: _canCreate(user)
-                          ? () => _openCreate(context, ctrl)
-                          : null,
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: CalendarWeekStrip(
-                        weekOf: weekStart,
-                        selected: selectedDate,
-                        onSelect: ctrl.setDate,
-                        onPreviousWeek: () => setState(
-                          () => _weekAnchor = weekStart.subtract(
-                            const Duration(days: 7),
-                          ),
-                        ),
-                        onNextWeek: () => setState(
-                          () => _weekAnchor = weekStart.add(
-                            const Duration(days: 7),
-                          ),
-                        ),
-                        hasBookings: counts == null
-                            ? null
-                            : (day) =>
-                                  (counts[DateUtils.dateOnly(day)] ?? 0) > 0,
-                        dayKeyPrefix: 'appointments_week_day',
+            // The selection bar takes the floating nav's room when shown.
+            child: MediaQuery.removePadding(
+              context: context,
+              removeBottom: ctrl.selectedCount > 0,
+              child: Stack(
+                children: [
+                  TightHeightFallback(
+                    controls: [
+                      _Header(
+                        ctrl: ctrl,
+                        onCalendar: () => _openCalendar(context, ctrl, user),
+                        onCreate: _canCreate(user)
+                            ? () => _openCreate(context, ctrl)
+                            : null,
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    _ScopeChips(ctrl: ctrl),
-                    const SizedBox(height: 4),
-                    ListSearchBar(
-                      controller: _searchController,
-                      hintText: 'Үйлчлүүлэгч, утас, тэмдэглэл...',
-                      onChanged: ctrl.setQuery,
-                      onClear: () {
-                        _searchController.clear();
-                        ctrl.setQuery('');
-                      },
-                      filterKey: const ValueKey('appointments_filter_button'),
-                      activeFilters: filter.activeCount,
-                      onFilter: () => _openFilters(ctrl, filter, showBranches),
-                    ),
-                    if (ctrl.lastBulkResult?.failed.isNotEmpty == true)
-                      AppointmentBulkFailureBanner(
-                        result: ctrl.lastBulkResult!,
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: CalendarWeekStrip(
+                          weekOf: weekStart,
+                          selected: selectedDate,
+                          onSelect: ctrl.setDate,
+                          onPreviousWeek: () => setState(
+                            () => _weekAnchor = weekStart.subtract(
+                              const Duration(days: 7),
+                            ),
+                          ),
+                          onNextWeek: () => setState(
+                            () => _weekAnchor = weekStart.add(
+                              const Duration(days: 7),
+                            ),
+                          ),
+                          hasBookings: counts == null
+                              ? null
+                              : (day) =>
+                                    (counts[DateUtils.dateOnly(day)] ?? 0) > 0,
+                          dayKeyPrefix: 'appointments_week_day',
+                        ),
                       ),
-                  ],
-                  results: _buildResults(ctrl, ctrl.listState, user, filter),
-                ),
-              ],
+                      const SizedBox(height: 12),
+                      _ScopeChips(ctrl: ctrl),
+                      const SizedBox(height: 4),
+                      ListSearchBar(
+                        controller: _searchController,
+                        hintText: 'Үйлчлүүлэгч, утас, тэмдэглэл...',
+                        onChanged: ctrl.setQuery,
+                        onClear: () {
+                          _searchController.clear();
+                          ctrl.setQuery('');
+                        },
+                        filterKey: const ValueKey('appointments_filter_button'),
+                        activeFilters: filter.activeCount,
+                        onFilter: () =>
+                            _openFilters(ctrl, filter, showBranches),
+                      ),
+                      if (ctrl.lastBulkResult?.failed.isNotEmpty == true)
+                        AppointmentBulkFailureBanner(
+                          result: ctrl.lastBulkResult!,
+                        ),
+                    ],
+                    results: _buildResults(ctrl, ctrl.listState, user, filter),
+                  ),
+                ],
+              ),
             ),
           ),
           if (ctrl.selectedCount > 0)
@@ -688,8 +694,14 @@ class _PhoneAppointments extends StatelessWidget {
     onRefresh: ctrl.refresh,
     child: ListView.separated(
       controller: scroll,
-      // Extra bottom room so the last card and the footer clear the FAB.
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
+      // Extra bottom room so the last card and the footer clear the FAB
+      // and the shell's floating nav.
+      padding: EdgeInsets.fromLTRB(
+        16,
+        8,
+        16,
+        88 + MediaQuery.paddingOf(context).bottom,
+      ),
       itemCount: appointments.length + 1,
       separatorBuilder: (_, index) =>
           SizedBox(height: index == appointments.length - 1 ? 4 : 10),

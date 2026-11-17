@@ -58,7 +58,7 @@ String? workingBranchLabel(WorkingBranchController value) {
 }
 
 /// Bottom-sheet picker over the same choices as [WorkingBranchSwitcher]
-/// ("Солих" on the Бусад branch row). A no-op while locked.
+/// ("Солих" on the Меню branch strip). A no-op while locked.
 Future<void> showWorkingBranchSheet(
   BuildContext context,
   WorkingBranchController value,

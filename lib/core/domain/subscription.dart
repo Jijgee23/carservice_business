@@ -14,6 +14,11 @@ class SubscriptionStatus {
   final int? warnDays;
   final bool hasPendingPayment;
 
+  /// Plan modules the tenant has (`enable_diagnostics`, `enable_reports` …);
+  /// the server answers 403 `MODULE_DISABLED` on the others' endpoints.
+  /// Null from a server that doesn't send them: treat everything as open.
+  final Set<String>? modules;
+
   const SubscriptionStatus({
     required this.plan,
     required this.status,
@@ -24,20 +29,35 @@ class SubscriptionStatus {
     required this.expiringSoon,
     required this.warnDays,
     required this.hasPendingPayment,
+    this.modules,
   });
+
+  /// Whether a screen behind [module] (null = core, always open) is in the
+  /// plan. Unknown modules allow it — the server stays the gate.
+  bool allowsModule(String? module) =>
+      module == null || modules == null || modules!.contains(module);
 
   /// True when the banner should be shown (locked, or nearing expiry).
   bool get needsAttention => locked || expiringSoon;
 
-  factory SubscriptionStatus.fromJson(Map<String, dynamic> j) => SubscriptionStatus(
+  factory SubscriptionStatus.fromJson(Map<String, dynamic> j) =>
+      SubscriptionStatus(
         plan: j['plan'] as String?,
         status: j['status'] as String? ?? 'unknown',
         locked: j['locked'] as bool? ?? false,
         isTrial: j['isTrial'] as bool? ?? false,
         daysLeft: (j['daysLeft'] as num?)?.toInt(),
-        expiresAt: j['expiresAt'] != null ? DateTime.tryParse(j['expiresAt'] as String) : null,
+        expiresAt: j['expiresAt'] != null
+            ? DateTime.tryParse(j['expiresAt'] as String)
+            : null,
         expiringSoon: j['expiringSoon'] as bool? ?? false,
         warnDays: (j['warnDays'] as num?)?.toInt(),
         hasPendingPayment: j['hasPendingPayment'] as bool? ?? false,
+        modules: j['modules'] is List
+            ? {
+                for (final m in j['modules'] as List)
+                  if (m is String) m,
+              }
+            : null,
       );
 }
